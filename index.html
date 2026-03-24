@@ -101,6 +101,15 @@ body{display:flex;background:#f0f4f8;}
 .step-info b{font-size:0.86em;display:block;margin-bottom:2px;}
 .step-info small{font-size:0.73em;color:#888;}
 .step-btn{margin-left:auto;border:none;border-radius:5px;padding:6px 12px;background:#2980b9;color:#fff;font-size:0.77em;font-weight:bold;cursor:pointer;}
+
+.announce-box{background:#fffbeb;border:1.5px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:20px;}
+.announce-ver{font-size:0.78em;font-weight:bold;color:#92400e;background:#fde68a;padding:2px 8px;border-radius:10px;margin-right:6px;}
+.announce-date{font-size:0.75em;color:#aaa;}
+.announce-title{font-size:0.9em;font-weight:bold;color:#1e2d3d;margin:6px 0 4px;}
+.announce-list{margin:0;padding-left:16px;font-size:0.8em;color:#555;line-height:1.8;}
+.announce-list li{margin:0;}
+.announce-new{color:#059669;font-weight:bold;}
+.announce-fix{color:#dc2626;font-weight:bold;}
 </style>
 </head>
 <body>
@@ -152,6 +161,25 @@ body{display:flex;background:#f0f4f8;}
     <div id="page-home" class="page active">
       <div class="home-greeting">👋 歡迎使用料號管理中心</div>
       <div class="home-sub">點選左側導航或下方卡片快速進入各工具</div>
+      <!-- 版本公告 — 每次更新只需修改這裡 -->
+      <div class="announce-box" id="version-announce">
+        <div>
+          <span class="announce-ver">v2.5</span>
+          <span class="announce-date">2026-03-24</span>
+        </div>
+        <div class="announce-title">📢 最新更新</div>
+        <ul class="announce-list">
+          <li><span class="announce-new">🆕 NEW</span> EC 備註產生器 — 行內即時預覽、Cloud DB 批次寫入面板</li>
+          <li><span class="announce-new">🆕 NEW</span> EC 備註產生器 — 「全部：手動改 / 產新號」一鍵套用</li>
+          <li><span class="announce-new">🆕 NEW</span> SOP 知識庫 — 卡片設定雲端同步（Google Sheet）</li>
+          <li><span class="announce-new">🆕 NEW</span> PIM — 料號模式選擇（May / Pauline / Doris）+ ➕ 序號+1</li>
+          <li><span class="announce-fix">🔧 FIX</span> PIM Safety Check 修正（資料異常時正確攔截）</li>
+          <li><span class="announce-fix">🔧 FIX</span> PIM 固定預設值設定即時同步到上方欄位</li>
+          <li><span class="announce-fix">🔧 FIX</span> SOP 儲存時自動提交未按新增的卡片</li>
+        </ul>
+      </div>
+      <!-- 版本公告 end -->
+
       <div class="section-title">料號工具</div>
       <div class="home-grid">
         <div class="home-card" onclick="goPage('pn')">
