@@ -1,0 +1,42 @@
+name: 通知同事 Dashboard 已更新
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.html'
+
+jobs:
+  send-email:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 取得最新 commit 訊息
+        uses: actions/checkout@v3
+
+      - name: 寄送更新通知 Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "📢 Dashboard 料號管理中心 已更新"
+          to: |
+            may_chen@avc.co
+            pauline_cheng@avc.co
+            doris_lu@avc.co
+          from: "Dashboard 通知 <${{ secrets.MAIL_USERNAME }}>"
+          body: |
+            Hi, All
+
+            Dashboard 料號管理中心已更新，請點連結查看最新版本：
+
+            🔗 https://poupyy220-art.github.io/workspace/
+
+            更新者：${{ github.actor }}
+            更新時間：${{ github.event.head_commit.timestamp }}
+            更新說明：${{ github.event.head_commit.message }}
+
+            有任何問題歡迎回信或在群組提問。
