@@ -24,8 +24,8 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "📢 Dashboard 料號管理中心 已更新"
           to: |
-            may_chen@avc.co
-            pauline_cheng@avc.co
+            may_chen@avc.co,
+            pauline_cheng@avc.co,
             doris_lu@avc.co
           from: "Dashboard 通知 <${{ secrets.MAIL_USERNAME }}>"
           body: |
