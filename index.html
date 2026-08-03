@@ -1498,6 +1498,7 @@ function cdbTemplate() {
 var custDB = [];
 var custHeaders = [];
 var custResults = [];
+var custAutoPullTimer = null;
 
 function custSetStatus(msg, type) {
   var el = document.getElementById('cust-status-bar');
@@ -1532,6 +1533,7 @@ function custPush() {
 
 function custImport(e) {
   var f = e.target.files[0]; if(!f) return;
+  if (custAutoPullTimer) { clearTimeout(custAutoPullTimer); custAutoPullTimer = null; }
   var reader = new FileReader();
   reader.onload = function(ev) {
     try {
@@ -1617,7 +1619,7 @@ function saveCust() {
     }catch(e){}
   } else {
     // 沒有快取，自動 Pull
-    setTimeout(function(){ custPull(); }, 1200);
+    custAutoPullTimer = setTimeout(function(){ custAutoPullTimer = null; custPull(); }, 1200);
   }
 })();
 </script>
