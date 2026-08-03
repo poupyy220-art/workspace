@@ -316,6 +316,7 @@ body{display:flex;background:#f0f4f8;}
       <textarea id="cust-query" rows="6" placeholder="F0J6&#10;Fighting&#10;L039" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:5px;font-size:0.85em;font-family:monospace;resize:vertical;"></textarea>
       <button class="action-btn" style="background:#e67e22;width:100%;margin-top:8px;" onclick="custQuery()">🔍 開始查詢</button>
       <button class="action-btn" id="cust-dl-btn" style="background:#27ae60;width:100%;margin-top:6px;display:none;" onclick="custDownload()">⬇️ 下載查詢結果 Excel</button>
+      <button class="action-btn" id="cust-dl-all-btn" style="background:#2980b9;width:100%;margin-top:6px;display:none;" onclick="custDownloadAll()">⬇️ 下載全部資料 Excel</button>
     </div>
     <div class="tool-right">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
@@ -1560,6 +1561,7 @@ function custShowPreview() {
   var thead = document.getElementById('cust-thead');
   var tbody = document.getElementById('cust-tbody');
   document.getElementById('cust-count').textContent = 'DB: '+custDB.length+' 筆';
+  document.getElementById('cust-dl-all-btn').style.display = custDB.length ? '' : 'none';
   thead.innerHTML = custHeaders.map(h=>`<th style="padding:8px 10px;white-space:nowrap;">${h}</th>`).join('');
   var preview = custDB.slice(0,50);
   tbody.innerHTML = preview.map(row =>
@@ -1609,6 +1611,14 @@ function custDownload() {
   var ws = XLSX.utils.aoa_to_sheet(data);
   var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'QueryResult');
   XLSX.writeFile(wb,'CustomSearchResult.xlsx');
+}
+
+function custDownloadAll() {
+  if(!custDB.length) return;
+  var data = [custHeaders].concat(custDB.map(function(row){ return custHeaders.map(function(_,i){ var v=row[i]; return v!==undefined?v:''; }); }));
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'AllData');
+  XLSX.writeFile(wb,'CustomDB_All.xlsx');
 }
 
 function saveCust() {
