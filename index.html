@@ -1604,7 +1604,9 @@ function custQuery() {
 
 function custDownload() {
   if(!custResults.length) return;
-  var ws = XLSX.utils.json_to_sheet(custResults);
+  var header = ['關鍵字'].concat(custHeaders);
+  var data = [header].concat(custResults.map(function(r){ return header.map(function(h){ var v=r[h]; return v!==undefined?v:''; }); }));
+  var ws = XLSX.utils.aoa_to_sheet(data);
   var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'QueryResult');
   XLSX.writeFile(wb,'CustomSearchResult.xlsx');
 }
