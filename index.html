@@ -163,14 +163,17 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.8</span>
-          <span class="announce-date">2026-04-09</span>
+          <span class="announce-ver">v2.9</span>
+          <span class="announce-date">2026-08-03</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
         <ul class="announce-list">
-          <li><span class="announce-new">🆕 NEW</span> EC 分析器 v2.0 — 判讀邏輯重設計：SBB/CTO前綴→類別；A列命中→SPB MTM；B列命中→正常L10；都無→需自行確認；Project 都無→需自行確認</li>
-          <li><span class="announce-fix">🔧 FIX</span> EC Combine EC B欄格式修正：400008572440 直接顯示完整數字，不出現科學記號</li>
-          <li><span class="announce-new">🆕 NEW</span> 測試清單 v2.7 — 新增 EC v2.0 判讀邏輯 8 項測試案例（總計 72 項）</li>
+          <li><span class="announce-fix">🔧 FIX</span> PN Database — 上傳資料後再次查詢找不到的問題（API 格式錯誤導致寫入失敗，已修正）</li>
+          <li><span class="announce-fix">🔧 FIX</span> ODM BOM (Y/N) — 選擇「自定義」輸入說明後，匯出 Excel 欄位空白的問題（已修正）</li>
+          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 匯入後立刻查詢找不到資料的問題（時序競爭，已修正）</li>
+          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — A 同事上傳、B 同事看不到的問題（匯入後自動同步雲端，已修正）</li>
+          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 下載 Excel 欄位缺失的問題（已修正，所有欄位正常輸出）</li>
+          <li><span class="announce-new">🆕 NEW</span> 萬用專案查詢 CustomDB — 新增「下載全部資料 Excel」按鈕，可下載完整資料庫</li>
         </ul>
       </div>
       <!-- 版本公告 end -->
