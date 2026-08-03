@@ -1543,8 +1543,13 @@ function custImport(e) {
       custHeaders = rows[0].map(h=>String(h));
       custDB = rows.slice(1);
       saveCust();
-      custSetStatus('✅ 匯入成功！共 '+custDB.length+' 筆，欄位：'+custHeaders.join(' / ')+'（記得 Push 到雲端）','ok');
+      custSetStatus('✅ 匯入成功！共 '+custDB.length+' 筆，欄位：'+custHeaders.join(' / ')+'，同步上傳中...','ok');
       custShowPreview();
+      // 匯入後自動 Push，讓其他同事也能看到
+      fetch(GAS_URL, {method:'POST', body:JSON.stringify({sheet:'CustomDB', data:[custHeaders,...custDB]})})
+        .then(r=>r.json())
+        .then(()=>custSetStatus('✅ 匯入完成！共 '+custDB.length+' 筆已同步到雲端 · '+new Date().toLocaleTimeString(),'ok'))
+        .catch(()=>custSetStatus('⚠️ 匯入成功但雲端同步失敗，請手動按 Push','err'));
     } catch(err) { alert('匯入失敗：'+err); }
   };
   reader.readAsArrayBuffer(f);
