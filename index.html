@@ -1190,6 +1190,10 @@ function goPage(id) {
       }
     }, 300);
   }
+  // 切換到 CustomDB 時，自動從雲端同步最新資料
+  if (id === 'customdb') {
+    setTimeout(function() { custPull(); }, 400);
+  }
 }
 document.querySelectorAll('.nav-item[data-p]').forEach(el => {
   el.addEventListener('click', function(){ goPage(this.getAttribute('data-p')); });
@@ -1633,14 +1637,18 @@ function saveCust() {
   if(d) {
     try{ var p=JSON.parse(d); custHeaders=p.headers||[]; custDB=p.data||[];
       if(custDB.length){ custShowPreview();
-        document.getElementById('cust-status-bar').textContent='已載入本機快取 '+custDB.length+' 筆，建議 Pull 確認最新';
-        document.getElementById('cust-status-bar').className='status-bar status-ok';
+        document.getElementById('cust-status-bar').textContent='已載入本機快取 '+custDB.length+' 筆，自動同步中...';
+        document.getElementById('cust-status-bar').className='status-bar status-loading';
       }
     }catch(e){}
-  } else {
-    // 沒有快取，自動 Pull
-    custAutoPullTimer = setTimeout(function(){ custAutoPullTimer = null; custPull(); }, 1200);
   }
+  // 首次進入，無論有無快取都自動 Pull
+  custAutoPullTimer = setTimeout(function(){ custAutoPullTimer = null; custPull(); }, 1500);
+  // 每 5 分鐘自動刷新一次
+  setInterval(function(){
+    var activePage = document.querySelector('.page.active');
+    if(activePage && activePage.id === 'page-customdb') custPull();
+  }, 5 * 60 * 1000);
 })();
 </script>
 </body>
