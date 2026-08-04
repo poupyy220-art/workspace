@@ -163,18 +163,31 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.9</span>
-          <span class="announce-date">2026-08-03</span>
+          <span class="announce-ver">v2.10</span>
+          <span class="announce-date">2026-08-04</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
         <ul class="announce-list">
-          <li><span class="announce-fix">🔧 FIX</span> PN Database — 上傳資料後再次查詢找不到的問題（API 格式錯誤導致寫入失敗，已修正）</li>
-          <li><span class="announce-fix">🔧 FIX</span> ODM BOM (Y/N) — 選擇「自定義」輸入說明後，匯出 Excel 欄位空白的問題（已修正）</li>
-          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 匯入後立刻查詢找不到資料的問題（時序競爭，已修正）</li>
-          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — A 同事上傳、B 同事看不到的問題（匯入後自動同步雲端，已修正）</li>
-          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 下載 Excel 欄位缺失的問題（已修正，所有欄位正常輸出）</li>
-          <li><span class="announce-new">🆕 NEW</span> 萬用專案查詢 CustomDB — 新增「下載全部資料 Excel」按鈕，可下載完整資料庫</li>
+          <li><span class="announce-fix">🔧 FIX</span> PN Database — 日期欄位格式不一致（月份/日期未補零），導致部分欄位顯示為 2026/8/4（已修正為統一 2026/08/04 格式）</li>
+          <li><span class="announce-fix">🔧 FIX</span> PN Database — 深夜使用時日期取 UTC 而非台灣時間，導致日期少一天（已修正）</li>
+          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 雲端資料更新後網頁未同步的問題（切換頁面時自動 Pull，不需手動按鈕）</li>
+          <li><span class="announce-new">🆕 NEW</span> 萬用專案查詢 CustomDB — 每 5 分鐘自動刷新雲端資料，頁面常駐也能保持最新</li>
         </ul>
+        <!-- 歷史版本 -->
+        <details style="margin-top:10px;">
+          <summary style="font-size:0.8em;color:#92400e;cursor:pointer;user-select:none;">📋 歷史版本紀錄</summary>
+          <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
+            <div style="margin-bottom:4px;"><span class="announce-ver">v2.9</span><span class="announce-date" style="margin-left:6px;">2026-08-03</span></div>
+            <ul class="announce-list" style="margin-top:4px;">
+              <li><span class="announce-fix">🔧 FIX</span> PN Database — 上傳資料後再次查詢找不到的問題</li>
+              <li><span class="announce-fix">🔧 FIX</span> ODM BOM (Y/N) — 選「自定義」匯出 Excel 欄位空白的問題</li>
+              <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 匯入後立刻查詢找不到資料（時序競爭）</li>
+              <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — A 同事上傳、B 同事看不到的問題</li>
+              <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 下載 Excel 欄位缺失的問題</li>
+              <li><span class="announce-new">🆕 NEW</span> 萬用專案查詢 CustomDB — 新增「下載全部資料 Excel」按鈕</li>
+            </ul>
+          </div>
+        </details>
       </div>
       <!-- 版本公告 end -->
       <div class="section-title">料號工具</div>
