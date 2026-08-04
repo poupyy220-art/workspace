@@ -163,19 +163,27 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.10</span>
+          <span class="announce-ver">v2.11</span>
           <span class="announce-date">2026-08-04</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
         <ul class="announce-list">
-          <li><span class="announce-fix">🔧 FIX</span> PN Database — 日期欄位格式不一致（月份/日期未補零），導致部分欄位顯示為 2026/8/4（已修正為統一 2026/08/04 格式）</li>
-          <li><span class="announce-fix">🔧 FIX</span> PN Database — 深夜使用時日期取 UTC 而非台灣時間，導致日期少一天（已修正）</li>
-          <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 雲端資料更新後網頁未同步的問題（切換頁面時自動 Pull，不需手動按鈕）</li>
-          <li><span class="announce-new">🆕 NEW</span> 萬用專案查詢 CustomDB — 每 5 分鐘自動刷新雲端資料，頁面常駐也能保持最新</li>
+          <li><span class="announce-fix">🔧 FIX</span> PN Database — 上傳改為依內部 PN 安全合併，不再清空或覆蓋雲端既有資料</li>
+          <li><span class="announce-fix">🔧 FIX</span> PN Database — 上傳後自動重新 Pull 驗證，避免 Apps Script 偶發 404 造成成功或失敗誤判</li>
+          <li><span class="announce-new">🛡️ SAFE</span> PN Database — 手動 Push、自動新增及批次寫入統一使用安全同步與重試流程</li>
         </ul>
         <!-- 歷史版本 -->
         <details style="margin-top:10px;">
           <summary style="font-size:0.8em;color:#92400e;cursor:pointer;user-select:none;">📋 歷史版本紀錄</summary>
+          <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
+            <div style="margin-bottom:4px;"><span class="announce-ver">v2.10</span><span class="announce-date" style="margin-left:6px;">2026-08-04</span></div>
+            <ul class="announce-list" style="margin-top:4px;">
+              <li><span class="announce-fix">🔧 FIX</span> PN Database — 日期欄位格式不一致（月份/日期未補零），導致部分欄位顯示為 2026/8/4（已修正為統一 2026/08/04 格式）</li>
+              <li><span class="announce-fix">🔧 FIX</span> PN Database — 深夜使用時日期取 UTC 而非台灣時間，導致日期少一天（已修正）</li>
+              <li><span class="announce-fix">🔧 FIX</span> 萬用專案查詢 CustomDB — 雲端資料更新後網頁未同步的問題（切換頁面時自動 Pull，不需手動按鈕）</li>
+              <li><span class="announce-new">🆕 NEW</span> 萬用專案查詢 CustomDB — 每 5 分鐘自動刷新雲端資料，頁面常駐也能保持最新</li>
+            </ul>
+          </div>
           <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
             <div style="margin-bottom:4px;"><span class="announce-ver">v2.9</span><span class="announce-date" style="margin-left:6px;">2026-08-03</span></div>
             <ul class="announce-list" style="margin-top:4px;">
