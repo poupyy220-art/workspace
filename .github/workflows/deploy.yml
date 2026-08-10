@@ -1,0 +1,22 @@
+name: 部署到 Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'index.html'
+      - 'wrangler.jsonc'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: d489e34d555b02da3556bf214afe6b88

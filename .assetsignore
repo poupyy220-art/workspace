@@ -1,0 +1,6 @@
+.git
+.github
+.wrangler
+*.md
+wrangler.jsonc
+*.py
