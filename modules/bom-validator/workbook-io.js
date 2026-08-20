@@ -35,7 +35,14 @@
       if (workbook.getWorksheet(HISTORY_TEMP)) xml = replaceSheetName(xml, HISTORY_TEMP, 'History');
       if (workbook._bomDefinedNamesXml) {
         xml = xml.replace(/<definedNames\b[\s\S]*?<\/definedNames>/, '');
-        xml = xml.replace(/(<calcPr\b|<\/workbook>)/, `${workbook._bomDefinedNamesXml}$1`);
+        // Defined Names 內常見 $A$1、$AA$27 等 Excel 絕對位址。
+        // 若直接使用字串 replacement，JavaScript 會把其中的 $1、$2 誤當成
+        // regex capture group，進而把 <calcPr 插入 Print Area，產生 Excel
+        // 無法開啟的 workbook.xml。使用 replacer function 才能原樣保留 `$`。
+        xml = xml.replace(/(<calcPr\b|<\/workbook>)/, match => `${workbook._bomDefinedNamesXml}${match}`);
+        if (!xml.includes(workbook._bomDefinedNamesXml)) {
+          throw new Error('輸出檔的 Excel 名稱範圍結構異常，已停止下載');
+        }
       }
       zip.file('xl/workbook.xml', xml);
     }
@@ -44,6 +51,9 @@
     const verificationEntry = verificationZip.file('xl/workbook.xml');
     if (verificationEntry) {
       const xml = await verificationEntry.async('string');
+      if (workbook._bomDefinedNamesXml && !xml.includes(workbook._bomDefinedNamesXml)) {
+        throw new Error('輸出檔的 Excel 名稱範圍驗證失敗，已停止下載');
+      }
       const outputNames = Array.from(xml.matchAll(/<sheet\b[^>]*\bname="([^"]+)"/g), match => match[1]
         .replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>'));
       const missing = expectedNames.filter(name => !outputNames.includes(name));

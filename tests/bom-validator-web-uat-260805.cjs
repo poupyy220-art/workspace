@@ -16,6 +16,8 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-web-ua
   const result = BomEngine.processWorkbook(workbook);
   const output = Buffer.from(await BomWorkbookIO.writeWorkbook(workbook));
   fs.writeFileSync(outputPath, output);
+  const outputZip = await JSZip.loadAsync(output);
+  const outputWorkbookXml = await outputZip.file('xl/workbook.xml').async('string');
   const reopened = await BomWorkbookIO.loadWorkbook(output);
   const metadata = result.metadata;
   const assertions = {
@@ -29,6 +31,8 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-web-ua
     imagesPreserved: reopened.getWorksheet('Basic Name').getImages().length === 1 && reopened.getWorksheet('分群碼&來源碼填寫規則').getImages().length === 1,
     reportCreatedLast: reopened.worksheets.at(-1).name === '【異常檢測報告】'
   };
+  assertions.definedNamesXmlPreservedExactly = !workbook._bomDefinedNamesXml || outputWorkbookXml.includes(workbook._bomDefinedNamesXml);
+  assertions.noMalformedCalcPrQName = !outputWorkbookXml.includes('<calcPr:');
   assertions.pythonIssueCountsMatched = result.blockerCount === 3 && result.warningCount === 7;
   console.log(JSON.stringify({ assertions, counts: { blockerCount: result.blockerCount, warningCount: result.warningCount } }, null, 2));
   if (Object.values(assertions).some(value => !value)) process.exitCode = 1;
