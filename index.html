@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.14</title>
+<title>料號管理中心 v2.14.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -121,7 +121,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.14 · 全雲端整合平台</div>
+    <div class="logo-sub">v2.14.1 · 全雲端整合平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -143,11 +143,11 @@ body{display:flex;background:#f0f4f8;}
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.14</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.14.1</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.14 · 2026-08-20<br>
+    v2.14.1 · 2026-08-20<br>
     🧪 BOM 轉檔與安檢<br>
     維護：料號管理員
   </div>
@@ -157,7 +157,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="main">
   <div id="topbar">
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.14</div>
+    <div class="topbar-right">料號管理中心 v2.14.1</div>
   </div>
   <div id="content">
 
@@ -168,11 +168,12 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.14</span>
+          <span class="announce-ver">v2.14.1</span>
           <span class="announce-date">2026-08-20</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
         <ul class="announce-list">
+          <li><span class="announce-fix">🔧 FIX</span> 修正部分含 Excel 列印範圍／名稱範圍的 BOM 下載後無法開啟，並新增輸出結構阻擋驗證</li>
           <li><span class="announce-new">🆕 NEW</span> 新增「BOM 轉檔與安檢」模組：格式辨識、NEW／OLD 判定、品名與規格檢查、BOM 階層檢查及異常報告</li>
           <li><span class="announce-new">🔤 NEW</span> 使用 OpenCC 完整簡體轉繁體，補強未收錄於人工字典的簡體字轉換</li>
           <li><span class="announce-new">🛡️ SAFE</span> BOM 全程在瀏覽器本機處理；原始分頁保留格式，只有系統修改或標記的儲存格套用規定樣式</li>
@@ -1222,7 +1223,7 @@ var TITLES = {
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.0', spb:'🔀 SPB vs L10 v3.0',
   pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.14',
+  testplan:'📋 測試清單 v2.14.1',
   docs:'📄 說明文件 v2.6'
 };
 

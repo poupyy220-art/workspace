@@ -63,6 +63,8 @@ async function inspectOne(file) {
     const engine = BomEngine.processWorkbook(wb);
     const output = Buffer.from(await BomWorkbookIO.writeWorkbook(wb));
     if (process.env.BOM_UAT_SAVE_DIR) fs.writeFileSync(path.join(process.env.BOM_UAT_SAVE_DIR, `${path.basename(file, '.xlsx')}_uat.xlsx`), output);
+    const outputZip = await JSZip.loadAsync(output);
+    const outputWorkbookXml = await outputZip.file('xl/workbook.xml').async('string');
     const reopened = await BomWorkbookIO.loadWorkbook(output);
     const afterAll = manifest(reopened);
     const after = afterAll.filter(x => x.name !== '【異常檢測報告】');
@@ -74,6 +76,8 @@ async function inspectOne(file) {
       formulas: JSON.stringify(after.map(x => x.formulas)) === JSON.stringify(before.map(x => x.formulas)),
       comments: await packageCommentCount(output) === originalCommentCount,
       images: JSON.stringify(after.map(x => x.images)) === JSON.stringify(before.map(x => x.images)),
+      definedNamesExact: !wb._bomDefinedNamesXml || outputWorkbookXml.includes(wb._bomDefinedNamesXml),
+      workbookXmlNotCorrupted: !outputWorkbookXml.includes('<calcPr:'),
       reportLast: reopened.worksheets.at(-1)?.name === '【異常檢測報告】',
       reportStyle: !!report && report.autoFilter === 'A9:G9' && report.views[0]?.topLeftCell === 'A10' && ['A9','G9','A10','G10'].every(a => report.getCell(a).border?.top?.style === 'thin')
     };
