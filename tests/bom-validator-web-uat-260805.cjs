@@ -20,6 +20,7 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-web-ua
   const outputWorkbookXml = await outputZip.file('xl/workbook.xml').async('string');
   const reopened = await BomWorkbookIO.loadWorkbook(output);
   const metadata = result.metadata;
+  const outputSheetNames = reopened.worksheets.map(BomWorkbookIO.displayName);
   const assertions = {
     uncoloredWorksheetExcluded: metadata.find(x => x.sheetName === '工作表1')?.excluded === true,
     greenEtStillAudited: metadata.find(x => x.sheetName === 'ET')?.excluded === false,
@@ -29,7 +30,7 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-web-ua
     residualExampleConverted: BomRules.toTraditionalChinese('摄像头挡板') === '攝像頭擋板',
     definedNamesPreserved: reopened._bomDefinedNamesXml.includes('Excel_BuiltIn_Database') && reopened._bomDefinedNamesXml.includes('P310含前置風扇') && reopened._bomDefinedNamesXml.includes('tooling'),
     imagesPreserved: reopened.getWorksheet('Basic Name').getImages().length === 1 && reopened.getWorksheet('分群碼&來源碼填寫規則').getImages().length === 1,
-    reportCreatedLast: reopened.worksheets.at(-1).name === '【異常檢測報告】'
+    reportImmediatelyBeforeHistory: outputSheetNames.indexOf('【異常檢測報告】') === outputSheetNames.indexOf('History') - 1
   };
   assertions.definedNamesXmlPreservedExactly = !workbook._bomDefinedNamesXml || outputWorkbookXml.includes(workbook._bomDefinedNamesXml);
   assertions.noMalformedCalcPrQName = !outputWorkbookXml.includes('<calcPr:');

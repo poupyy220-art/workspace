@@ -159,6 +159,19 @@
     for (let row = 10; row <= ws.rowCount; row += 1) for (let col = 1; col <= 7; col += 1) { const cell = ws.getCell(row, col); cell.font = Object.assign({ name: 'Microsoft JhengHei', size: 10 }, cell.font || {}); cell.border = clone(THIN_BORDER); cell.alignment = { vertical: 'top', wrapText: true }; }
     ws.columns = [{ width: 32 },{ width: 12 },{ width: 28 },{ width: 12 },{ width: 52 },{ width: 44 },{ width: 30 }];
     ws.autoFilter = { from: 'A9', to: 'G9' };
+
+    // 方便使用者完成轉檔後立即查看報告：若原檔含 History，將報告放在
+    // History 的正前方；沒有 History 時維持新增於最後分頁。
+    const historyName = global.BomWorkbookIO && global.BomWorkbookIO.HISTORY_TEMP;
+    const history = (historyName && workbook.getWorksheet(historyName)) || workbook.getWorksheet('History');
+    if (history) {
+      const ordered = workbook.worksheets.filter(sheet => sheet !== ws);
+      const historyIndex = ordered.indexOf(history);
+      if (historyIndex >= 0) {
+        ordered.splice(historyIndex, 0, ws);
+        ordered.forEach((sheet, index) => { sheet.orderNo = index; });
+      }
+    }
   }
 
   function processWorkbook(workbook) {

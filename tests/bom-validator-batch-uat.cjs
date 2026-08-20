@@ -69,6 +69,8 @@ async function inspectOne(file) {
     const afterAll = manifest(reopened);
     const after = afterAll.filter(x => x.name !== '【異常檢測報告】');
     const report = reopened.getWorksheet('【異常檢測報告】');
+    const reportIndex = afterAll.findIndex(x => x.name === '【異常檢測報告】');
+    const historyIndex = afterAll.findIndex(x => x.name === 'History');
     const structural = {
       names: JSON.stringify(after.map(x => x.name)) === JSON.stringify(before.map(x => x.name)),
       states: JSON.stringify(after.map(x => x.state)) === JSON.stringify(before.map(x => x.state)),
@@ -78,7 +80,7 @@ async function inspectOne(file) {
       images: JSON.stringify(after.map(x => x.images)) === JSON.stringify(before.map(x => x.images)),
       definedNamesExact: !wb._bomDefinedNamesXml || outputWorkbookXml.includes(wb._bomDefinedNamesXml),
       workbookXmlNotCorrupted: !outputWorkbookXml.includes('<calcPr:'),
-      reportLast: reopened.worksheets.at(-1)?.name === '【異常檢測報告】',
+      reportPosition: historyIndex >= 0 ? reportIndex === historyIndex - 1 : reportIndex === afterAll.length - 1,
       reportStyle: !!report && report.autoFilter === 'A9:G9' && report.views[0]?.topLeftCell === 'A10' && ['A9','G9','A10','G10'].every(a => report.getCell(a).border?.top?.style === 'thin')
     };
     const remaining = residuals(reopened, engine.metadata);
