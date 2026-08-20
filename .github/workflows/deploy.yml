@@ -33,8 +33,9 @@ jobs:
           cp modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md preview-dist/modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md
 
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: d489e34d555b02da3556bf214afe6b88
           packageManager: npm
+          wranglerVersion: "4"
