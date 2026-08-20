@@ -36,3 +36,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: d489e34d555b02da3556bf214afe6b88
+          packageManager: npm
