@@ -8,7 +8,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <script src="vendor/opencc-js/cn2t.js?v=1.4.1"></script>
-  <script src="bom-guide.js?v=20260820-3"></script>
+  <script src="bom-guide.js?v=20260820-5"></script>
+  <script src="feedback-config.js?v=20260820-2"></script>
   <script src="bom-rules.js?v=20260819-3"></script>
   <script src="workbook-io.js?v=20260820-2"></script>
   <script src="bom-engine.js?v=20260820-3"></script>
@@ -17,21 +18,21 @@
     *{box-sizing:border-box}body{margin:0;background:var(--light);font-family:"Microsoft JhengHei",Arial,sans-serif;color:#263746}
     .wrap{max-width:1180px;margin:auto;padding:28px}.panel{background:#fff;border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:18px;box-shadow:0 4px 15px rgba(31,73,125,.07)}
     h1{margin:0 0 6px;color:var(--blue)}h2{font-size:1.05rem;margin:0 0 14px}.sub{color:#627486;font-size:.9rem}.privacy{margin-top:12px;padding:10px 12px;background:#eaf6ee;border-left:4px solid var(--green);font-size:.88rem}
-    .guide{padding:0;overflow:hidden}.guide summary{cursor:pointer;padding:18px 22px;font-weight:bold;color:var(--blue);list-style:none;display:flex;justify-content:space-between;align-items:center}.guide summary::-webkit-details-marker{display:none}.guide summary::after{content:"＋";font-size:1.25rem}.guide[open] summary::after{content:"－"}.guide-body{border-top:1px solid var(--border);padding:18px 22px}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.guide-card{background:#f8fbff;border:1px solid #d7e5f2;border-radius:9px;padding:15px}.guide-card h3{font-size:.95rem;color:var(--blue);margin:0 0 9px}.guide-card ul,.guide-card ol{margin:0;padding-left:21px;font-size:.86rem;line-height:1.75}.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.legend span{padding:6px 9px;border-radius:7px;font-size:.8rem}.legend .l-new{background:#fff4cc;color:#7a5a00}.legend .l-blocker{background:#fde8e6;color:#9f2d20}.legend .l-warning{background:#fff3df;color:#9a6200}.legend .l-reference{background:#edf1f4;color:#54606a}
+    .guide{padding:0;overflow:hidden}.guide summary{cursor:pointer;padding:18px 22px;font-weight:bold;color:var(--blue);list-style:none;display:flex;justify-content:space-between;align-items:center}.guide summary::-webkit-details-marker{display:none}.guide summary::after{content:"＋";font-size:1.25rem}.guide[open] summary::after{content:"－"}.guide-body{border-top:1px solid var(--border);padding:18px 22px}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.guide-card{background:#f8fbff;border:1px solid #d7e5f2;border-radius:9px;padding:15px}.guide-card h3{font-size:.95rem;color:var(--blue);margin:0 0 9px}.guide-card ul,.guide-card ol{margin:0;padding-left:21px;font-size:.86rem;line-height:1.75}.guide-card-wide{grid-column:1/-1;background:#fffaf0;border-color:#f0d8a8}.guide-card-wide h3{color:#8a5a13}.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.legend span{padding:6px 9px;border-radius:7px;font-size:.8rem}.legend .l-new{background:#fff4cc;color:#7a5a00}.legend .l-blocker{background:#fde8e6;color:#9f2d20}.legend .l-warning{background:#fff3df;color:#9a6200}.legend .l-reference{background:#edf1f4;color:#54606a}
     .flow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:16px}.flow-step{display:flex;align-items:center;gap:7px;background:#eef6fd;border:1px solid #d7e5f2;border-radius:8px;padding:9px 11px;font-size:.82rem}.flow-step span{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:50%;background:#2c7fbd;color:#fff;font-weight:bold}.flow-arrow{color:#81909c;font-weight:bold}
-    .feedback-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:.8rem;font-weight:bold;color:#526678;margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid #cbd5de;border-radius:7px;padding:9px 10px;font:inherit;background:#fff}.field textarea{min-height:95px;resize:vertical}.field-wide{grid-column:1/-1}.feedback-hint{font-size:.8rem;color:#687a8a;margin-top:10px}.feedback-status{margin-top:10px;font-size:.83rem;color:var(--green)}
-    .drop{display:block;border:2px dashed #6b98c4;border-radius:10px;padding:34px;text-align:center;cursor:pointer;background:#f8fbff}.drop:hover{background:#eef7ff}.drop input{display:none}
+    .feedback-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:.8rem;font-weight:bold;color:#526678;margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid #cbd5de;border-radius:7px;padding:9px 10px;font:inherit;background:#fff}.field textarea{min-height:110px;resize:vertical}.field-wide{grid-column:1/-1}.feedback-image-box{grid-column:1/-1;border:1px dashed #9bb5cc;border-radius:8px;padding:12px;background:#f8fbff}.feedback-image-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.feedback-image-head strong{font-size:.86rem;color:#365c7d}.feedback-image-note{font-size:.78rem;color:#687a8a;margin-top:6px}.feedback-file-input{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important}.feedback-image-picker{display:inline-block;background:#607d8b;color:#fff;border-radius:7px;padding:8px 13px;font-size:.82rem;font-weight:bold;cursor:pointer}.feedback-preview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}.feedback-preview:empty{display:none}.feedback-image-card{position:relative;border:1px solid #d7e5f2;border-radius:8px;background:#fff;padding:7px}.feedback-image-card img{display:block;width:100%;height:118px;object-fit:contain;background:#eef2f5;border-radius:5px}.feedback-image-meta{font-size:.75rem;color:#526678;margin-top:6px}.feedback-image-remove{position:absolute;right:5px;top:5px;width:27px;height:27px;padding:0;border-radius:50%;background:#a33b32;color:#fff}.feedback-hint{font-size:.8rem;color:#687a8a;margin-top:10px}.feedback-consent{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:11px 12px;border:1px solid #d7e5f2;border-radius:7px;background:#f8fbff;font-size:.82rem}.feedback-consent input{margin-top:2px}.feedback-honeypot{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}.feedback-status{display:none;margin-top:10px;padding:10px 12px;border-radius:7px;font-size:.83rem}.feedback-status.show{display:block}.feedback-status.success{color:#17653c;background:#eaf6ee}.feedback-status.partial{color:#805512;background:#fff8e8}.feedback-status.error{color:#9f2d20;background:#fde8e6}
+    .drop{display:block;border:2px dashed #6b98c4;border-radius:10px;padding:34px;text-align:center;cursor:pointer;background:#f8fbff}.drop:hover{background:#eef7ff}.drop input{display:none}.file-lock-tip{margin-top:12px;padding:12px 14px;background:#fff8e8;border:1px solid #ecd49e;border-left:4px solid #c58a20;border-radius:7px}.file-lock-tip strong{color:#805512}.file-lock-tip ul{margin:7px 0 0;padding-left:21px;font-size:.83rem;line-height:1.65}
     button{border:0;border-radius:7px;padding:11px 18px;background:#2c7fbd;color:#fff;font-weight:bold;cursor:pointer}button:disabled{background:#aab5be;cursor:not-allowed}.secondary{background:#607d8b}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
     .hidden{display:none}.status{padding:10px 12px;border-radius:7px;background:#eef4f8;margin-top:12px}.grid{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:10px}.stat{padding:14px;border:1px solid var(--border);border-radius:8px;text-align:center;background:#fff}.num{display:block;font-size:1.55rem;font-weight:bold;color:var(--blue)}
     table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{padding:8px;border:1px solid var(--border);text-align:left;vertical-align:top}th{background:var(--blue);color:#fff;position:sticky;top:0}.table-wrap{max-height:420px;overflow:auto}.ok{color:var(--green);font-weight:bold}.warn{color:var(--yellow);font-weight:bold}.bad{color:var(--red);font-weight:bold}.badge{display:inline-block;padding:2px 7px;border-radius:10px;background:#edf2f6;font-size:.75rem}.role-reference{background:#eee;color:#555}
-    @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.guide-grid,.feedback-grid{grid-template-columns:1fr}.field-wide{grid-column:auto}.flow{display:grid;grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);text-align:center}.wrap{padding:12px}}
+    @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.guide-grid,.feedback-grid{grid-template-columns:1fr}.field-wide,.feedback-image-box{grid-column:auto}.feedback-preview{grid-template-columns:1fr 1fr}.flow{display:grid;grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);text-align:center}.wrap{padding:12px}}
   </style>
 </head>
 <body>
 <main class="wrap">
   <section class="panel">
     <h1>🧪 BOM 轉檔與安檢</h1>
-    <div class="sub">系統格式轉換、NEW／OLD 判定、品名與規格檢查、BOM 階層檢查及異常報告｜v2.14.2</div>
+    <div class="sub">系統格式轉換、NEW／OLD 判定、品名與規格檢查、BOM 階層檢查及異常報告｜v2.14.4</div>
     <div class="privacy">🔒 全程在瀏覽器本地處理，不會把 BOM 上傳至伺服器或 AI。原始分頁格式保留，僅修改規則指定的儲存格。</div>
   </section>
   <details class="panel guide" open>
@@ -47,6 +48,10 @@
           <h3>✅ 使用者正確操作方式</h3>
           <ol id="guideSteps"></ol>
         </div>
+        <div class="guide-card guide-card-wide">
+          <h3>☁️ OneDrive／Excel 檔案使用提醒</h3>
+          <ul id="guideOneDriveTips"></ul>
+        </div>
       </div>
       <div id="guideLegend" class="legend" aria-label="結果標記說明"></div>
     </div>
@@ -54,6 +59,7 @@
   <section class="panel">
     <h2>1. 選擇 BOM Excel</h2>
     <label class="drop"><input id="fileInput" type="file" accept=".xlsx"><strong>📂 點選或拖曳 .xlsx 檔案</strong><br><span class="sub">第一版每次處理一個檔案</span></label>
+    <div class="file-lock-tip"><strong>☁️ OneDrive 檔案請先關閉 Excel，再使用本機副本</strong><ul id="uploadOneDriveTips"></ul></div>
     <div id="fileStatus" class="status hidden"></div>
   </section>
   <section id="detectPanel" class="panel hidden">
@@ -72,24 +78,40 @@
     <h2>💬 問題回饋</h2>
     <div class="feedback-grid">
       <div class="field"><label for="feedbackType">問題類型</label><select id="feedbackType"><option>格式辨識</option><option>轉檔結果</option><option>NEW／OLD 判定</option><option>簡轉繁／品名</option><option>Item Level</option><option>異常報告</option><option>操作建議</option><option>其他</option></select></div>
-      <div class="field"><label for="feedbackLocation">分頁／Excel Row（選填）</label><input id="feedbackLocation" placeholder="例：SKU1／第 38 列"></div>
-      <div class="field field-wide"><label for="feedbackDescription">問題描述</label><textarea id="feedbackDescription" placeholder="請描述預期結果與實際結果；請勿貼入機密 BOM 內容。"></textarea></div>
+      <div class="field"><label for="feedbackLocation">分頁／Excel Row（選填）</label><input id="feedbackLocation" maxlength="120" placeholder="例：SKU1／第 38 列"></div>
+      <div class="field field-wide"><label for="feedbackDescription">問題描述</label><textarea id="feedbackDescription" maxlength="1000" placeholder="請描述預期結果與實際結果；可直接在此按 Ctrl+V 貼上截圖，請勿包含機密 BOM 內容。"></textarea></div>
+      <div class="feedback-image-box">
+        <div class="feedback-image-head"><strong>🖼️ 問題圖片（選填）</strong><label class="feedback-image-picker" for="feedbackImageInput">附加圖片</label></div>
+        <input id="feedbackImageInput" class="feedback-file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+        <div class="feedback-image-note">可在問題描述欄直接貼上圖片，或選擇 PNG／JPG／WebP；最多 3 張，每張處理後不超過 2 MB、合計不超過 5 MB。圖片會移除原始檔名與中繼資料後再送出。</div>
+        <div id="feedbackImagePreview" class="feedback-preview" aria-live="polite"></div>
+      </div>
+      <div class="feedback-honeypot" aria-hidden="true"><label for="feedbackWebsite">網站</label><input id="feedbackWebsite" tabindex="-1" autocomplete="off"></div>
     </div>
-    <div class="actions"><button id="copyFeedbackButton" type="button">複製回饋內容</button><button id="downloadFeedbackButton" type="button" class="secondary">下載回饋紀錄</button></div>
-    <div class="feedback-hint">目前只在本機整理回饋，不會自動送出。未來串接機器人時可直接使用同一份結構化內容。</div>
-    <div id="feedbackStatus" class="feedback-status" aria-live="polite"></div>
+    <label class="feedback-consent"><input id="feedbackConsent" type="checkbox"><span>我同意送出上述結構化回饋。內容不得包含 Excel／BOM 原文、公司或客戶名稱、料號、檔名及其他機密資料。</span></label>
+    <div class="actions"><button id="sendFeedbackButton" type="button" disabled>送出回饋</button><button id="copyFeedbackButton" type="button" class="secondary">複製回饋內容</button><button id="downloadFeedbackButton" type="button" class="secondary">下載回饋紀錄</button></div>
+    <div id="feedbackHint" class="feedback-hint">送出功能尚未完成連線；目前仍可複製或下載回饋紀錄。</div>
+    <div id="feedbackStatus" class="feedback-status" role="status" aria-live="polite"></div>
   </section>
 </main>
 <script>
-  let sourceFile=null, workbook=null, detectedMetadata=[], result=null, outputBuffer=null;
+  let sourceFile=null, workbook=null, detectedMetadata=[], result=null, outputBuffer=null, feedbackImages=[],feedbackImageQueue=Promise.resolve();
+  const FEEDBACK_IMAGE_TYPES=['image/png','image/jpeg','image/webp'],FEEDBACK_MAX_IMAGES=3,FEEDBACK_MAX_IMAGE_BYTES=2*1024*1024,FEEDBACK_MAX_TOTAL_IMAGE_BYTES=5*1024*1024,FEEDBACK_MAX_SOURCE_BYTES=10*1024*1024;
   const $=id=>document.getElementById(id);
   $('fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
   $('resetButton').addEventListener('click',()=>location.reload());
   $('runButton').addEventListener('click',runProcessing);
   $('downloadButton').addEventListener('click',downloadOutput);
+  $('feedbackConsent').addEventListener('change',updateFeedbackSendState);
+  $('feedbackDescription').addEventListener('input',updateFeedbackSendState);
+  $('feedbackDescription').addEventListener('paste',handleFeedbackPaste);
+  $('feedbackImageInput').addEventListener('change',event=>{queueFeedbackImages(Array.from(event.target.files||[]));event.target.value=''});
+  $('feedbackImagePreview').addEventListener('click',event=>{const button=event.target.closest('[data-remove-image]');if(button)removeFeedbackImage(Number(button.dataset.removeImage))});
+  $('sendFeedbackButton').addEventListener('click',sendFeedback);
   $('copyFeedbackButton').addEventListener('click',copyFeedback);
   $('downloadFeedbackButton').addEventListener('click',downloadFeedback);
   BomGuide.renderInline();
+  updateFeedbackSendState();
 
   async function loadFile(file){
     if(!file)return;if(!file.name.toLowerCase().endsWith('.xlsx')){alert('目前只支援 .xlsx');return}
@@ -98,7 +120,7 @@
       workbook=await BomWorkbookIO.loadWorkbook(await file.arrayBuffer());
       detectedMetadata=workbook.worksheets.filter(ws=>ws.name!=='【異常檢測報告】').map(BomRules.detectMetadata);
       renderMetadata();$('detectPanel').classList.remove('hidden');$('fileStatus').textContent=`已讀取 ${workbook.worksheets.length} 個分頁：${file.name}`;
-    }catch(error){console.error(error);$('fileStatus').textContent='無法讀取 Excel：'+error.message}
+    }catch(error){console.error(error);$('fileStatus').textContent='無法讀取 Excel：'+error.message+'。若檔案位於 OneDrive，請確認已有綠色勾勾、關閉 Excel，再複製到本機資料夾後重試。'}
   }
   function colName(index){if(!index)return'—';let n=index,s='';while(n){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26)}return s}
   function renderMetadata(){
@@ -120,10 +142,62 @@
     $('issueBody').innerHTML=result.issues.length?result.issues.map(i=>`<tr><td>${escapeHtml(i.sheet)}</td><td>${i.excelRow}</td><td>${escapeHtml(i.field)}</td><td class="${i.severity==='BLOCKER'?'bad':'warn'}">${i.severity}</td><td>${escapeHtml(i.reason)}</td><td>${escapeHtml(i.currentValue)}</td></tr>`).join(''):'<tr><td colspan="6" class="ok">沒有發現問題</td></tr>';
   }
   function downloadOutput(){if(!outputBuffer)return;const base=sourceFile.name.replace(/\.xlsx$/i,'');saveAs(new Blob([outputBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`${base}_系統轉檔.xlsx`)}
-  function feedbackPayload(){return{schema:'bom-feedback-v1',moduleVersion:BomGuide.content.version,createdAt:new Date().toISOString(),category:$('feedbackType').value,location:$('feedbackLocation').value.trim(),description:$('feedbackDescription').value.trim()}}
-  function feedbackText(){const p=feedbackPayload();return[`BOM 轉檔與安檢問題回饋（${p.moduleVersion}）`,`時間：${p.createdAt}`,`類型：${p.category}`,`位置：${p.location||'未填'}`,`問題：${p.description||'未填'}`].join('\n')}
-  async function copyFeedback(){if(!$('feedbackDescription').value.trim()){alert('請先填寫問題描述');return}try{await navigator.clipboard.writeText(feedbackText());$('feedbackStatus').textContent='✅ 已複製，可貼給維護人員或未來的機器人。'}catch(error){$('feedbackStatus').textContent='無法自動複製，請使用下載回饋紀錄。'}}
-  function downloadFeedback(){if(!$('feedbackDescription').value.trim()){alert('請先填寫問題描述');return}saveAs(new Blob([feedbackText()],{type:'text/plain;charset=utf-8'}),`BOM問題回饋_${new Date().toISOString().slice(0,10)}.txt`);$('feedbackStatus').textContent='✅ 回饋紀錄已下載，內容未傳送至外部。'}
+  function feedbackPayload(){return{action:'feedback',schema:'bom-feedback-v2',consent:$('feedbackConsent').checked,moduleVersion:BomGuide.content.version,createdAt:new Date().toISOString(),category:$('feedbackType').value,location:$('feedbackLocation').value.trim(),description:$('feedbackDescription').value.trim(),website:$('feedbackWebsite').value.trim(),images:feedbackImages.map(image=>({name:image.name,mimeType:image.mimeType,size:image.size,dataBase64:image.dataUrl.split(',')[1]}))}}
+  function feedbackText(){const p=feedbackPayload();return[`BOM 轉檔與安檢問題回饋（${p.moduleVersion}）`,`時間：${p.createdAt}`,`類型：${p.category}`,`位置：${p.location||'未填'}`,`問題：${p.description||'未填'}`,`圖片：${p.images.length?p.images.length+' 張（文字備援不包含圖片）':'無'}`].join('\n')}
+  function handleFeedbackPaste(event){const files=Array.from(event.clipboardData?.items||[]).filter(item=>item.kind==='file'&&item.type.startsWith('image/')).map(item=>item.getAsFile()).filter(Boolean);if(!files.length)return;event.preventDefault();queueFeedbackImages(files)}
+  function queueFeedbackImages(files){feedbackImageQueue=feedbackImageQueue.then(()=>addFeedbackImages(files)).catch(error=>{console.error(error);setFeedbackStatus('error','圖片無法處理。')});return feedbackImageQueue}
+  async function addFeedbackImages(files){
+    if(!files.length)return;
+    if(feedbackImages.length+files.length>FEEDBACK_MAX_IMAGES){setFeedbackStatus('error',`最多只能附加 ${FEEDBACK_MAX_IMAGES} 張圖片。`);return}
+    try{
+      for(const file of files){
+        if(!FEEDBACK_IMAGE_TYPES.includes(file.type))throw new Error('只接受 PNG、JPG 或 WebP 圖片。');
+        if(file.size>FEEDBACK_MAX_SOURCE_BYTES)throw new Error('原始圖片不可超過 10 MB。');
+        const image=await normalizeFeedbackImage(file,feedbackImages.length+1);
+        if(feedbackImages.reduce((sum,item)=>sum+item.size,0)+image.size>FEEDBACK_MAX_TOTAL_IMAGE_BYTES)throw new Error('圖片合計不可超過 5 MB。');
+        feedbackImages.push(image);
+      }
+      renderFeedbackImages();setFeedbackStatus('success',`✅ 已加入 ${feedbackImages.length} 張圖片；送出前仍可刪除。`);
+    }catch(error){console.error(error);setFeedbackStatus('error',error.message||'圖片無法處理。')}
+  }
+  async function normalizeFeedbackImage(file,sequence){
+    const bitmap=await createImageBitmap(file),scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+    const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();
+    let mimeType=file.type,quality=mimeType==='image/png'?undefined:.86,blob=await canvasBlob(canvas,mimeType,quality);
+    if(blob.size>FEEDBACK_MAX_IMAGE_BYTES&&mimeType==='image/png'){mimeType='image/jpeg';blob=await canvasBlob(canvas,mimeType,.82)}
+    if(blob.size>FEEDBACK_MAX_IMAGE_BYTES)blob=await canvasBlob(canvas,mimeType,.68);
+    if(blob.size>FEEDBACK_MAX_IMAGE_BYTES)throw new Error('圖片處理後仍超過 2 MB，請裁切後再試。');
+    const extension=mimeType==='image/png'?'png':mimeType==='image/webp'?'webp':'jpg';
+    return{name:`feedback-image-${sequence}.${extension}`,mimeType,size:blob.size,dataUrl:await blobDataUrl(blob)};
+  }
+  function canvasBlob(canvas,mimeType,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('圖片轉換失敗。')),mimeType,quality))}
+  function blobDataUrl(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('圖片讀取失敗。'));reader.readAsDataURL(blob)})}
+  function removeFeedbackImage(index){feedbackImages.splice(index,1);feedbackImages=feedbackImages.map((image,i)=>({...image,name:image.name.replace(/feedback-image-\d+/,`feedback-image-${i+1}`)}));renderFeedbackImages();setFeedbackStatus('success',feedbackImages.length?`目前保留 ${feedbackImages.length} 張圖片。`:'已移除所有圖片。')}
+  function renderFeedbackImages(){$('feedbackImagePreview').innerHTML=feedbackImages.map((image,index)=>`<div class="feedback-image-card"><button class="feedback-image-remove" type="button" data-remove-image="${index}" aria-label="刪除第 ${index+1} 張圖片">×</button><img src="${image.dataUrl}" alt="問題圖片 ${index+1}"><div class="feedback-image-meta">圖片 ${index+1}｜${Math.ceil(image.size/1024)} KB</div></div>`).join('')}
+  function setFeedbackStatus(type,message){const el=$('feedbackStatus');el.className=`feedback-status show ${type}`;el.textContent=message}
+  function feedbackConfig(){const config=window.BomFeedbackConfig||{};return{enabled:config.enabled===true,endpoint:String(config.endpoint||'').trim()}}
+  function updateFeedbackSendState(){const config=feedbackConfig(),ready=config.enabled&&/^https:\/\/script\.google\.com\//.test(config.endpoint);$('sendFeedbackButton').disabled=!(ready&&$('feedbackConsent').checked&&$('feedbackDescription').value.trim());$('feedbackHint').textContent=ready?'送出後會寫入 BOM Feedback Google Sheet；附加圖片存入私人 Google Drive，並寄信通知維護人員。Excel 與 BOM 檔案不會上傳。':'送出功能尚未完成連線；目前仍可複製或下載文字回饋紀錄。'}
+  async function sendFeedback(){
+    const config=feedbackConfig(),button=$('sendFeedbackButton'),payload=feedbackPayload();
+    if(!payload.consent){setFeedbackStatus('error','請先勾選同意送出。');return}
+    if(!payload.description){setFeedbackStatus('error','請先填寫問題描述。');return}
+    if(!config.enabled||!config.endpoint){setFeedbackStatus('error','送出功能尚未完成連線，請先使用複製或下載。');return}
+    button.disabled=true;button.textContent='送出中…';setFeedbackStatus('partial','正在送出，請勿關閉頁面。');
+    try{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+      let response;
+      try{response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),signal:controller.signal})}finally{clearTimeout(timer)}
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      const data=await response.json();
+      if(data.ok){setFeedbackStatus('success',`✅ 已送出${data.imageCount?`，含 ${data.imageCount} 張圖片`:''}並寄信通知。回饋編號：${data.feedbackId}`);$('feedbackDescription').value='';$('feedbackLocation').value='';$('feedbackConsent').checked=false;feedbackImages=[];renderFeedbackImages()}
+      else if(data.saved){setFeedbackStatus('partial',`⚠️ 回饋已寫入（${data.feedbackId||'無編號'}），但通知信未成功寄出；維護人員仍可在 Google Sheet 查看。`)}
+      else throw new Error(data.error||'伺服器未接受回饋');
+    }catch(error){console.error(error);setFeedbackStatus('error','❌ 回饋未確認送達，請改用「複製回饋內容」或「下載回饋紀錄」。')}
+    finally{button.textContent='送出回饋';updateFeedbackSendState()}
+  }
+  async function copyFeedback(){if(!$('feedbackDescription').value.trim()){alert('請先填寫問題描述');return}try{await navigator.clipboard.writeText(feedbackText());setFeedbackStatus('success','✅ 已複製，可貼給維護人員或未來的機器人。')}catch(error){setFeedbackStatus('error','無法自動複製，請使用下載回饋紀錄。')}}
+  function downloadFeedback(){if(!$('feedbackDescription').value.trim()){alert('請先填寫問題描述');return}saveAs(new Blob([feedbackText()],{type:'text/plain;charset=utf-8'}),`BOM問題回饋_${new Date().toISOString().slice(0,10)}.txt`);setFeedbackStatus('success','✅ 回饋紀錄已下載，內容未傳送至外部。')}
   window.BomFeedback={collect:feedbackPayload};
   function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 </script>
