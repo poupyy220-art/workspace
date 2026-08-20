@@ -1,0 +1,15 @@
+{
+  "name": "bom-part-number-center-dev",
+  "private": true,
+  "scripts": {
+    "test:bom": "node tests/bom-validator-golden.cjs"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0",
+    "jszip": "3.10.1",
+    "wrangler": "^4.123.0"
+  },
+  "dependencies": {
+    "opencc-js": "1.4.1"
+  }
+}
