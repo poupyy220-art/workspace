@@ -1,6 +1,7 @@
 name: 通知同事 Dashboard 已更新
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -22,15 +23,15 @@ jobs:
           server_port: 465
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "📢 Dashboard 料號管理中心 已更新"
+          subject: "${{ github.event_name == 'workflow_dispatch' && '🧪 Dashboard 料號管理中心 測試通知' || '📢 Dashboard 料號管理中心 已更新' }}"
           
-          to: may_chen@avc.co, pauline_cheng@avc.co, doris_lu@avc.co, liann_huang@avc.co
+          to: "${{ github.event_name == 'workflow_dispatch' && 'liann_huang@avc.co' || 'may_chen@avc.co, pauline_cheng@avc.co, doris_lu@avc.co, liann_huang@avc.co' }}"
           
           from: "Dashboard 通知 <${{ secrets.MAIL_USERNAME }}>"
           body: |
             Hi, All
 
-            Dashboard 料號管理中心已更新，請點連結查看最新版本：
+            ${{ github.event_name == 'workflow_dispatch' && '這是一封寄送設定測試信，料號管理中心已正式上線。' || 'Dashboard 料號管理中心已更新，請點連結查看最新版本。' }}
 
             🔗 https://poupyy220-art.github.io/workspace/
 
