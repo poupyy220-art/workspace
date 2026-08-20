@@ -25,6 +25,7 @@ jobs:
           cp modules/bom-validator/index.html preview-dist/modules/bom-validator/index.html
           cp modules/bom-validator/sop.html preview-dist/modules/bom-validator/sop.html
           cp modules/bom-validator/bom-guide.js preview-dist/modules/bom-validator/bom-guide.js
+          cp modules/bom-validator/feedback-config.js preview-dist/modules/bom-validator/feedback-config.js
           cp modules/bom-validator/bom-rules.js preview-dist/modules/bom-validator/bom-rules.js
           cp modules/bom-validator/bom-engine.js preview-dist/modules/bom-validator/bom-engine.js
           cp modules/bom-validator/workbook-io.js preview-dist/modules/bom-validator/workbook-io.js
