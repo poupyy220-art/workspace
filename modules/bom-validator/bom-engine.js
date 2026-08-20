@@ -3,6 +3,7 @@
 
   const YELLOW_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2CC' } };
   const RED_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC7CE' } };
+  const INFO_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'DDEBF7' } };
   const BLUE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1F497D' } };
   const THIN_BORDER = {
     top: { style: 'thin', color: { argb: 'D9D9D9' } }, bottom: { style: 'thin', color: { argb: 'D9D9D9' } },
@@ -130,14 +131,16 @@
 
   function createReport(workbook, issues) {
     const old = workbook.getWorksheet('【異常檢測報告】'); if (old) workbook.removeWorksheet(old.id);
-    const ws = workbook.addWorksheet('【異常檢測報告】', { properties: { tabColor: { argb: '1F497D' } }, views: [{ state: 'frozen', ySplit: 9, showGridLines: true }] });
+    const ws = workbook.addWorksheet('【異常檢測報告】', { properties: { tabColor: { argb: '1F497D' } }, views: [{ state: 'frozen', ySplit: 10, showGridLines: true }] });
     const title = ws.getCell('A1'); title.value = '📋 系統轉檔與顏色標註說明'; title.font = { name: 'Microsoft JhengHei', size: 14, bold: true, color: { argb: '1F497D' } }; ws.mergeCells('A1:F1');
     ws.addRow([]); ws.addRow(['標註顏色','套用對象','檢查規則與判斷標準','建議處理方式','','']); ws.mergeCells('D3:F3');
-    ws.addRow(['淺黃底 + 棕字','NEW 新料件',"狀態欄位包含 'NEW' 的料號、狀態及品名/規格",'提示此列為新發行料件，需重點核對','','']); ws.mergeCells('D4:F4');
-    ws.addRow(['淺紅底 + 深紅字','異常儲存格','非法符號、全型字、長度 > 30、第一筆非 Level 1 或 BOM 階層跳階','請修復後再交 IT','','']); ws.mergeCells('D5:F5');
+    ws.addRow(['淺黃底 + 棕字','NEW 新料件／WARNING',"系統判定為 NEW 的料號、狀態及品名/規格；WARNING 問題明細也使用此色",'需重點核對；原檔既有黃色不代表系統判定 NEW','','']); ws.mergeCells('D4:F4');
+    ws.addRow(['淺紅底 + 深紅字','BLOCKER／異常儲存格','非法符號、全型字、長度 > 30、第一筆非 Level 1 或 BOM 階層跳階','必須修復後再重新檢查','','']); ws.mergeCells('D5:F5');
+    ws.addRow(['淺藍底 + 藍字','資訊提示','欄位辨識 fallback、代碼轉換等非卡關資訊','建議確認，但不一定需要修改','','']); ws.mergeCells('D6:F6');
     ws.getCell('A4').fill = clone(YELLOW_FILL); ws.getCell('A4').font = { color: { argb: '7F6000' }, bold: true };
     ws.getCell('A5').fill = clone(RED_FILL); ws.getCell('A5').font = { color: { argb: '9C0006' }, bold: true };
-    for (let row = 3; row <= 5; row += 1) {
+    ws.getCell('A6').fill = clone(INFO_FILL); ws.getCell('A6').font = { color: { argb: '1F497D' }, bold: true };
+    for (let row = 3; row <= 6; row += 1) {
       for (let col = 1; col <= 6; col += 1) {
         const cell = ws.getCell(row, col);
         cell.border = clone(THIN_BORDER);
@@ -151,14 +154,42 @@
       cell.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFF' } };
       cell.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
     }
-    ws.addRow([]); ws.addRow(['🔍 BOM 結構與 NEW 料件卡關問題明細清單']); ws.getCell('A7').font = { name: 'Microsoft JhengHei', size: 12, bold: true, color: { argb: '1F497D' } };
+    ws.addRow(['⚠ 原始 BOM 分頁格式會完整保留；原檔既有黃色／棕字不代表系統判定 NEW，請同時查看狀態欄與本報告。']); ws.mergeCells('A7:G7'); ws.getCell('A7').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: '9C6500' } }; ws.getCell('A7').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEB9C' } }; ws.getCell('A7').alignment = { vertical: 'center', wrapText: true };
+    ws.addRow(['🔍 BOM 結構與 NEW 料件卡關問題明細清單']); ws.getCell('A8').font = { name: 'Microsoft JhengHei', size: 12, bold: true, color: { argb: '1F497D' } };
     ws.addRow([]); ws.addRow(['分頁名稱','Excel行號','欄位名稱','嚴重度','卡關原因','當前內容','修改後內容']);
-    const headerRow = ws.getRow(9); for (let col = 1; col <= 7; col += 1) { const cell = headerRow.getCell(col); cell.fill = clone(BLUE_FILL); cell.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFF' } }; cell.border = clone(THIN_BORDER); cell.alignment = { horizontal: 'center', vertical: 'middle' }; }
+    const headerRow = ws.getRow(10); for (let col = 1; col <= 7; col += 1) { const cell = headerRow.getCell(col); cell.fill = clone(BLUE_FILL); cell.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFF' } }; cell.border = clone(THIN_BORDER); cell.alignment = { horizontal: 'center', vertical: 'middle' }; }
     if (issues.length) issues.forEach(issue => ws.addRow([issue.sheet, issue.excelRow, issue.field, issue.severity, issue.reason, issue.currentValue, issue.modifiedValue]));
     else ws.addRow(['全表合規','-','-','PASS','無 BOM 階層跳階或 NEW 料件內容異常','-','-']);
-    for (let row = 10; row <= ws.rowCount; row += 1) for (let col = 1; col <= 7; col += 1) { const cell = ws.getCell(row, col); cell.font = Object.assign({ name: 'Microsoft JhengHei', size: 10 }, cell.font || {}); cell.border = clone(THIN_BORDER); cell.alignment = { vertical: 'top', wrapText: true }; }
+    for (let row = 11; row <= ws.rowCount; row += 1) {
+      const severity = String(ws.getCell(row, 4).value || '').toUpperCase();
+      for (let col = 1; col <= 7; col += 1) {
+        const cell = ws.getCell(row, col);
+        cell.font = Object.assign({ name: 'Microsoft JhengHei', size: 10 }, cell.font || {});
+        cell.border = clone(THIN_BORDER);
+        cell.alignment = { vertical: 'top', wrapText: true };
+      }
+      const fill = severity === 'BLOCKER' ? RED_FILL : severity === 'WARNING' ? YELLOW_FILL : INFO_FILL;
+      const fontColor = severity === 'BLOCKER' ? '9C0006' : severity === 'WARNING' ? '7F6000' : '1F497D';
+      for (const col of [3, 4, 5]) {
+        ws.getCell(row, col).fill = clone(fill);
+        ws.getCell(row, col).font = Object.assign({}, ws.getCell(row, col).font, { color: { argb: fontColor }, bold: severity !== 'INFO' && severity !== 'PASS' });
+      }
+    }
     ws.columns = [{ width: 32 },{ width: 12 },{ width: 28 },{ width: 12 },{ width: 52 },{ width: 44 },{ width: 30 }];
-    ws.autoFilter = { from: 'A9', to: 'G9' };
+    ws.autoFilter = { from: 'A10', to: 'G10' };
+
+    // 方便使用者完成轉檔後立即查看報告：若原檔含 History，將報告放在
+    // History 的正前方；沒有 History 時維持新增於最後分頁。
+    const historyName = global.BomWorkbookIO && global.BomWorkbookIO.HISTORY_TEMP;
+    const history = (historyName && workbook.getWorksheet(historyName)) || workbook.getWorksheet('History');
+    if (history) {
+      const ordered = workbook.worksheets.filter(sheet => sheet !== ws);
+      const historyIndex = ordered.indexOf(history);
+      if (historyIndex >= 0) {
+        ordered.splice(historyIndex, 0, ws);
+        ordered.forEach((sheet, index) => { sheet.orderNo = index; });
+      }
+    }
   }
 
   function processWorkbook(workbook) {

@@ -13,6 +13,8 @@
 
 ## 版本更新必要項目
 
+開始任何功能修改、版本更新或部署前，必須先完整閱讀 [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)。Codex／自動化代理的 repository 規則另見 [`AGENTS.md`](AGENTS.md)。
+
 每次正式上線必須同步維護：
 
 1. `index.html` 的頁面版本、側欄版本及右上角版本。

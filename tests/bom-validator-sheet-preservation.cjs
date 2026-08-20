@@ -20,7 +20,10 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-sheet-
   const reopened = await BomWorkbookIO.loadWorkbook(outputBuffer);
   const outputNames = reopened.worksheets.map(BomWorkbookIO.displayName);
   const report = reopened.getWorksheet('【異常檢測報告】');
-  const expectedNames = [...loadedNames, '【異常檢測報告】'];
+  const expectedNames = [...loadedNames];
+  const expectedHistoryIndex = expectedNames.indexOf('History');
+  if (expectedHistoryIndex >= 0) expectedNames.splice(expectedHistoryIndex, 0, '【異常檢測報告】');
+  else expectedNames.push('【異常檢測報告】');
   const assertions = {
     allInputSheetsLoaded: loadedNames.length === 10,
     allSheetsPreserved: JSON.stringify(outputNames) === JSON.stringify(expectedNames),
@@ -28,7 +31,8 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-sheet-
     reportCreated: outputNames.includes('【異常檢測報告】'),
     reportGridLinesVisible: report.views[0]?.showGridLines !== false,
     legendBordersComplete: ['A3', 'F3', 'A4', 'F4', 'A5', 'F5'].every(address => report.getCell(address).border?.top?.style === 'thin'),
-    issueTableBordersComplete: ['A9', 'G9', 'A10', 'G10'].every(address => report.getCell(address).border?.top?.style === 'thin')
+    issueTableBordersComplete: ['A10', 'G10', 'A11', 'G11'].every(address => report.getCell(address).border?.top?.style === 'thin'),
+    issueSeverityColorPresent: ['FFC7CE', 'FFF2CC', 'DDEBF7'].includes(report.getCell('C11').fill?.fgColor?.argb) && !report.getCell('A11').fill?.fgColor?.argb
   };
   console.log(JSON.stringify({ assertions, loadedNames, outputNames, counts: { itemCount: result.itemCount, blockerCount: result.blockerCount, warningCount: result.warningCount } }, null, 2));
   if (Object.values(assertions).some(value => !value)) process.exitCode = 1;

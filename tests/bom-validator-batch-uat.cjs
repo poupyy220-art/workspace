@@ -69,6 +69,8 @@ async function inspectOne(file) {
     const afterAll = manifest(reopened);
     const after = afterAll.filter(x => x.name !== '【異常檢測報告】');
     const report = reopened.getWorksheet('【異常檢測報告】');
+    const reportIndex = afterAll.findIndex(x => x.name === '【異常檢測報告】');
+    const historyIndex = afterAll.findIndex(x => x.name === 'History');
     const structural = {
       names: JSON.stringify(after.map(x => x.name)) === JSON.stringify(before.map(x => x.name)),
       states: JSON.stringify(after.map(x => x.state)) === JSON.stringify(before.map(x => x.state)),
@@ -78,8 +80,13 @@ async function inspectOne(file) {
       images: JSON.stringify(after.map(x => x.images)) === JSON.stringify(before.map(x => x.images)),
       definedNamesExact: !wb._bomDefinedNamesXml || outputWorkbookXml.includes(wb._bomDefinedNamesXml),
       workbookXmlNotCorrupted: !outputWorkbookXml.includes('<calcPr:'),
-      reportLast: reopened.worksheets.at(-1)?.name === '【異常檢測報告】',
-      reportStyle: !!report && report.autoFilter === 'A9:G9' && report.views[0]?.topLeftCell === 'A10' && ['A9','G9','A10','G10'].every(a => report.getCell(a).border?.top?.style === 'thin')
+      reportPosition: historyIndex >= 0 ? reportIndex === historyIndex - 1 : reportIndex === afterAll.length - 1,
+      reportStyle: !!report && report.autoFilter === 'A10:G10' && report.views[0]?.topLeftCell === 'A11' && ['A10','G10','A11','G11'].every(a => report.getCell(a).border?.top?.style === 'thin'),
+      reportSeverityColors: !!report && Array.from({length: Math.max(0, report.rowCount - 10)}, (_, i) => i + 11).every(row => {
+        const severity = String(report.getCell(row, 4).value || '').toUpperCase();
+        const expected = severity === 'BLOCKER' ? 'FFC7CE' : severity === 'WARNING' ? 'FFF2CC' : 'DDEBF7';
+        return [3, 4, 5].every(col => report.getCell(row, col).fill?.fgColor?.argb === expected) && !report.getCell(row, 1).fill?.fgColor?.argb;
+      })
     };
     const remaining = residuals(reopened, engine.metadata);
     result.status = Object.values(structural).every(Boolean) && remaining.length === 0 ? 'PASS' : 'FAIL';
