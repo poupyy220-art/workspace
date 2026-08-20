@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'index.html'
+      - 'modules/bom-validator/**'
       - 'wrangler.jsonc'
 
 jobs:
@@ -14,6 +15,21 @@ jobs:
     name: Deploy
     steps:
       - uses: actions/checkout@v4
+
+      - name: 建立正式發布資產
+        shell: bash
+        run: |
+          mkdir -p preview-dist/modules/bom-validator/vendor/opencc-js
+          cp index.html preview-dist/index.html
+          cp modules/bom-validator/index.html preview-dist/modules/bom-validator/index.html
+          cp modules/bom-validator/sop.html preview-dist/modules/bom-validator/sop.html
+          cp modules/bom-validator/bom-guide.js preview-dist/modules/bom-validator/bom-guide.js
+          cp modules/bom-validator/bom-rules.js preview-dist/modules/bom-validator/bom-rules.js
+          cp modules/bom-validator/bom-engine.js preview-dist/modules/bom-validator/bom-engine.js
+          cp modules/bom-validator/workbook-io.js preview-dist/modules/bom-validator/workbook-io.js
+          cp modules/bom-validator/vendor/opencc-js/cn2t.js preview-dist/modules/bom-validator/vendor/opencc-js/cn2t.js
+          cp modules/bom-validator/vendor/opencc-js/LICENSE preview-dist/modules/bom-validator/vendor/opencc-js/LICENSE
+          cp modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md preview-dist/modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3

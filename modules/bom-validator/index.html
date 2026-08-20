@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BOM 轉檔與安檢</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="vendor/opencc-js/cn2t.js?v=1.4.1"></script>
+  <script src="bom-guide.js?v=20260820-1"></script>
+  <script src="bom-rules.js?v=20260819-3"></script>
+  <script src="workbook-io.js?v=20260819-3"></script>
+  <script src="bom-engine.js?v=20260819-3"></script>
+  <style>
+    :root{--blue:#1f497d;--light:#f2f6fa;--border:#d9e1e8;--red:#c0392b;--yellow:#b7791f;--green:#247a45}
+    *{box-sizing:border-box}body{margin:0;background:var(--light);font-family:"Microsoft JhengHei",Arial,sans-serif;color:#263746}
+    .wrap{max-width:1180px;margin:auto;padding:28px}.panel{background:#fff;border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:18px;box-shadow:0 4px 15px rgba(31,73,125,.07)}
+    h1{margin:0 0 6px;color:var(--blue)}h2{font-size:1.05rem;margin:0 0 14px}.sub{color:#627486;font-size:.9rem}.privacy{margin-top:12px;padding:10px 12px;background:#eaf6ee;border-left:4px solid var(--green);font-size:.88rem}
+    .guide{padding:0;overflow:hidden}.guide summary{cursor:pointer;padding:18px 22px;font-weight:bold;color:var(--blue);list-style:none;display:flex;justify-content:space-between;align-items:center}.guide summary::-webkit-details-marker{display:none}.guide summary::after{content:"＋";font-size:1.25rem}.guide[open] summary::after{content:"－"}.guide-body{border-top:1px solid var(--border);padding:18px 22px}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.guide-card{background:#f8fbff;border:1px solid #d7e5f2;border-radius:9px;padding:15px}.guide-card h3{font-size:.95rem;color:var(--blue);margin:0 0 9px}.guide-card ul,.guide-card ol{margin:0;padding-left:21px;font-size:.86rem;line-height:1.75}.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.legend span{padding:6px 9px;border-radius:7px;font-size:.8rem}.legend .l-new{background:#fff4cc;color:#7a5a00}.legend .l-blocker{background:#fde8e6;color:#9f2d20}.legend .l-warning{background:#fff3df;color:#9a6200}.legend .l-reference{background:#edf1f4;color:#54606a}
+    .flow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:16px}.flow-step{display:flex;align-items:center;gap:7px;background:#eef6fd;border:1px solid #d7e5f2;border-radius:8px;padding:9px 11px;font-size:.82rem}.flow-step span{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:50%;background:#2c7fbd;color:#fff;font-weight:bold}.flow-arrow{color:#81909c;font-weight:bold}
+    .feedback-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:.8rem;font-weight:bold;color:#526678;margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid #cbd5de;border-radius:7px;padding:9px 10px;font:inherit;background:#fff}.field textarea{min-height:95px;resize:vertical}.field-wide{grid-column:1/-1}.feedback-hint{font-size:.8rem;color:#687a8a;margin-top:10px}.feedback-status{margin-top:10px;font-size:.83rem;color:var(--green)}
+    .drop{display:block;border:2px dashed #6b98c4;border-radius:10px;padding:34px;text-align:center;cursor:pointer;background:#f8fbff}.drop:hover{background:#eef7ff}.drop input{display:none}
+    button{border:0;border-radius:7px;padding:11px 18px;background:#2c7fbd;color:#fff;font-weight:bold;cursor:pointer}button:disabled{background:#aab5be;cursor:not-allowed}.secondary{background:#607d8b}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+    .hidden{display:none}.status{padding:10px 12px;border-radius:7px;background:#eef4f8;margin-top:12px}.grid{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:10px}.stat{padding:14px;border:1px solid var(--border);border-radius:8px;text-align:center;background:#fff}.num{display:block;font-size:1.55rem;font-weight:bold;color:var(--blue)}
+    table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{padding:8px;border:1px solid var(--border);text-align:left;vertical-align:top}th{background:var(--blue);color:#fff;position:sticky;top:0}.table-wrap{max-height:420px;overflow:auto}.ok{color:var(--green);font-weight:bold}.warn{color:var(--yellow);font-weight:bold}.bad{color:var(--red);font-weight:bold}.badge{display:inline-block;padding:2px 7px;border-radius:10px;background:#edf2f6;font-size:.75rem}.role-reference{background:#eee;color:#555}
+    @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.guide-grid,.feedback-grid{grid-template-columns:1fr}.field-wide{grid-column:auto}.flow{display:grid;grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);text-align:center}.wrap{padding:12px}}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="panel">
+    <h1>🧪 BOM 轉檔與安檢</h1>
+    <div class="sub">系統格式轉換、NEW／OLD 判定、品名與規格檢查、BOM 階層檢查及異常報告｜v2.14</div>
+    <div class="privacy">🔒 全程在瀏覽器本地處理，不會把 BOM 上傳至伺服器或 AI。原始分頁格式保留，僅修改規則指定的儲存格。</div>
+  </section>
+  <details class="panel guide" open>
+    <summary>📘 使用前先看：本次優化與正確操作方式</summary>
+    <div class="guide-body">
+      <div id="guideFlow" class="flow" aria-label="BOM 操作流程"></div>
+      <div class="guide-grid">
+        <div class="guide-card">
+          <h3>✨ 系統做了哪些優化</h3>
+          <ul id="guideOptimizations"></ul>
+        </div>
+        <div class="guide-card">
+          <h3>✅ 使用者正確操作方式</h3>
+          <ol id="guideSteps"></ol>
+        </div>
+      </div>
+      <div id="guideLegend" class="legend" aria-label="結果標記說明"></div>
+    </div>
+  </details>
+  <section class="panel">
+    <h2>1. 選擇 BOM Excel</h2>
+    <label class="drop"><input id="fileInput" type="file" accept=".xlsx"><strong>📂 點選或拖曳 .xlsx 檔案</strong><br><span class="sub">第一版每次處理一個檔案</span></label>
+    <div id="fileStatus" class="status hidden"></div>
+  </section>
+  <section id="detectPanel" class="panel hidden">
+    <h2>2. 系統辨識結果</h2>
+    <div class="table-wrap"><table><thead><tr><th>分頁</th><th>角色</th><th>Header</th><th>PN</th><th>Status</th><th>品名／規格</th><th>狀態</th></tr></thead><tbody id="metadataBody"></tbody></table></div>
+    <div class="actions"><button id="runButton">開始轉檔與安檢</button><button id="resetButton" class="secondary">重新選檔</button></div>
+  </section>
+  <section id="resultPanel" class="panel hidden">
+    <h2>3. 檢查結果</h2>
+    <div class="grid"><div class="stat"><span id="sheetCount" class="num">0</span>處理分頁</div><div class="stat"><span id="itemCount" class="num">0</span>資料列</div><div class="stat"><span id="newCount" class="num">0</span>NEW</div><div class="stat"><span id="blockerCount" class="num">0</span>BLOCKER</div><div class="stat"><span id="warningCount" class="num">0</span>WARNING</div></div>
+    <div id="gate" class="status"></div>
+    <div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>分頁</th><th>Excel Row</th><th>欄位</th><th>等級</th><th>問題</th><th>內容</th></tr></thead><tbody id="issueBody"></tbody></table></div>
+    <div class="actions"><button id="downloadButton">下載系統轉檔 Excel</button></div>
+  </section>
+  <section class="panel">
+    <h2>💬 問題回饋</h2>
+    <div class="feedback-grid">
+      <div class="field"><label for="feedbackType">問題類型</label><select id="feedbackType"><option>格式辨識</option><option>轉檔結果</option><option>NEW／OLD 判定</option><option>簡轉繁／品名</option><option>Item Level</option><option>異常報告</option><option>操作建議</option><option>其他</option></select></div>
+      <div class="field"><label for="feedbackLocation">分頁／Excel Row（選填）</label><input id="feedbackLocation" placeholder="例：SKU1／第 38 列"></div>
+      <div class="field field-wide"><label for="feedbackDescription">問題描述</label><textarea id="feedbackDescription" placeholder="請描述預期結果與實際結果；請勿貼入機密 BOM 內容。"></textarea></div>
+    </div>
+    <div class="actions"><button id="copyFeedbackButton" type="button">複製回饋內容</button><button id="downloadFeedbackButton" type="button" class="secondary">下載回饋紀錄</button></div>
+    <div class="feedback-hint">目前只在本機整理回饋，不會自動送出。未來串接機器人時可直接使用同一份結構化內容。</div>
+    <div id="feedbackStatus" class="feedback-status" aria-live="polite"></div>
+  </section>
+</main>
+<script>
+  let sourceFile=null, workbook=null, detectedMetadata=[], result=null, outputBuffer=null;
+  const $=id=>document.getElementById(id);
+  $('fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
+  $('resetButton').addEventListener('click',()=>location.reload());
+  $('runButton').addEventListener('click',runProcessing);
+  $('downloadButton').addEventListener('click',downloadOutput);
+  $('copyFeedbackButton').addEventListener('click',copyFeedback);
+  $('downloadFeedbackButton').addEventListener('click',downloadFeedback);
+  BomGuide.renderInline();
+
+  async function loadFile(file){
+    if(!file)return;if(!file.name.toLowerCase().endsWith('.xlsx')){alert('目前只支援 .xlsx');return}
+    try{
+      sourceFile=file;$('fileStatus').classList.remove('hidden');$('fileStatus').textContent='解析中：'+file.name;
+      workbook=await BomWorkbookIO.loadWorkbook(await file.arrayBuffer());
+      detectedMetadata=workbook.worksheets.filter(ws=>ws.name!=='【異常檢測報告】').map(BomRules.detectMetadata);
+      renderMetadata();$('detectPanel').classList.remove('hidden');$('fileStatus').textContent=`已讀取 ${workbook.worksheets.length} 個分頁：${file.name}`;
+    }catch(error){console.error(error);$('fileStatus').textContent='無法讀取 Excel：'+error.message}
+  }
+  function colName(index){if(!index)return'—';let n=index,s='';while(n){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26)}return s}
+  function renderMetadata(){
+    $('metadataBody').innerHTML=detectedMetadata.map(m=>{
+      const state=m.excluded?'<span class="badge role-reference">保留、不處理</span>':m.warnings.some(x=>x.severity==='BLOCKER')?'<span class="bad">❌ 無法處理</span>':m.warnings.length?'<span class="warn">⚠️ 有警告</span>':'<span class="ok">✅ 已辨識</span>';
+      const desc=[m.enColumn&&`EN ${colName(m.enColumn)}`,m.zfColumn&&`ZF ${colName(m.zfColumn)}`,m.zhColumn&&`ZH ${colName(m.zhColumn)}`,m.viColumn&&`VI ${colName(m.viColumn)}`,m.specColumn&&`規格 ${colName(m.specColumn)}`].filter(Boolean).join(' / ')||'—';
+      return `<tr><td>${escapeHtml(m.sheetName)}</td><td>${m.excluded?'參考分頁':'BOM'}</td><td>${m.headerRow||'—'}</td><td>${colName(m.pnColumn)}</td><td>${colName(m.statusColumn)}<br><small>${m.statusDetectionMethod||''}</small></td><td>${desc}</td><td>${state}</td></tr>`;
+    }).join('');
+    $('runButton').disabled=detectedMetadata.filter(m=>!m.excluded).every(m=>m.warnings.some(w=>w.severity==='BLOCKER'));
+  }
+  async function runProcessing(){
+    $('runButton').disabled=true;$('runButton').textContent='處理中…';
+    try{result=BomEngine.processWorkbook(workbook);outputBuffer=await BomWorkbookIO.writeWorkbook(workbook);renderResults();$('resultPanel').classList.remove('hidden');}
+    catch(error){console.error(error);alert('處理失敗：'+error.message)}finally{$('runButton').textContent='已完成'}
+  }
+  function renderResults(){
+    $('sheetCount').textContent=result.metadata.filter(m=>!m.excluded).length;$('itemCount').textContent=result.itemCount;$('newCount').textContent=result.newCount;$('blockerCount').textContent=result.blockerCount;$('warningCount').textContent=result.warningCount;
+    $('gate').className='status '+(result.blockerCount?'bad':'ok');$('gate').textContent=result.blockerCount?`❌ 尚有 ${result.blockerCount} 個 Blocker，不建議交 IT；仍可下載檢查結果。`:'✅ 通過 BOM Pre-check';
+    $('issueBody').innerHTML=result.issues.length?result.issues.map(i=>`<tr><td>${escapeHtml(i.sheet)}</td><td>${i.excelRow}</td><td>${escapeHtml(i.field)}</td><td class="${i.severity==='BLOCKER'?'bad':'warn'}">${i.severity}</td><td>${escapeHtml(i.reason)}</td><td>${escapeHtml(i.currentValue)}</td></tr>`).join(''):'<tr><td colspan="6" class="ok">沒有發現問題</td></tr>';
+  }
+  function downloadOutput(){if(!outputBuffer)return;const base=sourceFile.name.replace(/\.xlsx$/i,'');saveAs(new Blob([outputBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`${base}_系統轉檔.xlsx`)}
+  function feedbackPayload(){return{schema:'bom-feedback-v1',moduleVersion:BomGuide.content.version,createdAt:new Date().toISOString(),category:$('feedbackType').value,location:$('feedbackLocation').value.trim(),description:$('feedbackDescription').value.trim()}}
+  function feedbackText(){const p=feedbackPayload();return[`BOM 轉檔與安檢問題回饋（${p.moduleVersion}）`,`時間：${p.createdAt}`,`類型：${p.category}`,`位置：${p.location||'未填'}`,`問題：${p.description||'未填'}`].join('\n')}
+  async function copyFeedback(){if(!$('feedbackDescription').value.trim()){alert('請先填寫問題描述');return}try{await navigator.clipboard.writeText(feedbackText());$('feedbackStatus').textContent='✅ 已複製，可貼給維護人員或未來的機器人。'}catch(error){$('feedbackStatus').textContent='無法自動複製，請使用下載回饋紀錄。'}}
+  function downloadFeedback(){if(!$('feedbackDescription').value.trim()){alert('請先填寫問題描述');return}saveAs(new Blob([feedbackText()],{type:'text/plain;charset=utf-8'}),`BOM問題回饋_${new Date().toISOString().slice(0,10)}.txt`);$('feedbackStatus').textContent='✅ 回饋紀錄已下載，內容未傳送至外部。'}
+  window.BomFeedback={collect:feedbackPayload};
+  function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
+</script>
+</body>
+</html>
