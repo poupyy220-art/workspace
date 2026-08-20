@@ -1,6 +1,7 @@
 name: 部署到 Cloudflare Worker
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
