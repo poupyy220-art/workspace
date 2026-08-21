@@ -13,6 +13,20 @@
     '成品採購':'PP','報關客供件':'CD','國內客供件':'DC','客供品(禁領)':'CO','是':'Y','否':'N'
   });
 
+  // 與 Python baseline 的角色字典保持一致：來源資料可能只有說明文字，
+  // 也可能使用半形／全形冒號或漏寫冒號。前綴與說明不一致時必須保留原值。
+  const CODE_DESCRIPTION_MAPPING = Object.freeze({
+    '虛擬階':'0','成品階':'1','半成品階':'2','材料階':'3','卷材/銅箔階':'4','卷材,銅箔階':'4',
+    '採購':'P','自製':'M','委外':'S','虛設':'X','虛設件':'X',
+    '一般':'GE','片/支/個':'PCS','片,支,個':'PCS','片，支，個':'PCS','片、支、個':'PCS',
+    '釐米/公分':'CM','釐米,公分':'CM','釐米，公分':'CM','克/公克':'G','克,公克':'G',
+    '公斤':'KG','米/公尺':'M','米,公尺':'M','套':'SET','加侖':'GA','磅':'LB',
+    'L升/公升':'LT','L升,公升':'LT','毫升':'ML','卷/捲':'RO','卷,捲':'RO','碼':'YD',
+    '盎司':'Ounce','箱':'CTN','打':'DZ','個/台/套/條':'EA','個,台,套,條':'EA',
+    '個，台，套，條':'EA','雙':'PAIR','包':'PAK','平方米':'M2',
+    '成品採購':'PP','報關客供件':'CD','國內客供件':'DC','客供品(禁領)':'CO','是':'Y','否':'N'
+  });
+
   const SIMP_TO_TRAD = Object.freeze({
     '国':'國','产':'產','线':'線','缆':'纜','头':'頭','车':'車','板':'板','关':'關','开':'開',
     '电':'電','压':'壓','变':'變','器':'器','装':'裝','备':'備','数':'數','码':'碼','飞':'飛',
@@ -73,10 +87,31 @@
 
   function convertCode(value) {
     if (value === null || value === undefined) return value;
-    const compact = String(value).trim().replaceAll(' ', '').replaceAll('\u3000', '');
+    const compact = String(value).trim().replaceAll(' ', '').replaceAll('\u3000', '').replaceAll('：', ':');
     if (Object.prototype.hasOwnProperty.call(CODE_MAPPING, compact)) return CODE_MAPPING[compact];
     const slash = compact.replaceAll(',', '/');
-    return Object.prototype.hasOwnProperty.call(CODE_MAPPING, slash) ? CODE_MAPPING[slash] : value;
+    if (Object.prototype.hasOwnProperty.call(CODE_MAPPING, slash)) return CODE_MAPPING[slash];
+
+    // 純描述文字，例如「成品階」。
+    if (Object.prototype.hasOwnProperty.call(CODE_DESCRIPTION_MAPPING, compact)) return CODE_DESCRIPTION_MAPPING[compact];
+    if (Object.prototype.hasOwnProperty.call(CODE_DESCRIPTION_MAPPING, slash)) return CODE_DESCRIPTION_MAPPING[slash];
+
+    // 代碼:說明（也接受漏冒號的格式，例如「3材料階」）。只有前綴與說明
+    // 的合法代碼一致才轉換，避免把「ABC:一般」錯誤轉成 GE。
+    let prefix = '';
+    let description = '';
+    if (compact.includes(':')) {
+      [prefix, description] = compact.split(':', 2);
+    } else {
+      const match = compact.match(/^([A-Za-z0-9]{1,4})([\u3400-\u9FFF].*)$/u);
+      if (match) [, prefix, description] = match;
+    }
+    if (description) {
+      const normalizedDescription = description.replaceAll(',', '/');
+      const expected = CODE_DESCRIPTION_MAPPING[description] || CODE_DESCRIPTION_MAPPING[normalizedDescription];
+      if (expected && String(prefix).toUpperCase() === String(expected).toUpperCase()) return expected;
+    }
+    return value;
   }
 
   function getCharLength(value) {
@@ -230,7 +265,7 @@
   }
 
   global.BomRules = {
-    CODE_MAPPING, SIMP_TO_TRAD, CHECK_KEYWORDS, cellText, isFormulaCell,
+    CODE_MAPPING, CODE_DESCRIPTION_MAPPING, SIMP_TO_TRAD, CHECK_KEYWORDS, cellText, isFormulaCell,
     toTraditionalChinese, convertCode, getCharLength, checkForbiddenSymbols,
     isStandardPn, classifyNewStatus, sheetRole, isGreenTab, hasActualBomRows, detectMetadata
   };

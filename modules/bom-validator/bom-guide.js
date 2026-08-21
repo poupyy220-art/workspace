@@ -1,14 +1,15 @@
 (function(global){
   const content={
-    version:'v2.14.4',
+    version:'v2.14.5',
     title:'BOM 轉檔與安檢操作 SOP',
-    updated:'2026-08-20',
+    updated:'2026-08-21',
     optimizations:[
       '自動辨識真正的 BOM 分頁與 Header 列，參考分頁只保留、不處理。',
       '依正式規則執行 NEW／OLD、PN、品名／規格 30 字及 Item Level 檢查。',
       '使用 OpenCC 完整簡體轉繁體，並處理 H PN → LINEFIT 與品名連動。',
       '保留原始 Excel 分頁與格式，只標記系統修改或發現異常的儲存格。',
       '新增統一格式的「異常檢測報告」，並改善舊版 Excel 相容性。',
+      '完整掃描空白分隔列後的資料，並將分群碼、來源碼、單位與特殊屬性轉為系統代碼。',
       '問題回饋支援貼上或選擇圖片；圖片經本機縮放、移除原始檔名與中繼資料後，才存入私人 Google Drive。'
     ],
     steps:[

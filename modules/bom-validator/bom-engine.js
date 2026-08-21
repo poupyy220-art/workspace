@@ -37,7 +37,9 @@
   function processWorksheet(worksheet, metadata) {
     const ctx = { metadata, issues: [], traces: [], newCount: 0, itemCount: 0 };
     if (metadata.excluded || !metadata.headerRow || !metadata.pnColumn || !metadata.statusColumn) return ctx;
-    const lastRow = worksheet.actualRowCount || worksheet.rowCount;
+    // actualRowCount 是「非空白列的數量」，不是最後一筆資料所在的列號。
+    // BOM 中間若有空白分隔列，直接拿它當上限會讓尾端資料完全未處理。
+    const lastRow = Math.max(worksheet.actualRowCount || 0, worksheet.rowCount || 0);
     let lastValidLevel = 0;
     let firstBusinessRowSeen = false;
     const levelErrorCells = [];
