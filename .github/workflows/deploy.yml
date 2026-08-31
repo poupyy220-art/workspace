@@ -8,6 +8,7 @@ on:
     paths:
       - 'index.html'
       - 'modules/bom-validator/**'
+      - 'modules/attendance-tool/**'
       - 'wrangler.jsonc'
 
 jobs:
@@ -21,7 +22,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p preview-dist/modules/bom-validator/vendor/opencc-js
+          mkdir -p preview-dist/modules/attendance-tool
           cp index.html preview-dist/index.html
+          cp modules/attendance-tool/index.html preview-dist/modules/attendance-tool/index.html
           cp modules/bom-validator/index.html preview-dist/modules/bom-validator/index.html
           cp modules/bom-validator/sop.html preview-dist/modules/bom-validator/sop.html
           cp modules/bom-validator/bom-guide.js preview-dist/modules/bom-validator/bom-guide.js
