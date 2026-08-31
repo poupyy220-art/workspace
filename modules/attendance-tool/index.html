@@ -214,7 +214,7 @@
     font-size: 12px;
   }
   .attendance-main { display: grid; grid-template-columns: minmax(155px, 1fr) 135px; gap: 8px; align-items: center; }
-  .leave-fields { display: grid; grid-template-columns: 115px minmax(170px, 1fr) 80px; gap: 6px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
+  .leave-fields { display: grid; grid-template-columns: 115px minmax(170px, 1fr) minmax(170px, auto); gap: 6px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
   .other-leave-name { grid-column: 1 / -1; }
   .actual-fields { display: grid; grid-template-columns: 85px 1fr; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
   .batch-fields { display: flex; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
@@ -233,6 +233,8 @@
     font: inherit;
   }
   .hours-wrap, .time-wrap { display: flex; align-items: center; gap: 6px; }
+  .hours-wrap .hours-preset { flex:1 1 88px; min-width:88px; }
+  .hours-wrap .leave-hours { flex:0 0 72px; width:72px; min-width:72px; }
   .hours-wrap span, .time-wrap span { white-space: nowrap; color: var(--muted); }
   .row-note { color: var(--warn); font-size: 11px; margin: 5px 0 0 155px; }
   .attendance-row.invalid input, .attendance-row.invalid select { border-color: var(--danger); background: #fef2f2; }
@@ -788,6 +790,8 @@ function showAttendanceModal(fileName, workRows) {
       hours.max = '8';
       hours.step = '0.5';
       hours.value = '8';
+      hours.placeholder = '0.5–8';
+      hours.title = '請輸入 0.5–8 小時，每次可調整 0.5 小時';
       hours.setAttribute('aria-label', '請假時數');
       const hoursUnit = document.createElement('span');
       hoursUnit.textContent = '小時';
