@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>出勤表自動填寫工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --border: #d1d5db;
+    --ok: #16a34a;
+    --warn: #b45309;
+    --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft JhengHei", "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 20px 12px;
+  }
+  .wrap { width: 100%; max-width: 720px; }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .dropzone.dragover {
+    border-color: var(--accent);
+    background: #eff6ff;
+  }
+  .dropzone svg {
+    width: 38px;
+    height: 38px;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .dropzone .main-text {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .dropzone .sub-text {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  input[type=file] { display: none; }
+  .rules {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .rules b { color: var(--text); }
+  .rules-card summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .rules-card .rules { margin-top: 10px; }
+  .rules code {
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #334155;
+  }
+  #log {
+    font-size: 13px;
+    line-height: 1.8;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  #log .line { padding: 2px 0; border-bottom: 1px solid #f1f1f1; }
+  #log .ok { color: var(--ok); }
+  #log .warn { color: var(--warn); }
+  #log .err { color: var(--danger); }
+  #log .info { color: var(--muted); }
+  #log .empty-log { color: var(--muted); padding: 8px 0; }
+  .log-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .log-header .section-title { margin: 0; }
+  .history-time { color: #94a3b8; font-size: 11px; margin-right: 8px; }
+  h2.section-title {
+    font-size: 14px;
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    z-index: 100;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: var(--card);
+    border-radius: 12px;
+    max-width: 720px;
+    width: 100%;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  }
+  .modal-header {
+    padding: 14px 16px 6px;
+  }
+  .modal-header h3 {
+    margin: 0 0 6px;
+    font-size: 16px;
+  }
+  .modal-header p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .modal-list {
+    overflow-y: auto;
+    padding: 4px 16px;
+    flex: 1;
+  }
+  .modal-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f1f1f1;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .modal-item input {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .modal-item .date-text {
+    font-weight: 600;
+  }
+  .modal-item .reason-text {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 10px 16px 14px;
+  }
+  .modal-actions button {
+    border: none;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .btn-secondary {
+    background: #f1f5f9;
+    color: var(--text);
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .attendance-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 0 6px;
+  }
+  .summary-chip {
+    background: #f1f5f9;
+    border-radius: 999px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #475569;
+  }
+  .attendance-row {
+    padding: 6px 2px;
+    margin: 0;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px;
+  }
+  .attendance-main { display: grid; grid-template-columns: minmax(155px, 1fr) 135px; gap: 8px; align-items: center; }
+  .leave-fields { display: grid; grid-template-columns: 115px minmax(170px, 1fr) 80px; gap: 6px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
+  .other-leave-name { grid-column: 1 / -1; }
+  .actual-fields { display: grid; grid-template-columns: 85px 1fr; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
+  .batch-fields { display: flex; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
+  .batch-fields select { max-width: 180px; }
+  .mini-button { border: 1px solid var(--border); background: #f8fafc; color: var(--text); border-radius: 6px; padding: 5px 8px; cursor: pointer; font: inherit; }
+  .mini-button:hover { background: #f1f5f9; }
+  .detail-toggle { width: auto !important; }
+  .attendance-row select,
+  .attendance-row input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 6px;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+  }
+  .hours-wrap, .time-wrap { display: flex; align-items: center; gap: 6px; }
+  .hours-wrap span, .time-wrap span { white-space: nowrap; color: var(--muted); }
+  .row-note { color: var(--warn); font-size: 11px; margin: 5px 0 0 155px; }
+  .attendance-row.invalid input, .attendance-row.invalid select { border-color: var(--danger); background: #fef2f2; }
+  @media (max-width: 700px) {
+    .attendance-main, .leave-fields, .actual-fields { grid-template-columns: 1fr; }
+    .leave-fields, .actual-fields, .batch-fields, .row-note { margin-left: 0; }
+    .batch-fields { align-items: stretch; flex-direction: column; }
+  }
+  /* 料號管理中心視覺語言：深藍導覽、淺灰工作區、白色工具卡與藍色重點線 */
+  body { display: block; padding: 0; background: #eef3f8; color: #263746; }
+  .app-shell { min-height: 100vh; display: grid; grid-template-columns: 215px minmax(0, 1fr); }
+  .sidebar { background: #1d3143; color: #dce7f1; min-height: 100vh; padding: 18px 0; }
+  .brand { padding: 0 16px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .brand-title { font-size: 16px; font-weight: 700; color: #fff; }
+  .brand-version { margin-top: 4px; color: #8195a8; font-size: 11px; }
+  .nav-section { padding: 16px 14px 6px; color: #71879a; font-size: 11px; letter-spacing: .08em; }
+  .nav-link { display: flex; gap: 9px; align-items: center; padding: 10px 16px; color: #d7e3ee; text-decoration: none; font-size: 13px; border-left: 3px solid transparent; }
+  .nav-link:hover, .nav-link.active { background: #153f61; border-left-color: #36a6df; color: #fff; }
+  .main-panel { min-width: 0; }
+  .topbar { height: 50px; background: #fff; border-bottom: 1px solid #dce5ed; display: flex; align-items: center; padding: 0 22px; font-size: 16px; font-weight: 600; }
+  .content { padding: 22px 24px 40px; }
+  .wrap { max-width: 880px; margin: 0; }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  .subtitle { color: #7a8a99; font-size: 12px; margin-bottom: 16px; }
+  .notice { background: #fffbed; border: 1px solid #f2d98b; border-left: 4px solid #f5a400; border-radius: 8px; padding: 11px 14px; margin-bottom: 16px; font-size: 12px; color: #57636e; }
+  .notice strong { color: #334155; }
+  .card { border-color: #dbe4ec; border-radius: 9px; box-shadow: 0 1px 2px rgba(31,49,67,.04); }
+  .tool-card { border-top: 3px solid #3b96c3; }
+  .dropzone { border-color: #a9c5d7; background: #fbfdff; }
+  .dropzone:hover, .dropzone.dragover { border-color: #2f93c5; background: #f0f9ff; }
+  .dropzone svg { color: #338fbd; }
+  .btn-primary { background: #2389bd; }
+  .btn-primary:hover { background: #176f9c; }
+  .summary-chip { background: #e9f8ee; color: #208650; }
+  .modal { border: 1px solid #d5e0e8; }
+  .modal-header { border-bottom: 1px solid #edf1f4; }
+  .modal-actions { border-top: 1px solid #edf1f4; background: #f8fafc; }
+  @media (max-width: 800px) {
+    .app-shell { grid-template-columns: 1fr; }
+    .sidebar { min-height: auto; padding: 10px 0 0; }
+    .brand { padding-bottom: 10px; }
+    .brand-version, .nav-section { display: none; }
+    .sidebar nav { display: flex; overflow-x: auto; }
+    .nav-link { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; padding: 9px 14px; }
+    .nav-link:hover, .nav-link.active { border-left: 0; border-bottom-color: #36a6df; }
+    .topbar { display: none; }
+    .content { padding: 16px 12px 30px; }
+  }
+/* 料號管理中心內嵌版：保留功能導覽，移除重複的大型側欄。 */
+.app-shell { display:block; min-height:100vh; }
+.sidebar { position:sticky; top:0; z-index:20; width:100%; min-height:0; display:flex; align-items:center; padding:0 16px; box-shadow:0 2px 8px rgba(15,37,55,.12); }
+.brand, .sidebar-section { display:none; }
+.sidebar nav { display:flex; overflow-x:auto; }
+.nav-link { white-space:nowrap; border-left:0; border-bottom:3px solid transparent; padding:11px 14px; }
+.nav-link:hover, .nav-link.active { border-left:0; border-bottom-color:#36a6df; }
+.content { padding:16px 18px 30px; }
+.wrap { max-width:960px; margin:0 auto; }
+@media (max-width:720px) {
+  .sidebar { display:block; padding:0 8px; }
+  .content { padding:10px; }
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-title">🕒 出勤管理中心</div>
+      <div class="brand-version">v9 · 本機 Excel 工具</div>
+    </div>
+    <nav>
+      <div class="nav-section">出勤工具</div>
+      <a class="nav-link active" href="#uploadCard" data-view="upload">📥 出勤表填寫</a>
+      <a class="nav-link" href="#rulesCard" data-view="rules">📖 填寫規則</a>
+      <a class="nav-link" href="#logCard" data-view="log">📋 處理紀錄</a>
+    </nav>
+  </aside>
+  <main class="main-panel">
+    <div class="topbar">🏠 出勤表填寫</div>
+    <div class="content">
+      <div class="wrap">
+  <h1>👋 出勤表自動填寫工具</h1>
+  <p class="subtitle">拖入公司出勤表，確認本月出勤後即可產生 Excel</p>
+  <div class="notice"><strong>🔒 本機處理</strong>　檔案只在瀏覽器內處理，不建立請假資料庫，也不串接 HR 系統。</div>
+
+  <div class="card tool-card" id="uploadCard">
+    <div class="dropzone" id="dropzone">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 8.25 12 3.75m0 0L7.5 8.25M12 3.75v13.5" />
+      </svg>
+      <div class="main-text">拖曳出勤表 .xlsx 到這裡</div>
+      <div class="sub-text">或點擊選擇檔案（支援一次多個檔案）</div>
+      <input type="file" id="fileInput" accept=".xlsx" multiple>
+    </div>
+  </div>
+
+  <details class="card rules-card" id="rulesCard">
+    <summary>查看填寫規則</summary>
+    <div class="rules">
+      <div>1. 上班 <code>08:31–08:59</code> → 下班 <code>18:01–18:29</code></div>
+      <div>2. 上班 <code>09:01–09:29</code> → 下班 <code>18:31–18:59</code></div>
+      <div>3. 儲存格為灰色系（不限單一灰階，深淺灰皆判定），且為週六、週日 → 不填寫</div>
+      <div>4. 儲存格未反灰，且為週一至週五 → 填寫</div>
+      <div style="margin-top:8px;">每個工作日隨機套用規則 1 或規則 2，並在區間內隨機取分鐘，讓時間看起來自然。</div>
+      <div style="margin-top:8px;">若儲存格反灰狀態與星期六日不一致（例如平日被反灰、或週六日未反灰），會跳出視窗讓你逐筆確認是否要填寫。</div>
+      <div style="margin-top:8px;"><b>產生前會顯示「本月出勤確認」：</b>正常出勤不需額外設定；全天假只需選假別，詳細時間需要時再展開；時數假可快速選 1／2／4 小時或自訂，並可批次套用到接下來的工作日。</div>
+    </div>
+  </details>
+
+  <div class="card" id="logCard" style="display:none;">
+    <div class="log-header">
+      <h2 class="section-title">我的處理紀錄</h2>
+      <button type="button" class="mini-button" id="clearHistory">清除我的紀錄</button>
+    </div>
+    <div id="log"></div>
+  </div>
+</div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle"></h3>
+      <p id="modalDesc"></p>
+    </div>
+    <div class="modal-list" id="modalList"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modalCancel">取消（略過此檔案）</button>
+      <button class="btn-primary" id="modalConfirm">確認並套用</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Bump this every time the tool's fill/detection logic is modified, so output filenames
+// record which version produced them (helps track down issues to a specific revision).
+const TOOL_VERSION = 'v10';
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const logCard = document.getElementById('logCard');
+const logEl = document.getElementById('log');
+const rulesCard = document.getElementById('rulesCard');
+const clearHistoryBtn = document.getElementById('clearHistory');
+const HISTORY_KEY = 'attendance_tool_history_v1';
+
+function readHistory() {
+  try {
+    const data = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    return Array.isArray(data) ? data.slice(0, 50) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveHistory(msg, cls) {
+  if (cls === 'info') return;
+  try {
+    const records = readHistory();
+    records.unshift({ time: new Date().toLocaleString('zh-TW'), msg, cls: cls || 'info' });
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(records.slice(0, 50)));
+  } catch (_) {
+    // 部分 file:// 瀏覽器可能禁止 localStorage；不影響 Excel 主流程。
+  }
+}
+
+function renderHistory() {
+  logEl.innerHTML = '';
+  const records = readHistory();
+  if (!records.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-log';
+    empty.textContent = '尚無個人歷史紀錄。完成出勤表後，結果會保存在這台電腦的此瀏覽器中。';
+    logEl.appendChild(empty);
+    return;
+  }
+  records.forEach(record => {
+    const line = document.createElement('div');
+    line.className = 'line ' + (record.cls || 'info');
+    const time = document.createElement('span');
+    time.className = 'history-time';
+    time.textContent = record.time;
+    const message = document.createElement('span');
+    message.textContent = record.msg;
+    line.append(time, message);
+    logEl.appendChild(line);
+  });
+}
+
+clearHistoryBtn.addEventListener('click', () => {
+  if (!confirm('確定清除這台電腦、此瀏覽器中的出勤處理紀錄？')) return;
+  try { localStorage.removeItem(HISTORY_KEY); } catch (_) {}
+  renderHistory();
+});
+
+function activateNavigation(view) {
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.classList.toggle('active', link.dataset.view === view);
+  });
+}
+
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    const view = link.dataset.view;
+    let target = document.getElementById('uploadCard');
+    if (view === 'rules') {
+      rulesCard.open = true;
+      target = rulesCard;
+    } else if (view === 'log') {
+      logCard.style.display = 'block';
+      renderHistory();
+      target = logCard;
+    }
+    activateNavigation(view);
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+function log(msg, cls) {
+  logCard.style.display = 'block';
+  const empty = logEl.querySelector('.empty-log');
+  if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || 'info');
+  div.textContent = msg;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+  saveHistory(msg, cls);
+}
+
+function randInt(low, high) {
+  return Math.floor(Math.random() * (high - low + 1)) + low;
+}
+
+function pad2(n) {
+  return n.toString().padStart(2, '0');
+}
+
+function fmt(h, m) {
+  return pad2(h) + ':' + pad2(m);
+}
+
+// "202609-537.xlsx" -> "已填寫-202609-537-v3.xlsx"
+function buildOutputFilename(originalName) {
+  const dot = originalName.lastIndexOf('.');
+  const base = dot === -1 ? originalName : originalName.slice(0, dot);
+  const ext = dot === -1 ? '' : originalName.slice(dot);
+  return '已填寫-' + base + '-' + TOOL_VERSION + ext;
+}
+
+function escapeXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function decodeXmlEntities(s) {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+}
+
+// Locate the worksheet XML path referenced by the workbook's first <sheet>.
+function resolveRelTarget(relMatchText) {
+  const targetMatch = relMatchText.match(/Target="([^"]+)"/);
+  if (!targetMatch) return null;
+  let target = targetMatch[1].replace(/^\//, '');
+  if (!target.startsWith('xl/')) target = 'xl/' + target;
+  return target;
+}
+
+async function getFirstSheetPath(zip) {
+  const wbXml = await zip.file('xl/workbook.xml').async('string');
+  const sheetMatch = wbXml.match(/<sheet\b[^>]*?(?:\/>|>[\s\S]*?<\/sheet>)/);
+  if (!sheetMatch) throw new Error('workbook.xml 缺少工作表定義');
+  const ridMatch = sheetMatch[0].match(/r:id="([^"]+)"/);
+  if (!ridMatch) throw new Error('workbook.xml 缺少 r:id');
+  const rid = ridMatch[1];
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const relRe = new RegExp('<Relationship\\b[^>]*Id="' + rid + '"[^>]*/>');
+  const relMatch = relsXml.match(relRe);
+  if (!relMatch) throw new Error('找不到工作表對應的 relationship');
+  const target = resolveRelTarget(relMatch[0]);
+  if (!target) throw new Error('工作表 relationship 缺少 Target');
+  return target;
+}
+
+// Finds the workbook-level relationship target by its Type suffix (e.g. "/theme").
+async function getRelTargetByType(zip, typeSuffix) {
+  const relsFile = zip.file('xl/_rels/workbook.xml.rels');
+  if (!relsFile) return null;
+  const relsXml = await relsFile.async('string');
+  const re = new RegExp('<Relationship\\b[^>]*Type="[^"]*' + typeSuffix.replace('/', '\\/') + '"[^>]*/>');
+  const m = relsXml.match(re);
+  return m ? resolveRelTarget(m[0]) : null;
+}
+
+async function parseSharedStrings(zip) {
+  const f = zip.file('xl/sharedStrings.xml');
+  if (!f) return [];
+  const xml = await f.async('string');
+  const siMatches = [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)];
+  return siMatches.map(m => {
+    const text = [...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t => t[1]).join('');
+    return decodeXmlEntities(text);
+  });
+}
+
+// Each fill is recorded as either { rgb } or { theme, tint } — resolved to an actual
+// color later in resolveFillGray, since a fill can reference a theme color instead of a literal RGB.
+function parseStyles(xml) {
+  const fillsBlock = (xml.match(/<fills\b[^>]*>([\s\S]*?)<\/fills>/) || [])[1] || '';
+  const fills = [...fillsBlock.matchAll(/<fill>([\s\S]*?)<\/fill>/g)].map(m => {
+    const fgMatch = m[1].match(/<fgColor\b([^>]*)\/>/);
+    if (!fgMatch) return null;
+    const attrs = fgMatch[1];
+    const rgbM = attrs.match(/rgb="([0-9A-Fa-f]{6,8})"/);
+    if (rgbM) return { rgb: rgbM[1].slice(-6).toUpperCase() };
+    const themeM = attrs.match(/theme="(\d+)"/);
+    if (themeM) {
+      const tintM = attrs.match(/tint="(-?[\d.]+)"/);
+      return { theme: parseInt(themeM[1], 10), tint: tintM ? parseFloat(tintM[1]) : 0 };
+    }
+    return null;
+  });
+  const xfsBlock = (xml.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/) || [])[1] || '';
+  const xfs = [...xfsBlock.matchAll(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)].map(x => {
+    const fm = x[0].match(/fillId="(\d+)"/);
+    return fm ? parseInt(fm[1], 10) : 0;
+  });
+  return { fills, xfs, themeColors: [] };
+}
+
+// Reads xl/theme/*.xml's <a:clrScheme> and returns colors indexed the way styles.xml's
+// fgColor theme="N" expects: 0=lt1, 1=dk1, 2=lt2, 3=dk2, 4-9=accent1-6, 10=hlink, 11=folHlink.
+// (Excel swaps the lt1/dk1 and lt2/dk2 pairs relative to the raw clrScheme XML order.)
+async function parseThemeColors(zip) {
+  const themePath = await getRelTargetByType(zip, '/theme');
+  const themeFile = themePath ? zip.file(themePath) : null;
+  if (!themeFile) return [];
+  const xml = await themeFile.async('string');
+  const schemeMatch = xml.match(/<a:clrScheme[^>]*>([\s\S]*?)<\/a:clrScheme>/);
+  if (!schemeMatch) return [];
+  const scheme = schemeMatch[1];
+  function extract(tag) {
+    const blockMatch = scheme.match(new RegExp('<a:' + tag + '>([\\s\\S]*?)</a:' + tag + '>'));
+    if (!blockMatch) return null;
+    const block = blockMatch[1];
+    const srgb = block.match(/<a:srgbClr\b[^>]*val="([0-9A-Fa-f]{6})"/);
+    if (srgb) return srgb[1].toUpperCase();
+    const sysClr = block.match(/<a:sysClr\b[^>]*lastClr="([0-9A-Fa-f]{6})"/);
+    return sysClr ? sysClr[1].toUpperCase() : null;
+  }
+  const accents = [1, 2, 3, 4, 5, 6].map(n => extract('accent' + n));
+  return [extract('lt1'), extract('dk1'), extract('lt2'), extract('dk2'), ...accents, extract('hlink'), extract('folHlink')];
+}
+
+// Excel's tint formula: negative tint darkens toward black, positive tint lightens toward white.
+function applyTint(hex, tint) {
+  if (!hex || !tint) return hex;
+  const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+  const adj = c => {
+    const nc = tint < 0 ? c * (1 + tint) : c * (1 - tint) + 255 * tint;
+    return Math.max(0, Math.min(255, Math.round(nc)));
+  };
+  return [adj(r), adj(g), adj(b)].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+// "Gray family": achromatic (R≈G≈B) and not plain white — covers literal C0C0C0 fills as well
+// as theme-based grays like "White, Background 1, Darker 35%" (theme=0 with a negative tint).
+function isGrayHex(hex) {
+  if (!hex || hex === 'FFFFFF') return false;
+  const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+  return Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b)) <= 12;
+}
+
+function isStyleGray(styles, sIndex) {
+  if (sIndex === null || Number.isNaN(sIndex)) return false;
+  const fillId = styles.xfs[sIndex];
+  if (fillId === undefined) return false;
+  const fill = styles.fills[fillId];
+  if (!fill) return false;
+  if (fill.rgb !== undefined) return isGrayHex(fill.rgb);
+  if (fill.theme !== undefined) {
+    const base = styles.themeColors[fill.theme];
+    if (!base) return false;
+    return isGrayHex(applyTint(base, fill.tint || 0));
+  }
+  return false;
+}
+
+function matchCell(xml, ref) {
+  const re = new RegExp('<c r="' + ref + '"([^>]*?)(?:/>|>([\\s\\S]*?)<\\/c>)');
+  return xml.match(re);
+}
+
+function getCellAttr(xml, ref, attrName) {
+  const m = matchCell(xml, ref);
+  if (!m) return null;
+  const am = m[1].match(new RegExp(attrName + '="([^"]*)"'));
+  return am ? am[1] : null;
+}
+
+function getCellText(xml, ref, sharedStrings) {
+  const m = matchCell(xml, ref);
+  if (!m) return null;
+  const attrs = m[1];
+  const inner = m[2] || '';
+  const tMatch = attrs.match(/\bt="([^"]*)"/);
+  const t = tMatch ? tMatch[1] : 'n';
+  if (t === 's') {
+    const vMatch = inner.match(/<v>([\s\S]*?)<\/v>/);
+    if (!vMatch) return '';
+    return sharedStrings[parseInt(vMatch[1], 10)] || '';
+  } else if (t === 'inlineStr') {
+    const tm = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
+    return tm ? decodeXmlEntities(tm[1]) : '';
+  } else if (t === 'str') {
+    const vMatch = inner.match(/<v>([\s\S]*?)<\/v>/);
+    return vMatch ? decodeXmlEntities(vMatch[1]) : '';
+  }
+  const vMatch = inner.match(/<v>([\s\S]*?)<\/v>/);
+  return vMatch ? vMatch[1] : '';
+}
+
+function setCellInlineStr(xml, ref, text) {
+  const re = new RegExp('<c r="' + ref + '"([^>]*?)(?:/>|>[\\s\\S]*?<\\/c>)');
+  return xml.replace(re, (whole, attrsPart) => {
+    const attrs = attrsPart.replace(/\st="[^"]*"/, '');
+    return '<c r="' + ref + '"' + attrs + ' t="inlineStr"><is><t xml:space="preserve">' + escapeXml(text) + '</t></is></c>';
+  });
+}
+
+// Determine whether a date row's label text (e.g. "2026/8/1 星期六") falls on Sat/Sun.
+// Falls back to computing the weekday from the leading YYYY/M/D if no 星期X label is present.
+function isWeekendText(aText) {
+  const wdMatch = aText.match(/星期(.)/);
+  if (wdMatch) return wdMatch[1] === '六' || wdMatch[1] === '日';
+  const dateMatch = aText.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (dateMatch) {
+    const d = new Date(parseInt(dateMatch[1], 10), parseInt(dateMatch[2], 10) - 1, parseInt(dateMatch[3], 10));
+    const day = d.getDay();
+    return day === 0 || day === 6;
+  }
+  return null;
+}
+
+function randomFillTimes() {
+  const useRule2 = Math.random() < 0.5;
+  if (useRule2) {
+    return { inH: 9, inM: randInt(1, 29), outH: 18, outM: randInt(31, 59) };
+  }
+  return { inH: 8, inM: randInt(31, 59), outH: 18, outM: randInt(1, 29) };
+}
+
+function randomUniqueFillTimes(usedIn, usedOut) {
+  for (let i = 0; i < 500; i++) {
+    const t = randomFillTimes();
+    const inText = fmt(t.inH, t.inM);
+    const outText = fmt(t.outH, t.outM);
+    if (!usedIn.has(inText) && !usedOut.has(outText)) {
+      usedIn.add(inText);
+      usedOut.add(outText);
+      return { inText, outText };
+    }
+  }
+  throw new Error('可用的不重複上下班時間已不足，請減少人工指定的重複時間');
+}
+
+function isValidTime(value) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
+  return true;
+}
+
+function showAttendanceModal(fileName, workRows) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modalOverlay');
+    const titleEl = document.getElementById('modalTitle');
+    const descEl = document.getElementById('modalDesc');
+    const listEl = document.getElementById('modalList');
+    const confirmBtn = document.getElementById('modalConfirm');
+    const cancelBtn = document.getElementById('modalCancel');
+
+    titleEl.textContent = '本月出勤確認｜' + fileName;
+    descEl.textContent = '只需修改請假的日期；其他日期保持「正常出勤」。';
+    listEl.innerHTML = '';
+
+    const summary = document.createElement('div');
+    summary.className = 'attendance-summary';
+    summary.innerHTML = '<span class="summary-chip">工作日 ' + workRows.length + ' 天</span>' +
+      '<span class="summary-chip">上下班時間不重複</span>';
+    listEl.appendChild(summary);
+
+    workRows.forEach((r, idx) => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'attendance-row';
+      rowEl.dataset.idx = String(idx);
+
+      const main = document.createElement('div');
+      main.className = 'attendance-main';
+      const dateEl = document.createElement('strong');
+      dateEl.textContent = r.aText;
+
+      const status = document.createElement('select');
+      status.className = 'attendance-status';
+      status.innerHTML = '<option value="normal">正常出勤</option><option value="fullLeave">全天請假</option><option value="hourLeave">請假 N 小時</option>';
+
+      main.append(dateEl, status);
+
+      const leaveFields = document.createElement('div');
+      leaveFields.className = 'leave-fields';
+      leaveFields.hidden = true;
+      const leaveType = document.createElement('select');
+      leaveType.className = 'leave-type';
+      leaveType.setAttribute('aria-label', '假別');
+      leaveType.innerHTML = '<option value="D">特休假</option><option value="E">事假</option><option value="F">病假</option><option value="G">其他假別</option>';
+      const otherName = document.createElement('input');
+      otherName.type = 'text';
+      otherName.className = 'other-leave-name';
+      otherName.placeholder = '請輸入其他假別名稱，例如：公出、婚假';
+      otherName.hidden = true;
+
+      const detailToggle = document.createElement('button');
+      detailToggle.type = 'button';
+      detailToggle.className = 'mini-button detail-toggle';
+      detailToggle.textContent = '修改詳細時間';
+
+      const leaveTimeWrap = document.createElement('div');
+      leaveTimeWrap.className = 'time-wrap';
+      const leaveStart = document.createElement('input');
+      leaveStart.type = 'time';
+      leaveStart.className = 'leave-start';
+      leaveStart.value = '09:00';
+      leaveStart.setAttribute('aria-label', '請假開始時間');
+      const leaveSep = document.createElement('span');
+      leaveSep.textContent = '至';
+      const leaveEnd = document.createElement('input');
+      leaveEnd.type = 'time';
+      leaveEnd.className = 'leave-end';
+      leaveEnd.value = '18:00';
+      leaveEnd.setAttribute('aria-label', '請假結束時間');
+      leaveTimeWrap.append(leaveStart, leaveSep, leaveEnd);
+
+      const hoursWrap = document.createElement('div');
+      hoursWrap.className = 'hours-wrap';
+      const hoursPreset = document.createElement('select');
+      hoursPreset.className = 'hours-preset';
+      hoursPreset.setAttribute('aria-label', '請假時數快捷選擇');
+      hoursPreset.innerHTML = '<option value="1">1hr</option><option value="2">2hr</option><option value="4">4hr</option><option value="custom">自訂</option>';
+      const hours = document.createElement('input');
+      hours.type = 'number';
+      hours.className = 'leave-hours';
+      hours.min = '0.5';
+      hours.max = '8';
+      hours.step = '0.5';
+      hours.value = '8';
+      hours.setAttribute('aria-label', '請假時數');
+      const hoursUnit = document.createElement('span');
+      hoursUnit.textContent = '小時';
+      hours.hidden = true;
+      hoursUnit.hidden = true;
+      hoursWrap.append(hoursPreset, hours, hoursUnit);
+      leaveFields.append(leaveType, detailToggle, leaveTimeWrap, hoursWrap, otherName);
+      leaveType.addEventListener('change', () => {
+        otherName.hidden = leaveType.value !== 'G';
+      });
+      hoursPreset.addEventListener('change', () => {
+        const custom = hoursPreset.value === 'custom';
+        hours.hidden = !custom;
+        hoursUnit.hidden = !custom;
+        if (!custom) hours.value = hoursPreset.value;
+      });
+      detailToggle.addEventListener('click', () => {
+        const show = leaveTimeWrap.hidden;
+        leaveTimeWrap.hidden = !show;
+        hoursWrap.hidden = !show;
+        detailToggle.textContent = show ? '收起詳細時間' : '修改詳細時間';
+      });
+
+      const actualFields = document.createElement('div');
+      actualFields.className = 'actual-fields';
+      actualFields.hidden = true;
+      const actualLabel = document.createElement('span');
+      actualLabel.textContent = '實際上下班';
+      const timeWrap = document.createElement('div');
+      timeWrap.className = 'time-wrap';
+      const inTime = document.createElement('input');
+      inTime.type = 'time';
+      inTime.className = 'actual-in';
+      inTime.setAttribute('aria-label', '實際上班時間');
+      const sep = document.createElement('span');
+      sep.textContent = '至';
+      const outTime = document.createElement('input');
+      outTime.type = 'time';
+      outTime.className = 'actual-out';
+      outTime.setAttribute('aria-label', '實際下班時間');
+      timeWrap.append(inTime, sep, outTime);
+      actualFields.append(actualLabel, timeWrap);
+
+      const batchFields = document.createElement('div');
+      batchFields.className = 'batch-fields';
+      batchFields.hidden = true;
+      const batchCount = document.createElement('select');
+      batchCount.className = 'batch-count';
+      batchCount.setAttribute('aria-label', '批次套用工作日數');
+      batchCount.innerHTML = '<option value="1">接下來 1 個工作日</option><option value="2">接下來 2 個工作日</option><option value="3">接下來 3 個工作日</option><option value="4">接下來 4 個工作日</option><option value="5">接下來 5 個工作日</option>';
+      const batchButton = document.createElement('button');
+      batchButton.type = 'button';
+      batchButton.className = 'mini-button batch-apply';
+      batchButton.textContent = '套用此請假設定';
+      batchFields.append(batchCount, batchButton);
+
+      const note = document.createElement('div');
+      note.className = 'row-note';
+      note.hidden = true;
+      note.textContent = '時數假：請假時段與時數會寫入所選假別欄；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+
+      status.addEventListener('change', () => {
+        const leave = status.value !== 'normal';
+        const hourly = status.value === 'hourLeave';
+        leaveFields.hidden = !leave;
+        actualFields.hidden = !hourly;
+        batchFields.hidden = !leave;
+        note.hidden = !leave;
+        if (status.value === 'fullLeave') {
+          leaveStart.value = '09:00';
+          leaveEnd.value = '18:00';
+          hours.value = '8';
+          hoursPreset.value = 'custom';
+          hours.hidden = false;
+          hoursUnit.hidden = false;
+          leaveTimeWrap.hidden = true;
+          hoursWrap.hidden = true;
+          detailToggle.hidden = false;
+          detailToggle.textContent = '修改詳細時間';
+          note.textContent = '全天請假只需選假別；預設使用範本的 09:00~18:00,8hr。';
+        } else if (hourly) {
+          hours.value = '1';
+          hoursPreset.value = '1';
+          hours.hidden = true;
+          hoursUnit.hidden = true;
+          leaveTimeWrap.hidden = false;
+          hoursWrap.hidden = false;
+          detailToggle.hidden = true;
+          note.textContent = '時數假：請假時段與時數會寫入所選假別欄；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+        }
+        rowEl.classList.remove('invalid');
+      });
+      batchButton.addEventListener('click', () => {
+        const count = parseInt(batchCount.value, 10);
+        const rows = Array.from(listEl.querySelectorAll('.attendance-row'));
+        const currentIndex = rows.indexOf(rowEl);
+        rows.slice(currentIndex + 1, currentIndex + 1 + count).forEach(target => {
+          const targetStatus = target.querySelector('.attendance-status');
+          targetStatus.value = status.value;
+          targetStatus.dispatchEvent(new Event('change'));
+          target.querySelector('.leave-type').value = leaveType.value;
+          target.querySelector('.leave-type').dispatchEvent(new Event('change'));
+          target.querySelector('.other-leave-name').value = otherName.value;
+          target.querySelector('.leave-start').value = leaveStart.value;
+          target.querySelector('.leave-end').value = leaveEnd.value;
+          target.querySelector('.hours-preset').value = hoursPreset.value;
+          target.querySelector('.hours-preset').dispatchEvent(new Event('change'));
+          target.querySelector('.leave-hours').value = hours.value;
+        });
+        note.textContent = '已套用到接下來 ' + Math.min(count, Math.max(0, rows.length - currentIndex - 1)) + ' 個工作日；實際上下班時間未複製。';
+      });
+      rowEl.append(main, leaveFields, actualFields, batchFields, note);
+      listEl.appendChild(rowEl);
+    });
+
+    overlay.hidden = false;
+    cancelBtn.textContent = '取消（略過此檔案）';
+    confirmBtn.textContent = '確認並產生 Excel';
+
+    function cleanup() {
+      overlay.hidden = true;
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+    }
+    function onConfirm() {
+      const adjustments = new Map();
+      let hasInvalid = false;
+      const seenIn = new Set();
+      const seenOut = new Set();
+      listEl.querySelectorAll('.attendance-row').forEach(rowEl => {
+        rowEl.classList.remove('invalid');
+        const idx = parseInt(rowEl.dataset.idx, 10);
+        const source = workRows[idx];
+        const status = rowEl.querySelector('.attendance-status').value;
+        const leaveColumn = rowEl.querySelector('.leave-type').value;
+        const otherLeaveName = rowEl.querySelector('.other-leave-name').value.trim();
+        const hours = parseFloat(rowEl.querySelector('.leave-hours').value);
+        const leaveStart = rowEl.querySelector('.leave-start').value;
+        const leaveEnd = rowEl.querySelector('.leave-end').value;
+        const inTime = rowEl.querySelector('.actual-in').value;
+        const outTime = rowEl.querySelector('.actual-out').value;
+        const leaveInvalid = status !== 'normal' && (!Number.isFinite(hours) || hours < 0.5 || hours > 8 || (hours * 2) % 1 !== 0 || !isValidTime(leaveStart) || !isValidTime(leaveEnd) || (leaveColumn === 'G' && !otherLeaveName));
+        const partialActual = status === 'hourLeave' && ((inTime && !outTime) || (!inTime && outTime));
+        const invalidActual = status === 'hourLeave' && ((inTime && !isValidTime(inTime)) || (outTime && !isValidTime(outTime)));
+        const duplicateActual = status === 'hourLeave' && ((inTime && seenIn.has(inTime)) || (outTime && seenOut.has(outTime)));
+        if (leaveInvalid || partialActual || invalidActual || duplicateActual) {
+          rowEl.classList.add('invalid');
+          hasInvalid = true;
+        }
+        if (inTime) seenIn.add(inTime);
+        if (outTime) seenOut.add(outTime);
+        adjustments.set(source.row, { status, leaveColumn, otherLeaveName, hours, leaveStart, leaveEnd, inTime, outTime });
+      });
+      if (hasInvalid) {
+        descEl.textContent = '請檢查紅框：請假時段需完整、時數須為 0.5–8 小時；其他假別須填名稱；實際上下班須成對填寫且不可重複。';
+        return;
+      }
+      cleanup();
+      resolve(adjustments);
+    }
+    function onCancel() {
+      cleanup();
+      resolve(null);
+    }
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
+// Shows a confirmation modal for date rows whose gray/white shading disagrees with
+// their actual weekday. Resolves to a Map<row, boolean> of user decisions, or null if cancelled.
+function showAnomalyModal(fileName, anomalies) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modalOverlay');
+    const titleEl = document.getElementById('modalTitle');
+    const descEl = document.getElementById('modalDesc');
+    const listEl = document.getElementById('modalList');
+    const confirmBtn = document.getElementById('modalConfirm');
+    const cancelBtn = document.getElementById('modalCancel');
+
+    titleEl.textContent = '「' + fileName + '」有 ' + anomalies.length + ' 筆日期狀態異常';
+    descEl.textContent = '以下日期的反灰狀態與星期六日不一致，請勾選是否要填寫上下班時間：';
+    listEl.innerHTML = '';
+
+    anomalies.forEach((a, idx) => {
+      const label = document.createElement('label');
+      label.className = 'modal-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = a.defaultFill;
+      cb.dataset.idx = String(idx);
+      const span = document.createElement('span');
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'date-text';
+      dateSpan.textContent = a.aText;
+      const reasonSpan = document.createElement('span');
+      reasonSpan.className = 'reason-text';
+      reasonSpan.textContent = a.reason;
+      span.appendChild(dateSpan);
+      span.appendChild(reasonSpan);
+      label.appendChild(cb);
+      label.appendChild(span);
+      listEl.appendChild(label);
+    });
+
+    overlay.hidden = false;
+
+    function cleanup() {
+      overlay.hidden = true;
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+    }
+    function onConfirm() {
+      const decisions = new Map();
+      listEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        decisions.set(anomalies[parseInt(cb.dataset.idx, 10)].row, cb.checked);
+      });
+      cleanup();
+      resolve(decisions);
+    }
+    function onCancel() {
+      cleanup();
+      resolve(null);
+    }
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
+async function processFile(file) {
+  log('讀取「' + file.name + '」…', 'info');
+  let zip;
+  try {
+    const buf = await file.arrayBuffer();
+    zip = await JSZip.loadAsync(buf);
+  } catch (e) {
+    log('「' + file.name + '」不是有效的 .xlsx 檔案，已略過。（' + (e && e.message ? e.message : e) + '）', 'err');
+    console.error(e);
+    return;
+  }
+
+  try {
+    const sheetPath = await getFirstSheetPath(zip);
+    const sheetFile = zip.file(sheetPath);
+    if (!sheetFile) throw new Error('找不到工作表檔案：' + sheetPath);
+    let sheetXml = await sheetFile.async('string');
+
+    const sharedStrings = await parseSharedStrings(zip);
+    const stylesFile = zip.file('xl/styles.xml');
+    const styles = stylesFile ? parseStyles(await stylesFile.async('string')) : { fills: [], xfs: [], themeColors: [] };
+    styles.themeColors = await parseThemeColors(zip);
+
+    // Phase 1: scan every date row (gray/white shading + actual weekday) without writing anything yet.
+    let row = 6;
+    const dateRows = [];
+    const MAX_ROWS = 60;
+
+    while (row - 6 < MAX_ROWS) {
+      const aText = getCellText(sheetXml, 'A' + row, sharedStrings);
+      if (aText === null || !aText.includes('/')) break;
+
+      const sAttr = getCellAttr(sheetXml, 'B' + row, 's');
+      const sIndex = sAttr === null ? null : parseInt(sAttr, 10);
+      const gray = isStyleGray(styles, sIndex);
+      const weekend = isWeekendText(aText);
+
+      dateRows.push({
+        row,
+        aText,
+        gray,
+        weekend,
+        inText: getCellText(sheetXml, 'B' + row, sharedStrings) || '',
+        outText: getCellText(sheetXml, 'C' + row, sharedStrings) || ''
+      });
+      row++;
+    }
+
+    if (dateRows.length === 0) {
+      log('「' + file.name + '」找不到出勤日期資料列（第 6 列起），格式可能不符，已略過。', 'err');
+      return;
+    }
+
+    // Phase 2: rows whose shading disagrees with their actual weekday need user confirmation.
+    const anomalies = dateRows
+      .filter(r => r.weekend !== null && r.gray !== r.weekend)
+      .map(r => {
+        if (r.gray && !r.weekend) {
+          return { row: r.row, aText: r.aText, reason: '請確認是否當日為國定假日或是補假', defaultFill: false };
+        }
+        return { row: r.row, aText: r.aText, reason: '請確認是否為補班日', defaultFill: true };
+      });
+
+    let decisions = null;
+    if (anomalies.length > 0) {
+      decisions = await showAnomalyModal(file.name, anomalies);
+      if (decisions === null) {
+        log('「' + file.name + '」使用者已取消，未套用任何變更。', 'warn');
+        return;
+      }
+    }
+
+    // Phase 3: determine the working dates, then ask for one-time attendance/leave adjustments.
+    const workRows = dateRows.filter(r => {
+      const isAnomaly = decisions !== null && decisions.has(r.row);
+      return isAnomaly ? decisions.get(r.row) : !r.gray;
+    });
+    const adjustments = await showAttendanceModal(file.name, workRows);
+    if (adjustments === null) {
+      log('「' + file.name + '」使用者已取消，未套用任何變更。', 'warn');
+      return;
+    }
+
+    // Phase 4: only now write values into the workbook.
+    let filledCount = 0;
+    let skippedCount = 0;
+    let fullLeaveCount = 0;
+    let hourLeaveCount = 0;
+    let pendingCount = 0;
+    const usedIn = new Set();
+    const usedOut = new Set();
+
+    for (const r of workRows) {
+      const a = adjustments.get(r.row);
+      if (!a || a.status !== 'hourLeave') continue;
+      const keepIn = isValidTime(a.inTime) ? a.inTime : (isValidTime(r.inText) ? r.inText : '');
+      const keepOut = isValidTime(a.outTime) ? a.outTime : (isValidTime(r.outText) ? r.outText : '');
+      if (keepIn) usedIn.add(keepIn);
+      if (keepOut) usedOut.add(keepOut);
+    }
+
+    for (const r of dateRows) {
+      const isAnomaly = decisions !== null && decisions.has(r.row);
+      const shouldFill = isAnomaly ? decisions.get(r.row) : !r.gray;
+
+      if (!shouldFill) {
+        skippedCount++;
+        continue;
+      }
+      const adjustment = adjustments.get(r.row) || { status: 'normal' };
+      const leaveDetail = adjustment.status === 'normal' ? '' :
+        (adjustment.leaveColumn === 'G' ? adjustment.otherLeaveName + ' ' : '') + adjustment.leaveStart + '~' + adjustment.leaveEnd + ',' + adjustment.hours + 'hr';
+      if (adjustment.status === 'fullLeave') {
+        sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, '');
+        sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, '');
+        for (const col of ['D', 'E', 'F', 'G']) {
+          sheetXml = setCellInlineStr(sheetXml, col + r.row, col === adjustment.leaveColumn ? leaveDetail : '');
+        }
+        fullLeaveCount++;
+        continue;
+      }
+      if (adjustment.status === 'hourLeave') {
+        for (const col of ['D', 'E', 'F', 'G']) {
+          sheetXml = setCellInlineStr(sheetXml, col + r.row, col === adjustment.leaveColumn ? leaveDetail : '');
+        }
+        hourLeaveCount++;
+        const hasBothTimes = isValidTime(adjustment.inTime) && isValidTime(adjustment.outTime);
+        if (!hasBothTimes) {
+          pendingCount++;
+          continue;
+        }
+        sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, adjustment.inTime);
+        sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, adjustment.outTime);
+        filledCount++;
+        continue;
+      }
+      const unique = randomUniqueFillTimes(usedIn, usedOut);
+      sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, unique.inText);
+      sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, unique.outText);
+      filledCount++;
+    }
+
+    zip.file(sheetPath, sheetXml);
+    const outBlob = await zip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = URL.createObjectURL(outBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = buildOutputFilename(file.name);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    log('「' + file.name + '」完成：寫入 ' + filledCount + ' 天（上班/下班時間各自不重複）；全天請假 ' + fullLeaveCount + ' 天；時數假 ' + hourLeaveCount + ' 天；灰色/非工作日略過 ' + skippedCount + ' 天' + (pendingCount ? '；待人工處理 ' + pendingCount + ' 天' : '') + ' → 已下載「' + buildOutputFilename(file.name) + '」', pendingCount ? 'warn' : 'ok');
+  } catch (e) {
+    log('「' + file.name + '」處理時發生錯誤，已略過。（' + (e && e.message ? e.message : e) + '）', 'err');
+    console.error(e);
+  }
+}
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /\.xlsx$/i.test(f.name));
+  if (files.length === 0) {
+    log('請拖曳 .xlsx 檔案', 'warn');
+    return;
+  }
+  for (const f of files) {
+    await processFile(f);
+  }
+}
+
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+['dragenter', 'dragover'].forEach(evt => {
+  dropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.add('dragover');
+  });
+});
+['dragleave', 'drop'].forEach(evt => {
+  dropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.remove('dragover');
+  });
+});
+dropzone.addEventListener('drop', (e) => {
+  handleFiles(e.dataTransfer.files);
+});
+</script>
+</body>
+</html>
