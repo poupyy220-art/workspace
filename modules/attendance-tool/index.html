@@ -214,8 +214,11 @@
     font-size: 12px;
   }
   .attendance-main { display: grid; grid-template-columns: minmax(155px, 1fr) 135px; gap: 8px; align-items: center; }
-  .leave-fields { display: grid; grid-template-columns: 115px minmax(170px, 1fr) 80px; gap: 6px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
+  .leave-fields { display: grid; grid-template-columns: 115px minmax(170px, 1fr) minmax(170px, auto); gap: 6px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
   .other-leave-name { grid-column: 1 / -1; }
+  .remark-fields { grid-column:1 / -1; display:flex; align-items:center; gap:6px; }
+  .remark-fields .leave-remark { flex:1 1 auto; }
+  .remark-toggle { white-space:nowrap; }
   .actual-fields { display: grid; grid-template-columns: 85px 1fr; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
   .batch-fields { display: flex; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
   .batch-fields select { max-width: 180px; }
@@ -233,6 +236,8 @@
     font: inherit;
   }
   .hours-wrap, .time-wrap { display: flex; align-items: center; gap: 6px; }
+  .hours-wrap .hours-preset { flex:1 1 88px; min-width:88px; }
+  .hours-wrap .leave-hours { flex:0 0 72px; width:72px; min-width:72px; }
   .hours-wrap span, .time-wrap span { white-space: nowrap; color: var(--muted); }
   .row-note { color: var(--warn); font-size: 11px; margin: 5px 0 0 155px; }
   .attendance-row.invalid input, .attendance-row.invalid select { border-color: var(--danger); background: #fef2f2; }
@@ -747,12 +752,26 @@ function showAttendanceModal(fileName, workRows) {
       const leaveType = document.createElement('select');
       leaveType.className = 'leave-type';
       leaveType.setAttribute('aria-label', '假別');
-      leaveType.innerHTML = '<option value="D">特休假</option><option value="E">事假</option><option value="F">病假</option><option value="G">其他假別</option>';
+      leaveType.innerHTML = '<option value="D">特休假</option><option value="E">事假</option><option value="F">病假</option><option value="G:出差">出差</option><option value="G:公出">公出</option><option value="G:婚假">婚假</option><option value="G:喪假">喪假</option><option value="G:產假">產假</option><option value="G:天災假">天災假</option><option value="G">自行填寫</option>';
       const otherName = document.createElement('input');
       otherName.type = 'text';
       otherName.className = 'other-leave-name';
-      otherName.placeholder = '請輸入其他假別名稱，例如：公出、婚假';
+      otherName.placeholder = '請輸入假別名稱';
       otherName.hidden = true;
+
+      const remarkFields = document.createElement('div');
+      remarkFields.className = 'remark-fields';
+      const remarkToggle = document.createElement('button');
+      remarkToggle.type = 'button';
+      remarkToggle.className = 'mini-button remark-toggle';
+      remarkToggle.textContent = '＋ 新增備註（選填）';
+      const remarkInput = document.createElement('input');
+      remarkInput.type = 'text';
+      remarkInput.className = 'leave-remark';
+      remarkInput.placeholder = '備註會附加在所選假別欄位';
+      remarkInput.maxLength = 80;
+      remarkInput.hidden = true;
+      remarkFields.append(remarkToggle, remarkInput);
 
       const detailToggle = document.createElement('button');
       detailToggle.type = 'button';
@@ -788,15 +807,22 @@ function showAttendanceModal(fileName, workRows) {
       hours.max = '8';
       hours.step = '0.5';
       hours.value = '8';
+      hours.placeholder = '0.5–8';
+      hours.title = '請輸入 0.5–8 小時，每次可調整 0.5 小時';
       hours.setAttribute('aria-label', '請假時數');
       const hoursUnit = document.createElement('span');
       hoursUnit.textContent = '小時';
       hours.hidden = true;
       hoursUnit.hidden = true;
       hoursWrap.append(hoursPreset, hours, hoursUnit);
-      leaveFields.append(leaveType, detailToggle, leaveTimeWrap, hoursWrap, otherName);
+      leaveFields.append(leaveType, detailToggle, leaveTimeWrap, hoursWrap, otherName, remarkFields);
       leaveType.addEventListener('change', () => {
         otherName.hidden = leaveType.value !== 'G';
+      });
+      remarkToggle.addEventListener('click', () => {
+        remarkInput.hidden = !remarkInput.hidden;
+        remarkToggle.textContent = remarkInput.hidden ? '＋ 新增備註（選填）' : '收起備註';
+        if (!remarkInput.hidden) remarkInput.focus();
       });
       hoursPreset.addEventListener('change', () => {
         const custom = hoursPreset.value === 'custom';
@@ -897,7 +923,7 @@ function showAttendanceModal(fileName, workRows) {
           target.querySelector('.hours-preset').dispatchEvent(new Event('change'));
           target.querySelector('.leave-hours').value = hours.value;
         });
-        note.textContent = '已套用到接下來 ' + Math.min(count, Math.max(0, rows.length - currentIndex - 1)) + ' 個工作日；實際上下班時間未複製。';
+        note.textContent = '已套用到接下來 ' + Math.min(count, Math.max(0, rows.length - currentIndex - 1)) + ' 個工作日；實際上下班時間未複製；備註也未複製。';
       });
       rowEl.append(main, leaveFields, actualFields, batchFields, note);
       listEl.appendChild(rowEl);
@@ -922,8 +948,11 @@ function showAttendanceModal(fileName, workRows) {
         const idx = parseInt(rowEl.dataset.idx, 10);
         const source = workRows[idx];
         const status = rowEl.querySelector('.attendance-status').value;
-        const leaveColumn = rowEl.querySelector('.leave-type').value;
-        const otherLeaveName = rowEl.querySelector('.other-leave-name').value.trim();
+        const leaveChoice = rowEl.querySelector('.leave-type').value;
+        const leaveColumn = leaveChoice.split(':')[0];
+        const presetOtherName = leaveChoice.includes(':') ? leaveChoice.slice(leaveChoice.indexOf(':') + 1) : '';
+        const otherLeaveName = presetOtherName || rowEl.querySelector('.other-leave-name').value.trim();
+        const remark = rowEl.querySelector('.leave-remark').value.trim();
         const hours = parseFloat(rowEl.querySelector('.leave-hours').value);
         const leaveStart = rowEl.querySelector('.leave-start').value;
         const leaveEnd = rowEl.querySelector('.leave-end').value;
@@ -939,7 +968,7 @@ function showAttendanceModal(fileName, workRows) {
         }
         if (inTime) seenIn.add(inTime);
         if (outTime) seenOut.add(outTime);
-        adjustments.set(source.row, { status, leaveColumn, otherLeaveName, hours, leaveStart, leaveEnd, inTime, outTime });
+        adjustments.set(source.row, { status, leaveColumn, otherLeaveName, remark, hours, leaveStart, leaveEnd, inTime, outTime });
       });
       if (hasInvalid) {
         descEl.textContent = '請檢查紅框：請假時段需完整、時數須為 0.5–8 小時；其他假別須填名稱；實際上下班須成對填寫且不可重複。';
@@ -1128,7 +1157,8 @@ async function processFile(file) {
       }
       const adjustment = adjustments.get(r.row) || { status: 'normal' };
       const leaveDetail = adjustment.status === 'normal' ? '' :
-        (adjustment.leaveColumn === 'G' ? adjustment.otherLeaveName + ' ' : '') + adjustment.leaveStart + '~' + adjustment.leaveEnd + ',' + adjustment.hours + 'hr';
+        (adjustment.leaveColumn === 'G' ? adjustment.otherLeaveName + ' ' : '') + adjustment.leaveStart + '~' + adjustment.leaveEnd + ',' + adjustment.hours + 'hr' +
+        (adjustment.remark ? '；備註：' + adjustment.remark : '');
       if (adjustment.status === 'fullLeave') {
         sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, '');
         sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, '');
