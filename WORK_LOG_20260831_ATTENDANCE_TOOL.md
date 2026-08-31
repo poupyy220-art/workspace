@@ -34,9 +34,15 @@
 - 已完成：`git diff --check` 通過。
 - 已完成：依正式部署 workflow 建立 17 個發布資產；Cloudflare Wrangler dry-run 通過。
 - 尚未完成：BOM Golden Sample 回歸；新複本及舊開發複本均未找到 checklist 所列 Tiny8、Adapter cage、防塵罩與 M90a 測試活頁簿。本次未修改 BOM 商業規則。
-- 待完成：正式站版本、入口、功能與快取驗收。
+- 已完成：正式首頁與出勤模組分別回應 HTTP 200；首頁可讀取 v2.15.0 與「出勤表自動填寫」，模組頁可正常讀取。
 
 ## 部署與外部通知
 
-- 尚未推送／合併至 `main`。
-- `main` 更新會觸發正式部署，且既有通知 workflow 可能寄出版本更新信；執行前需取得使用者明確授權。
+- 使用者已於 2026-08-31 明確同意合併、部署與沿用既有通知流程。
+- PR：`#12`，已合併至 `main`。
+- 正式 merge commit：`0af35b8c0870e9411d2f4a53a3837bd777dbaa63`。
+- GitHub Pages workflow：`33374145513`，成功。
+- Cloudflare workflow：`33374146871`，成功。
+- 通知 workflow：`33374146840`，成功。
+- 正式網站：`https://poupyy220-art.github.io/workspace/`。
+- 出勤模組：`https://poupyy220-art.github.io/workspace/modules/attendance-tool/index.html?v=10`。
