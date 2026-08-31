@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CTO EDI 新專案維護</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    :root{--blue:#235d9f;--teal:#087f75;--ink:#243142;--muted:#65758b;--line:#d9e2ec;--bg:#f4f7fa;--ok:#16803c;--warn:#a35b00}
+    *{box-sizing:border-box} body{margin:0;font-family:"Microsoft JhengHei",Arial,sans-serif;color:var(--ink);background:var(--bg)}
+    button,input,select{font:inherit} .wrap{max-width:1180px;margin:auto;padding:24px}.hero{background:linear-gradient(135deg,#174e8d,#087f75);color:#fff;border-radius:16px;padding:24px;box-shadow:0 8px 24px #1233}
+    .hero h1{margin:0 0 8px;font-size:26px}.hero p{margin:0;line-height:1.7}.privacy{margin-top:12px;background:#ffffff1c;border:1px solid #ffffff55;border-radius:8px;padding:9px 12px;font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.stat,.panel{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 8px #2341}.stat{padding:14px}.stat b{display:block;font-size:22px;color:var(--blue)}.stat span{color:var(--muted);font-size:13px}
+    .panel{padding:18px;margin-top:14px}.panel h2{font-size:18px;margin:0 0 14px}.row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid #b9c6d4;border-radius:7px;padding:9px;background:#fff}.field textarea{min-height:96px;resize:vertical;line-height:1.5}.wide{grid-column:1/-1}
+    .form-group{border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px;background:#fbfcfe}.form-group h3{font-size:14px;margin:0 0 11px;color:var(--blue)}.preview{margin-top:8px;padding:9px;border-radius:7px;background:#eef7ff;min-height:36px}.source-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.source-grid textarea{min-height:120px}
+    .business-note{margin-top:10px;border-left:4px solid #d69b28;background:#fff8e8;padding:10px 12px;border-radius:7px;color:#654710;font-size:13px;line-height:1.65}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.btn{border:0;border-radius:7px;padding:9px 14px;cursor:pointer;font-weight:700}.primary{background:var(--blue);color:#fff}.secondary{background:#e8eef5;color:#27415f}.danger{background:#fff1f1;color:#a32222;border:1px solid #efcaca}.empty{text-align:center;color:var(--muted);padding:34px 12px}
+    .project{border:1px solid var(--line);border-radius:10px;margin-top:12px;overflow:hidden}.project-head{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f7fafc;padding:12px 14px}.project-title{font-weight:800}.meta{font-size:12px;color:var(--muted);margin-top:4px}.badge{border-radius:20px;padding:5px 10px;font-size:12px;font-weight:700;background:#fff0cf;color:var(--warn);white-space:nowrap}.badge.ok{background:#dcf5e5;color:var(--ok)}
+    .project-body{padding:14px}.checks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.check{display:flex;align-items:flex-start;gap:8px;border:1px solid #e2e8ef;border-radius:8px;padding:9px;line-height:1.35}.check input{margin-top:2px}.check small{display:block;color:var(--muted)}
+    .flow-tools{display:flex;justify-content:flex-end;margin-bottom:12px}.flow-link{display:inline-flex;align-items:center;gap:6px;color:var(--blue);font-weight:800;text-decoration:none;border:1px solid #b9cde3;border-radius:7px;padding:8px 12px;background:#f6faff}.flow-stage{position:relative;border:1px solid var(--line);border-radius:10px;margin:0 0 16px;padding:14px;background:#fff}.flow-stage:not(:last-child):after{content:'↓';position:absolute;bottom:-20px;left:50%;z-index:2;color:var(--blue);background:#fff;padding:0 7px;font-size:20px;font-weight:900}.stage-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}.stage-no{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--blue);color:#fff;font-weight:900}.stage-title{font-weight:900}.stage-desc{font-size:12px;color:var(--muted)}.flow-stage.locked{background:#f3f5f7;opacity:.68}.stage-lock{margin-left:auto;font-size:12px;color:var(--warn);font-weight:800}.flow-stage .checks{grid-template-columns:repeat(2,1fr)}
+    .files{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.upload{border:1px dashed #9fb0c2;border-radius:9px;padding:11px}.upload b{font-size:13px}.upload input{display:block;width:100%;margin-top:7px}.file-note{font-size:12px;color:var(--muted);margin-top:5px}.project-actions{display:flex;gap:8px;margin-top:12px;align-items:center}.hint{font-size:12px;color:var(--muted);margin-left:auto}.example{background:#f8fbff;border-left:4px solid var(--blue);padding:12px 14px;border-radius:8px;margin-top:12px}.example summary{cursor:pointer;font-weight:800}.example-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px}.example pre{background:#fff;border:1px solid var(--line);border-radius:7px;padding:10px;margin:6px 0 0;overflow:auto;font-family:Consolas,monospace;font-size:12px}.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}.chip{display:inline-block;background:#e7f0fa;color:#24507d;border-radius:14px;padding:3px 8px;font-size:12px}.version-head{display:grid;grid-template-columns:1.2fr 2fr auto;gap:14px;align-items:center;background:#f5fbf8;border:1px solid #cae8dc;border-radius:10px;padding:14px}.version-no{font-size:24px;font-weight:900;color:var(--teal)}.version-meta{font-size:13px;color:var(--muted);line-height:1.6}.disabled{opacity:.55;cursor:not-allowed}.version-form{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.history{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}.history th,.history td{border:1px solid var(--line);padding:8px;text-align:left}.history th{background:#f4f7fa}.candidate{color:var(--warn);font-weight:700}.released{color:var(--ok);font-weight:700}
+    @media(max-width:900px){.grid{grid-template-columns:1fr 1fr}.row{grid-template-columns:1fr 1fr}.checks{grid-template-columns:1fr 1fr}}
+    @media(max-width:600px){.wrap{padding:12px}.grid,.row,.checks,.files,.example-grid,.version-head,.version-form,.flow-stage .checks,.source-grid{grid-template-columns:1fr}.project-head{align-items:flex-start;flex-direction:column}.hint{width:100%;margin:0}}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="hero">
+    <h1>📦 CTO EDI 新專案維護</h1>
+    <p>從收到 CTO BOM 開始，追蹤詢問 Fany、附件與棧板清單，再依序完成 4 個需維護頁簽與交付 IT 前驗證。</p>
+    <div class="privacy">🔒 本原型只在此瀏覽器保存專案紀錄與檔名；選取的 Excel 不會上傳伺服器或傳送給 AI。</div>
+  </section>
+
+  <section class="grid" aria-label="專案統計">
+    <div class="stat"><b id="sAll">0</b><span>全部專案</span></div>
+    <div class="stat"><b id="sAsk">0</b><span>待詢問／待回覆</span></div>
+    <div class="stat"><b id="sBuild">0</b><span>待維護／待驗證</span></div>
+    <div class="stat"><b id="sDone">0</b><span>已交付 IT</span></div>
+  </section>
+
+  <section class="panel">
+    <h2>第 1 步｜下載目前最新版 Excel</h2>
+    <div class="version-head">
+      <div><div class="version-no" id="latestVersion">尚無版本</div><div class="version-meta" id="latestFile">等待第一份正式範本</div></div>
+      <div class="version-meta" id="latestMeta">開始新專案時只需要下載最新版，作為本次維護的基礎檔。</div>
+      <a class="btn secondary" id="latestDownloadBtn" href="#" target="_blank" rel="noopener" aria-disabled="true">下載目前最新版</a>
+    </div>
+    <div class="business-note"><b>開始時不要上傳完成檔。</b>「人工驗證完成的最新版 Excel」已移到本頁最下方，只有 Checklist 全部完成後才使用。</div>
+  </section>
+
+  <section class="panel">
+    <h2>新增新專案</h2>
+    <div class="form-group"><h3>① 基本資料</h3><div class="row">
+      <div class="field"><label for="project">Project *</label><input id="project" placeholder="例如：Demo G8"></div>
+      <div class="field"><label for="bomDate">收到 CTO BOM 日期 *</label><input id="bomDate" type="date"></div>
+      <div class="field"><label for="owner">負責人 *</label><select id="owner"><option value="">請選擇</option><option>May</option><option>Pauline</option><option>Doris</option></select></div>
+      <div class="field"><label for="projectStage">專案階段</label><select id="projectStage"><option>接近量產</option><option>CTO BOM 已收到</option><option>MTM BOM 準備中</option></select></div>
+    </div></div>
+    <div class="form-group"><h3>② Fany 確認狀態</h3><div class="row">
+      <div class="field"><label for="ediStatus">CTO EDI</label><select id="ediStatus"><option value="pending">待確認</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+      <div class="field"><label for="labelStatus">Configured 標籤</label><select id="labelStatus"><option value="pending">待確認</option><option value="yes">需要</option><option value="no">不需要</option></select></div>
+      <div class="field"><label for="fanyDate">詢問 Fany 日期</label><input id="fanyDate" type="date"></div>
+      <div class="field"><label for="fanyPpt">Fany PPT 附檔</label><input id="fanyPpt" type="file" accept=".ppt,.pptx"></div>
+      <div class="field"><label for="labelPn">固定標籤 PN（請對照 Fany PPT）</label><input id="labelPn"><div class="file-note">登入並連線私人設定後自動帶入，仍須以本次 Fany PPT 為準。</div></div>
+      <div class="field"><label for="labelUsage">固定標籤用量（pcs，請對照 Fany PPT）</label><input id="labelUsage" type="number" min="1" step="1" value="1"><div class="file-note">系統預帶 1 pcs，仍須以本次 Fany PPT 為準。</div></div>
+      <div class="field"><label><input id="pptConfirmed" type="checkbox"> 已人工對照 Fany PPT</label></div>
+    </div><div class="business-note"><b>請注意對照 Fany PPT：</b>固定標籤 PN 與用量由私人設定帶入，同事仍須確認本次 PPT 內容一致後，才能勾選「已人工對照 Fany PPT」。MTM Family 也請依本次 PPT 填寫。</div></div>
+    <div class="form-group"><h3>③ MTM／CTO PN</h3><div class="field"><label for="mtm">MTM 前四碼 *（可直接從 Excel 複製多筆貼上）</label><textarea id="mtm" placeholder="例如：&#10;13SS&#10;13SW&#10;13SV&#10;13T0"></textarea><div class="file-note">支援直欄、橫列、Tab 或換行；CTO PN 固定為 CTOSBB_＋前四碼＋CTO1WW。</div><div class="preview" id="mtmPreview">貼上 MTM 後，這裡會即時展開 CTO PN。</div></div></div>
+    <div class="form-group"><h3>④ 自動加入品名規格（人工填寫）</h3><div class="row">
+      <div class="field"><label for="productName">品名</label><input id="productName" placeholder="繁中／簡中品名加入最前端"></div>
+      <div class="field"><label for="productSpec">規格</label><input id="productSpec" placeholder="例如尺寸、顏色、品牌"></div>
+      <div class="field"><label for="modelCode">機種別代號</label><input id="modelCode"></div>
+      <div class="field"><label for="marketClass">市場分類</label><input id="marketClass" placeholder="例如 DT"></div>
+      <div class="field wide"><label for="mtmFamily">MTM Family（依 Fany PPT）</label><input id="mtmFamily" placeholder="請依 Fany PPT 填寫"></div>
+    </div></div>
+    <div class="form-group"><h3>⑤ 正式 Excel 與 RD 棧板清單</h3><div class="source-grid">
+      <div class="field"><label for="baseFile">目前最新完整 Excel *</label><input id="baseFile" type="file" accept=".xlsx"><div class="file-note"><b>上傳內容：</b>第 1 步從 Google Drive 下載的最新版 LBM_EDICTO 完整 Excel。系統只在既有 4 個頁簽最底端加入資料。</div><div class="actions"><a class="btn secondary" id="latestDownloadBtn2" href="#" target="_blank" rel="noopener" aria-disabled="true">下載目前最新版</a></div></div>
+      <div class="field"><label for="rdFile">RD 棧板清單 Excel *</label><input id="rdFile" type="file" accept=".xlsx"><div class="file-note"><b>上傳內容：</b>包裝 RD 依官方格式回填的 Excel，檔案內必須保留「棧板清單」頁簽及 AI／無鍵盤／常規鍵盤三區設定。</div><div class="actions"><a class="btn secondary" id="rdTemplateBtn" href="#" target="_blank" rel="noopener" aria-disabled="true">下載 RD 棧板清單範本</a></div></div>
+    </div></div>
+    <div class="form-group"><h3>⑥ 備註</h3><div class="field"><label for="projectNote">專案備註</label><input id="projectNote" placeholder="待確認事項、來源或交接說明"></div></div>
+    <div class="actions"><button class="btn primary" id="generateBtn">建立 Checklist 並產生候選 Excel</button><button class="btn secondary" id="addBtn">只建立 Checklist</button><button class="btn secondary" id="exampleBtn">帶入範例</button><button class="btn secondary" id="exportBtn">下載本機紀錄</button></div>
+    <div class="file-note" id="generateStatus">尚未產生候選 Excel；產出後必須由同事人工確認既有 4 個頁簽的新增列。</div>
+    <details class="example">
+      <summary>查看操作範例：一個 Project 有多個 MTM 前四碼</summary>
+      <div class="example-grid"><div><b>Excel 內容</b><pre>MTM前四碼
+13SS
+13SW
+13SV
+13T0</pre></div><div><b>自動展開結果</b><pre>13SS → CTOSBB_13SSCTO1WW
+13SW → CTOSBB_13SWCTO1WW
+13SV → CTOSBB_13SVCTO1WW
+13T0 → CTOSBB_13T0CTO1WW
+→ 建立 1 個專案 Checklist</pre></div></div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>專案 Checklist</h2>
+    <div class="flow-tools"><a class="flow-link" href="flowchart.html" target="_blank" rel="noopener">📖 開啟 CTO EDI 流程圖</a></div>
+    <div id="list"></div>
+  </section>
+
+  <section class="panel" id="publishVersion">
+    <h2>最後一步｜發布人工驗證完成的最新版 Excel</h2>
+    <div class="business-note"><b>使用時機：</b>四個頁簽已更新、同事人工確認、Microsoft Excel 可正常開啟且沒有修復警告後，才在此上傳。上傳後會成為下一個專案下載使用的最新版。</div>
+    <div class="version-form">
+      <div class="field"><label for="versionFile">人工驗證完成的最新版 Excel *</label><input id="versionFile" type="file" accept=".xlsx"><div class="file-note">不是 Fany PPT、RD 棧板清單或剛產出的未驗證候選檔。</div></div>
+      <div class="field"><label for="versionProject">本次完成的 Project *</label><input id="versionProject" placeholder="例如：Demo G8"></div>
+      <div class="field"><label for="versionOwner">人工確認者／更新者 *</label><select id="versionOwner"><option value="">請選擇</option><option>May</option><option>Pauline</option><option>Doris</option></select></div>
+      <div class="field wide"><label for="versionNote">更新與驗證說明</label><input id="versionNote" placeholder="例如：四頁簽已新增、棧板規則比對通過、Excel 無修復警告"></div>
+    </div>
+    <div class="actions"><button class="btn primary" id="registerVersionBtn">發布為 Google Drive 最新版</button><button class="btn secondary" id="refreshVersionBtn" type="button">重新讀取最新版</button></div>
+    <div class="file-note" id="publishStatus">尚未發布。按下後會開啟 Apps Script 結果頁；成功時舊版移入「歷史版本」，並在「驗證紀錄」留下發布紀錄。</div>
+    <div id="versionHistory"></div>
+  </section>
+</main>
+
+<script src="data-model.js?v=20260831-1"></script>
+<script>
+const KEY='ctoEdiPrototype.v1';
+const VERSION_KEY='ctoEdiVersions.v1';
+const GAS_URL='https://script.google.com/macros/s/AKfycby71ZACPQZaNR6E9tKG1B76pY3ZbFfQQt3hHeb32h8bMVB-1HEOKpJl9kyFKAz1FZ4/exec';
+const steps=[
+  ['bom','已收到 CTO BOM','此時即啟動詢問流程'],
+  ['asked','已詢問 SE／RD／Fany','確認是否會接 CTO EDI 訂單'],
+  ['reply','Fany 已回覆','確認 CTO EDI = Yes 或 No'],
+  ['label','Configured 標籤已確認','依 Fany 郵件內容確認'],
+  ['fanyFile','Fany PPT 已提供','於新增專案區提供，供「根據專案加入」自動產出'],
+  ['palletFile','包裝 RD 棧板清單已提供','於新增專案區提供，供「自動加棧板設並」自動產出'],
+  ['mapping','Mapping 已維護','所有新專案都要維護'],
+  ['nameSpec','自動加入品名規格已維護','所有新專案都要維護'],
+  ['projectRule','根據專案加入已維護','依 Fany 郵件敘述'],
+  ['palletRule','自動加棧板設並已維護','依 RD 棧板清單產生'],
+  ['validated','驗證通過','欄位、筆數、PN、公式及檔案可開啟'],
+  ['it','已交付 IT','保留正式檔與驗證紀錄']
+];
+const flowGroups=[
+  {title:'收到 CTO BOM',desc:'建立新專案紀錄，系統展開 MTM／CTO PN',mode:'依序',ids:['bom']},
+  {title:'詢問 SE／RD／Fany',desc:'詢問是否接 CTO EDI 訂單',mode:'依序',ids:['asked']},
+  {title:'取得 Fany 回覆',desc:'確認 CTO EDI Yes／No；Yes 才繼續確認 Configured 標籤',mode:'依序',ids:['reply','label']},
+  {title:'收齊兩份來源',desc:'Fany 附檔與包裝 RD 棧板清單可同時追蹤',mode:'可並行',ids:['fanyFile','palletFile']},
+  {title:'在既有 4 個頁簽底端新增資料',desc:'不建立新頁簽；Mapping 與品名規格固定填 CTO EDI = V',mode:'可並行',ids:['mapping','nameSpec','projectRule','palletRule']},
+  {title:'同事人工確認與交付前驗證',desc:'逐頁核對新增列、筆數、PN、公式及檔案可正常開啟',mode:'依序',ids:['validated']},
+  {title:'發布最新版並交付 IT',desc:'驗證通過後才發布新版本及交付 IT',mode:'依序',ids:['it']}
+];
+let data=load();
+let versions=loadVersions();
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return []}}
+function loadVersions(){try{return JSON.parse(localStorage.getItem(VERSION_KEY))||[]}catch(e){return []}}
+function save(){localStorage.setItem(KEY,JSON.stringify(data));render()}
+function saveVersions(){localStorage.setItem(VERSION_KEY,JSON.stringify(versions));renderVersions()}
+function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function parseMtm(raw){const ignored=new Set(['MTM前四碼','MTM','MACHINE TYPE','MACHINETYPE']);return [...new Set(String(raw||'').split(/[\t\r\n,，;； ]+/).map(x=>x.trim().toUpperCase()).filter(x=>x&&!ignored.has(x)))]}
+function ctoPn(mtm){return `CTOSBB_${mtm}CTO1WW`}
+function mtmPairs(items){return (items||[]).length?`<span class="chips">${items.map(x=>`<span class="chip">${esc(x)} → ${esc(ctoPn(x))}</span>`).join('')}</span>`:'—'}
+function refreshMtmPreview(){const items=parseMtm(mtm.value);mtmPreview.innerHTML=items.length?mtmPairs(items):'貼上 MTM 後，這裡會即時展開 CTO PN。'}
+function status(p){const c=p.checks||{};if(c.it)return['已交付 IT','ok'];if(!c.asked||!c.reply)return['待詢問／待回覆',''];if(!c.mapping||!c.nameSpec||!c.projectRule||!c.palletRule)return['待維護報表',''];if(!c.validated)return['待驗證',''];return['待交付 IT','']}
+function stageUnlocked(checks,index){if(index===0)return true;return flowGroups[index-1].ids.every(id=>checks[id])}
+function renderFlow(checks,i){return flowGroups.map((g,gi)=>{const open=stageUnlocked(checks,gi);const cards=g.ids.map(id=>{const x=steps.find(s=>s[0]===id);return `<label class="check"><input type="checkbox" data-i="${i}" data-step="${x[0]}" ${checks[x[0]]?'checked':''} ${open?'':'disabled'}><span>${x[1]}<small>${x[2]}</small></span></label>`}).join('');return `<section class="flow-stage ${open?'':'locked'}"><div class="stage-head"><span class="stage-no">${gi+1}</span><div><div class="stage-title">${g.title} <span class="chip">${g.mode}</span></div><div class="stage-desc">${g.desc}</div></div>${open?'':`<span class="stage-lock">🔒 請先完成上一層</span>`}</div><div class="checks">${cards}</div></section>`}).join('')}
+function renderVersions(){const latest=versions.find(v=>v.status==='released')||versions[0];if(latest){latestVersion.textContent=latest.version;latestFile.textContent=latest.file;latestMeta.textContent=`Project：${latest.project}｜更新者：${latest.owner}｜${latest.time}`}if(!versions.length){versionHistory.innerHTML='';return}versionHistory.innerHTML=`<table class="history"><thead><tr><th>版本</th><th>檔案</th><th>Project</th><th>更新者</th><th>時間</th><th>狀態</th></tr></thead><tbody>${versions.map(v=>`<tr><td>${esc(v.version)}</td><td>${esc(v.file)}</td><td>${esc(v.project)}</td><td>${esc(v.owner)}</td><td>${esc(v.time)}</td><td class="${v.status}">${v.status==='released'?'已發布':'候選／待驗證'}</td></tr>`).join('')}</tbody></table>`}
+function readDriveStatus(){publishStatus.textContent='正在讀取 Google Drive 最新版…';const old=document.getElementById('gasStatusScript');if(old)old.remove();window.ctoEdiStatusCallback=payload=>{if(!payload||!payload.ok){publishStatus.textContent='無法讀取 Google Drive 狀態，請確認已登入 May 的 Google 帳號。';return}const f=payload.latest,t=payload.template,d=payload.defaults||{};if(f){latestVersion.textContent='Drive 最新版';latestFile.textContent=f.name;latestMeta.textContent=`更新時間：${new Date(f.updatedAt).toLocaleString('zh-TW')}｜大小：${Math.round(f.size/1024)} KB`;[latestDownloadBtn,latestDownloadBtn2].forEach(a=>{a.href=f.downloadUrl;a.removeAttribute('aria-disabled')})}if(t){rdTemplateBtn.href=t.downloadUrl;rdTemplateBtn.removeAttribute('aria-disabled')}if(d.labelPn)labelPn.value=d.labelPn;if(d.labelUsage)labelUsage.value=d.labelUsage;publishStatus.textContent='已連線 Google Drive；最後讀取：'+new Date(payload.checkedAt).toLocaleString('zh-TW')};const s=document.createElement('script');s.id='gasStatusScript';s.src=GAS_URL+'?action=status&callback=ctoEdiStatusCallback&t='+Date.now();s.onerror=()=>publishStatus.textContent='Google Drive 狀態讀取失敗；請確認 Apps Script 授權及登入狀態。';document.body.appendChild(s)}
+function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=reject;r.readAsDataURL(file)})}
+function render(){
+  const counts={ask:0,build:0,done:0};data.forEach(p=>{const s=status(p)[0];if(s==='已交付 IT')counts.done++;else if(s==='待詢問／待回覆')counts.ask++;else counts.build++});
+  sAll.textContent=data.length;sAsk.textContent=counts.ask;sBuild.textContent=counts.build;sDone.textContent=counts.done;
+  list.innerHTML=data.length?'':`<div class="empty">尚無專案。收到 CTO BOM 後，先在上方建立 Checklist。</div>`;
+  data.forEach((p,i)=>{const st=status(p);const projectChecks=p.checks||{};const checks=renderFlow(projectChecks,i);
+    const el=document.createElement('article');el.className='project';const projectMtms=p.mtms||parseMtm(p.mtm);el.innerHTML=`<div class="project-head"><div><div class="project-title">${esc(p.project)}</div><div class="meta">收到 BOM：${esc(p.bomDate)}　負責人：${esc(p.owner)||'—'}　階段：${esc(p.projectStage)||'—'}<br>CTO EDI：${esc(p.ediStatus)||'待確認'}　Configured 標籤：${esc(p.labelStatus)||'待確認'}　Fany PPT：${esc(p.fanyPptName)||'尚未取得'}／${p.pptConfirmed?'已人工核對':'未核對'}<br>固定標籤：${esc(p.labelPn)||'—'}　用量：${esc(p.labelUsage)||'—'}　MTM Family：${esc(p.mtmFamily)||'尚未填寫'}<br>RD 來源：${esc(p.rdFileName)||(p.rdPaste?'已貼上資料':'尚未取得')}<br>MTM／CTO PN：${mtmPairs(projectMtms)}</div></div><span class="badge ${st[1]}">${st[0]}</span></div><div class="project-body">${checks}<div class="project-actions"><button class="btn danger" data-del="${i}">移除此專案</button><span class="hint">正式產出將在既有 4 個頁簽底端新增資料，不建立新頁簽；產出後須人工確認。${esc(p.note)||''}</span></div></div>`;list.appendChild(el)});
+}
+addBtn.onclick=()=>{const mtms=parseMtm(mtm.value);if(!project.value.trim()||!bomDate.value||!owner.value||!mtms.length){alert('請填寫 Project、收到 CTO BOM 日期、負責人及至少一個 MTM 前四碼。');return}const labels={pending:'待確認',yes:'Yes',no:'No'},labelLabels={pending:'待確認',yes:'需要',no:'不需要'};data.unshift({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),project:project.value.trim(),mtms,bomDate:bomDate.value,owner:owner.value,projectStage:projectStage.value,ediStatus:labels[ediStatus.value],labelStatus:labelLabels[labelStatus.value],fanyDate:fanyDate.value,fanyPptName:fanyPpt.files[0]?fanyPpt.files[0].name:'',labelPn:labelPn.value.trim(),labelUsage:labelUsage.value,pptConfirmed:pptConfirmed.checked,productName:productName.value.trim(),productSpec:productSpec.value.trim(),modelCode:modelCode.value.trim(),marketClass:marketClass.value.trim(),mtmFamily:mtmFamily.value.trim(),rdFileName:rdFile.files[0]?rdFile.files[0].name:'',note:projectNote.value.trim(),checks:{bom:true},files:{}});['project','mtm','fanyDate','productName','productSpec','modelCode','marketClass','mtmFamily','projectNote'].forEach(id=>document.getElementById(id).value='');owner.value='';pptConfirmed.checked=false;fanyPpt.value='';rdFile.value='';ediStatus.value='pending';labelStatus.value='pending';refreshMtmPreview();save()};
+exampleBtn.onclick=()=>{project.value='Demo G8';mtm.value='MTM前四碼\n13SS\n13SW\n13SV\n13T0\n13SS';owner.value='May';projectStage.value='接近量產';ediStatus.value='pending';labelStatus.value='pending';labelUsage.value='1';projectNote.value='等待 Fany 回覆與 RD 棧板清單';refreshMtmPreview();project.focus()};
+registerVersionBtn.onclick=async()=>{const f=versionFile.files[0],proj=versionProject.value.trim(),who=versionOwner.value;if(!f||!proj||!who){alert('請選取 .xlsx，並填寫 Project 與更新者。');return}if(!f.name.toLowerCase().endsWith('.xlsx')){alert('目前只接受 .xlsx 檔案。');return}if(!confirm('確認此檔已由同事人工驗證、Microsoft Excel 可正常開啟且沒有修復警告，並發布為下一個專案使用的最新版？'))return;registerVersionBtn.disabled=true;publishStatus.textContent='正在準備上傳檔案…';try{const payload={action:'publish',confirmToken:'HUMAN_VERIFIED',fileName:f.name,fileData:await fileToBase64(f),project:proj,owner:who,note:versionNote.value.trim()};const form=document.createElement('form');form.method='post';form.action=GAS_URL;form.target='_blank';for(const [name,value] of Object.entries(payload)){const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.appendChild(input)}document.body.appendChild(form);form.submit();form.remove();const next='V'+String(versions.length+1).padStart(3,'0');versions.unshift({version:next,file:f.name,project:proj,owner:who,note:versionNote.value.trim(),time:new Date().toLocaleString('zh-TW'),status:'released'});saveVersions();publishStatus.textContent='已送出至 Apps Script；請以新開結果頁的「最新版已發布」為成功依據，再按「重新讀取最新版」核對檔名。'}catch(err){publishStatus.textContent='發布失敗：'+err.message}finally{registerVersionBtn.disabled=false}};
+refreshVersionBtn.onclick=readDriveStatus;
+list.addEventListener('change',e=>{const i=Number(e.target.dataset.i);if(e.target.dataset.step){data[i].checks=data[i].checks||{};data[i].checks[e.target.dataset.step]=e.target.checked;save()}});
+list.addEventListener('click',e=>{if(e.target.dataset.del!==undefined&&confirm('確定移除此本機專案紀錄？')){data.splice(Number(e.target.dataset.del),1);save()}});
+exportBtn.onclick=()=>{const payload=CtoEdiDataModel.exportPayload(data,parseMtm);const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CTO_EDI_Project_MTM_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)};
+mtm.addEventListener('input',refreshMtmPreview);bomDate.value=new Date().toISOString().slice(0,10);render();renderVersions();refreshMtmPreview();readDriveStatus();
+</script>
+<script src="generator.js?v=20260831-16"></script>
+</body>
+</html>

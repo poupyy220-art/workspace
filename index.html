@@ -140,6 +140,7 @@ body{display:flex;background:#f0f4f8;}
   <div class="nav-item" data-p="spb"><span class="nav-icon">🔀</span>SPB vs L10 v3.0</div>
   <div class="nav-item" data-p="pim"><span class="nav-icon">🗂️</span>PIM 合併 v4.9</div>
   <div class="nav-item" data-p="bomcheck"><span class="nav-icon">🧪</span>BOM 轉檔與安檢</div>
+  <div class="nav-item" data-p="ctoedi"><span class="nav-icon">📦</span>CTO EDI 新專案</div>
 
   <div class="nav-section">行政工具</div>
   <div class="nav-item" data-p="attendance"><span class="nav-icon">🕒</span>出勤表填寫<span class="nav-badge">本機</span></div>
@@ -314,6 +315,11 @@ body{display:flex;background:#f0f4f8;}
           <div class="card-head">🧪 BOM 轉檔與安檢</div>
           <div class="card-desc">BOM 系統格式轉換、NEW／OLD 判定、品名與規格檢查、階層安檢及異常報告。保留原 Excel 格式。</div>
           <div class="card-footer"><span class="card-tag local">本地處理</span><span class="card-go">開啟 →</span></div>
+        </div>
+        <div class="home-card teal" onclick="goPage('ctoedi')">
+          <div class="home-icon">📦</div><div class="home-title">CTO EDI 新專案維護</div>
+          <div class="home-desc">依流程完成 Mapping、品名規格、棧板設定與專案固定標籤，並管理 Google Drive 最新版本。</div>
+          <div class="home-tag">Checklist · 多筆 MTM · Drive 版本管理</div>
         </div>
         <div class="home-card sop" onclick="goPage('sop')">
           <div class="card-head">📖 SOP 知識庫</div>
@@ -1209,6 +1215,11 @@ function getDefaultPartNo() {
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals"></iframe>
     </div>
 
+    <div id="page-ctoedi" class="page">
+      <iframe class="tool-iframe" src="modules/cto-edi/index.html?v=20260831-2"
+        sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox"></iframe>
+    </div>
+
     <!-- SOP -->
     <div id="page-sop" class="page">
       <div style="padding:20px 24px;overflow-y:auto;flex:1;">
@@ -1279,7 +1290,7 @@ var TITLES = {
   countrydb:'🛠️ 國別 DB 維護  ☁️ Google Sheet → CountryDB',
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.0', spb:'🔀 SPB vs L10 v3.0',
-  pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
+  pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
   testplan:'📋 測試清單 v2.15.1',
   docs:'📄 說明文件 v2.6'
 };
@@ -1317,8 +1328,10 @@ document.querySelectorAll('.nav-item[data-p]').forEach(el => {
 
 // ═══ SOP 知識庫 (可自訂欄位) ═══
 var SOP_BUILTIN_BOM = {title:'BOM 轉檔與安檢操作 SOP', url:'modules/bom-validator/sop.html', color:'#16a085', builtin:true};
+var SOP_BUILTIN_CTO = {title:'CTO EDI 新專案維護流程', url:'modules/cto-edi/flowchart.html', color:'#16a085', builtin:true};
 var SOP_DEFAULT = [
   SOP_BUILTIN_BOM,
+  SOP_BUILTIN_CTO,
   {title:'PN 建立流程',         url:'https://calico-dream-9aa.notion.site/SOP-32728ae15e99808081d9c9f12db8af77', color:'#2980b9'},
   {title:'PN 命名規則',         url:'https://calico-dream-9aa.notion.site/SOP-32728ae15e99808081d9c9f12db8af77', color:'#2980b9'},
   {title:'共用料查詢',          url:'https://calico-dream-9aa.notion.site/SOP-32728ae15e99808081d9c9f12db8af77', color:'#2980b9'},
@@ -1380,7 +1393,7 @@ function sopLoad() {
 function sopRender() {
   var grid = document.getElementById('sop-grid');
   if(!grid) return;
-  var visibleCards = [SOP_BUILTIN_BOM].concat(sopCards.filter(function(c) { return c.title !== SOP_BUILTIN_BOM.title; }));
+  var visibleCards = [SOP_BUILTIN_BOM, SOP_BUILTIN_CTO].concat(sopCards.filter(function(c) { return c.title !== SOP_BUILTIN_BOM.title && c.title !== SOP_BUILTIN_CTO.title; }));
   grid.innerHTML = visibleCards.map(function(c,i) {
     return '<div class="sop-card" data-url="'+encodeURIComponent(c.url)+'" style="cursor:pointer;">' +
       '<div class="sop-dot" style="background:'+c.color+'"></div>' +
