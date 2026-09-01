@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test:bom": "node tests/bom-validator-golden.cjs",
-    "test:cto": "node tests/cto-edi-data-model.cjs"
+    "test:cto": "node tests/cto-edi-data-model.cjs",
+    "test:attendance": "node tests/attendance-tool-regression.cjs"
   },
   "devDependencies": {
     "exceljs": "4.4.0",

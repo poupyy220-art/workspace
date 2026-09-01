@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>出勤表自動填寫工具</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="vendor/jszip.min.js?v=3.10.1"></script>
 <style>
   :root {
     --bg: #f4f6f8;
@@ -241,6 +241,8 @@
   .hours-wrap span, .time-wrap span { white-space: nowrap; color: var(--muted); }
   .row-note { color: var(--warn); font-size: 11px; margin: 5px 0 0 155px; }
   .attendance-row.invalid input, .attendance-row.invalid select { border-color: var(--danger); background: #fef2f2; }
+  .attendance-row.existing { background:#fffaf0; }
+  .existing-note { color:#92400e; font-size:11px; margin:5px 0 0 155px; }
   @media (max-width: 700px) {
     .attendance-main, .leave-fields, .actual-fields { grid-template-columns: 1fr; }
     .leave-fields, .actual-fields, .batch-fields, .row-note { margin-left: 0; }
@@ -306,7 +308,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-title">🕒 出勤管理中心</div>
-      <div class="brand-version">v9 · 本機 Excel 工具</div>
+      <div class="brand-version">v10.3 · 本機 Excel 工具</div>
     </div>
     <nav>
       <div class="nav-section">出勤工具</div>
@@ -343,7 +345,7 @@
       <div>4. 儲存格未反灰，且為週一至週五 → 填寫</div>
       <div style="margin-top:8px;">每個工作日隨機套用規則 1 或規則 2，並在區間內隨機取分鐘，讓時間看起來自然。</div>
       <div style="margin-top:8px;">若儲存格反灰狀態與星期六日不一致（例如平日被反灰、或週六日未反灰），會跳出視窗讓你逐筆確認是否要填寫。</div>
-      <div style="margin-top:8px;"><b>產生前會顯示「本月出勤確認」：</b>正常出勤不需額外設定；全天假只需選假別，詳細時間需要時再展開；時數假可快速選 1／2／4 小時或自訂，並可批次套用到接下來的工作日。</div>
+      <div style="margin-top:8px;"><b>產生前會顯示「本月出勤確認」：</b>已有資料預設保留；時數假可快速選 1／2／4 小時或自訂，詳細時間與時數雙向連動並扣除 12:00～13:00 午休；備註寫入 H 欄。</div>
     </div>
   </details>
 
@@ -376,7 +378,9 @@
 <script>
 // Bump this every time the tool's fill/detection logic is modified, so output filenames
 // record which version produced them (helps track down issues to a specific revision).
-const TOOL_VERSION = 'v10';
+const TOOL_VERSION = 'v10.3';
+const LUNCH_START_MINUTES = 12 * 60;
+const LUNCH_END_MINUTES = 13 * 60;
 
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
@@ -662,12 +666,55 @@ function getCellText(xml, ref, sharedStrings) {
   return vMatch ? vMatch[1] : '';
 }
 
+function columnNumber(columnName) {
+  return columnName.split('').reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0);
+}
+
+function findNearbyStyle(xml, column, rowNumber) {
+  for (let offset = 1; offset <= 60; offset++) {
+    for (const candidateRow of [rowNumber - offset, rowNumber + offset]) {
+      if (candidateRow < 1) continue;
+      const style = getCellAttr(xml, column + candidateRow, 's');
+      if (style !== null) return style;
+    }
+  }
+  return null;
+}
+
+function buildInlineCell(ref, text, styleIndex) {
+  const styleAttr = styleIndex === null ? '' : ' s="' + styleIndex + '"';
+  return '<c r="' + ref + '"' + styleAttr + ' t="inlineStr"><is><t xml:space="preserve">' + escapeXml(text) + '</t></is></c>';
+}
+
 function setCellInlineStr(xml, ref, text) {
   const re = new RegExp('<c r="' + ref + '"([^>]*?)(?:/>|>[\\s\\S]*?<\\/c>)');
-  return xml.replace(re, (whole, attrsPart) => {
+  if (re.test(xml)) return xml.replace(re, (whole, attrsPart) => {
     const attrs = attrsPart.replace(/\st="[^"]*"/, '');
     return '<c r="' + ref + '"' + attrs + ' t="inlineStr"><is><t xml:space="preserve">' + escapeXml(text) + '</t></is></c>';
   });
+
+  const refMatch = ref.match(/^([A-Z]+)(\d+)$/);
+  if (!refMatch) throw new Error('無效的儲存格位置：' + ref);
+  const column = refMatch[1];
+  const rowNumber = parseInt(refMatch[2], 10);
+  const rowRe = new RegExp('(<row\\b[^>]*\\br="' + rowNumber + '"[^>]*>)([\\s\\S]*?)(<\\/row>)');
+  const rowMatch = xml.match(rowRe);
+  if (!rowMatch) throw new Error('找不到第 ' + rowNumber + ' 列，無法安全寫入 ' + ref);
+
+  const styleIndex = findNearbyStyle(xml, column, rowNumber);
+  const newCell = buildInlineCell(ref, text, styleIndex);
+  const targetColumnNumber = columnNumber(column);
+  const cells = [...rowMatch[2].matchAll(/<c r="([A-Z]+)\d+"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g)];
+  let inner = rowMatch[2];
+  const nextCell = cells.find(cell => columnNumber(cell[1]) > targetColumnNumber);
+  if (nextCell) {
+    inner = inner.slice(0, nextCell.index) + newCell + inner.slice(nextCell.index);
+  } else {
+    inner += newCell;
+  }
+  const updated = xml.replace(rowRe, rowMatch[1] + inner + rowMatch[3]);
+  if (!matchCell(updated, ref)) throw new Error('建立儲存格 ' + ref + ' 失敗，已停止產生檔案');
+  return updated;
 }
 
 // Determine whether a date row's label text (e.g. "2026/8/1 星期六") falls on Sat/Sun.
@@ -711,6 +758,50 @@ function isValidTime(value) {
   return true;
 }
 
+function timeToMinutes(value) {
+  if (!isValidTime(value)) return null;
+  const parts = value.split(':').map(Number);
+  return parts[0] * 60 + parts[1];
+}
+
+function minutesToTime(totalMinutes) {
+  const normalized = Math.max(0, Math.min(23 * 60 + 59, Math.round(totalMinutes)));
+  return pad2(Math.floor(normalized / 60)) + ':' + pad2(normalized % 60);
+}
+
+function calculateLeaveHours(startValue, endValue) {
+  const start = timeToMinutes(startValue);
+  const end = timeToMinutes(endValue);
+  if (start === null || end === null || end <= start) return null;
+  const lunchOverlap = Math.max(0, Math.min(end, LUNCH_END_MINUTES) - Math.max(start, LUNCH_START_MINUTES));
+  return (end - start - lunchOverlap) / 60;
+}
+
+function addWorkingHours(startValue, hours) {
+  let current = timeToMinutes(startValue);
+  let remaining = Math.round(Number(hours) * 60);
+  if (current === null || !Number.isFinite(remaining) || remaining <= 0) return null;
+  while (remaining > 0 && current < 24 * 60) {
+    if (current >= LUNCH_START_MINUTES && current < LUNCH_END_MINUTES) {
+      current = LUNCH_END_MINUTES;
+      continue;
+    }
+    current++;
+    remaining--;
+  }
+  return remaining === 0 && current < 24 * 60 ? minutesToTime(current) : null;
+}
+
+function isHalfHourIncrement(hours) {
+  return Number.isFinite(hours) && Math.abs(hours * 2 - Math.round(hours * 2)) < 1e-9;
+}
+
+function isChronologicalPair(startValue, endValue) {
+  const start = timeToMinutes(startValue);
+  const end = timeToMinutes(endValue);
+  return start !== null && end !== null && end > start;
+}
+
 function showAttendanceModal(fileName, workRows) {
   return new Promise((resolve) => {
     const overlay = document.getElementById('modalOverlay');
@@ -721,12 +812,14 @@ function showAttendanceModal(fileName, workRows) {
     const cancelBtn = document.getElementById('modalCancel');
 
     titleEl.textContent = '本月出勤確認｜' + fileName;
-    descEl.textContent = '只需修改請假的日期；其他日期保持「正常出勤」。';
+    descEl.textContent = '只需修改請假的日期；已有資料預設保留，空白工作日預設正常出勤。';
     listEl.innerHTML = '';
 
     const summary = document.createElement('div');
     summary.className = 'attendance-summary';
+    const existingCount = workRows.filter(row => row.inText || row.outText || row.leaveTexts.some(Boolean) || row.remarkText).length;
     summary.innerHTML = '<span class="summary-chip">工作日 ' + workRows.length + ' 天</span>' +
+      '<span class="summary-chip">已有紀錄 ' + existingCount + ' 天</span>' +
       '<span class="summary-chip">上下班時間不重複</span>';
     listEl.appendChild(summary);
 
@@ -742,7 +835,10 @@ function showAttendanceModal(fileName, workRows) {
 
       const status = document.createElement('select');
       status.className = 'attendance-status';
-      status.innerHTML = '<option value="normal">正常出勤</option><option value="fullLeave">全天請假</option><option value="hourLeave">請假 N 小時</option>';
+      status.innerHTML = '<option value="preserve">保留原紀錄</option><option value="normal">正常出勤</option><option value="fullLeave">全天請假</option><option value="hourLeave">請假 N 小時</option>';
+      const hasExistingData = Boolean(r.inText || r.outText || r.leaveTexts.some(Boolean) || r.remarkText);
+      status.value = hasExistingData ? 'preserve' : 'normal';
+      if (hasExistingData) rowEl.classList.add('existing');
 
       main.append(dateEl, status);
 
@@ -768,7 +864,7 @@ function showAttendanceModal(fileName, workRows) {
       const remarkInput = document.createElement('input');
       remarkInput.type = 'text';
       remarkInput.className = 'leave-remark';
-      remarkInput.placeholder = '備註會附加在所選假別欄位';
+      remarkInput.placeholder = '備註會寫入 Excel 的 H 欄';
       remarkInput.maxLength = 80;
       remarkInput.hidden = true;
       remarkFields.append(remarkToggle, remarkInput);
@@ -816,6 +912,10 @@ function showAttendanceModal(fileName, workRows) {
       hoursUnit.hidden = true;
       hoursWrap.append(hoursPreset, hours, hoursUnit);
       leaveFields.append(leaveType, detailToggle, leaveTimeWrap, hoursWrap, otherName, remarkFields);
+      const existingNote = document.createElement('div');
+      existingNote.className = 'existing-note';
+      existingNote.hidden = !hasExistingData;
+      existingNote.textContent = hasExistingData ? '已有紀錄，預設保留；只有明確改選其他狀態才會重新寫入。' : '';
       leaveType.addEventListener('change', () => {
         otherName.hidden = leaveType.value !== 'G';
       });
@@ -829,6 +929,28 @@ function showAttendanceModal(fileName, workRows) {
         hours.hidden = !custom;
         hoursUnit.hidden = !custom;
         if (!custom) hours.value = hoursPreset.value;
+        const endValue = addWorkingHours(leaveStart.value, hours.value);
+        if (endValue) leaveEnd.value = endValue;
+      });
+      function syncHoursFromTimes() {
+        const calculated = calculateLeaveHours(leaveStart.value, leaveEnd.value);
+        if (calculated === null) return;
+        hours.value = String(calculated);
+        const quickValue = [1, 2, 4].includes(calculated) ? String(calculated) : 'custom';
+        hoursPreset.value = quickValue;
+        hours.hidden = quickValue !== 'custom';
+        hoursUnit.hidden = quickValue !== 'custom';
+      }
+      leaveStart.addEventListener('change', () => {
+        const endValue = addWorkingHours(leaveStart.value, hours.value);
+        if (endValue) leaveEnd.value = endValue;
+        syncHoursFromTimes();
+      });
+      leaveEnd.addEventListener('change', syncHoursFromTimes);
+      hours.addEventListener('change', () => {
+        const endValue = addWorkingHours(leaveStart.value, hours.value);
+        if (endValue) leaveEnd.value = endValue;
+        syncHoursFromTimes();
       });
       detailToggle.addEventListener('click', () => {
         const show = leaveTimeWrap.hidden;
@@ -873,15 +995,16 @@ function showAttendanceModal(fileName, workRows) {
       const note = document.createElement('div');
       note.className = 'row-note';
       note.hidden = true;
-      note.textContent = '時數假：請假時段與時數會寫入所選假別欄；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+      note.textContent = '時數假：詳細時間會自動換算時數並扣除 12:00～13:00 午休；實際上下班若留白，B/C 保留原值並列為待人工處理。';
 
       status.addEventListener('change', () => {
-        const leave = status.value !== 'normal';
+        const preserve = status.value === 'preserve';
+        const leave = status.value === 'fullLeave' || status.value === 'hourLeave';
         const hourly = status.value === 'hourLeave';
         leaveFields.hidden = !leave;
         actualFields.hidden = !hourly;
         batchFields.hidden = !leave;
-        note.hidden = !leave;
+        note.hidden = !leave && !(status.value === 'normal' && hasExistingData);
         if (status.value === 'fullLeave') {
           leaveStart.value = '09:00';
           leaveEnd.value = '18:00';
@@ -897,12 +1020,17 @@ function showAttendanceModal(fileName, workRows) {
         } else if (hourly) {
           hours.value = '1';
           hoursPreset.value = '1';
+          leaveEnd.value = addWorkingHours(leaveStart.value, 1) || '10:00';
           hours.hidden = true;
           hoursUnit.hidden = true;
           leaveTimeWrap.hidden = false;
           hoursWrap.hidden = false;
           detailToggle.hidden = true;
-          note.textContent = '時數假：請假時段與時數會寫入所選假別欄；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+          note.textContent = '時數假：詳細時間會自動換算時數並扣除 12:00～13:00 午休；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+        } else if (status.value === 'normal' && hasExistingData) {
+          note.textContent = '重新填寫正常出勤會清除原有 D～H 請假與備註資料。';
+        } else if (preserve) {
+          note.hidden = true;
         }
         rowEl.classList.remove('invalid');
       });
@@ -918,15 +1046,16 @@ function showAttendanceModal(fileName, workRows) {
           target.querySelector('.leave-type').dispatchEvent(new Event('change'));
           target.querySelector('.other-leave-name').value = otherName.value;
           target.querySelector('.leave-start').value = leaveStart.value;
-          target.querySelector('.leave-end').value = leaveEnd.value;
+          target.querySelector('.leave-hours').value = hours.value;
           target.querySelector('.hours-preset').value = hoursPreset.value;
           target.querySelector('.hours-preset').dispatchEvent(new Event('change'));
-          target.querySelector('.leave-hours').value = hours.value;
+          target.querySelector('.leave-end').value = leaveEnd.value;
         });
         note.textContent = '已套用到接下來 ' + Math.min(count, Math.max(0, rows.length - currentIndex - 1)) + ' 個工作日；實際上下班時間未複製；備註也未複製。';
       });
-      rowEl.append(main, leaveFields, actualFields, batchFields, note);
+      rowEl.append(main, existingNote, leaveFields, actualFields, batchFields, note);
       listEl.appendChild(rowEl);
+      status.dispatchEvent(new Event('change'));
     });
 
     overlay.hidden = false;
@@ -958,9 +1087,11 @@ function showAttendanceModal(fileName, workRows) {
         const leaveEnd = rowEl.querySelector('.leave-end').value;
         const inTime = rowEl.querySelector('.actual-in').value;
         const outTime = rowEl.querySelector('.actual-out').value;
-        const leaveInvalid = status !== 'normal' && (!Number.isFinite(hours) || hours < 0.5 || hours > 8 || (hours * 2) % 1 !== 0 || !isValidTime(leaveStart) || !isValidTime(leaveEnd) || (leaveColumn === 'G' && !otherLeaveName));
+        const isLeave = status === 'fullLeave' || status === 'hourLeave';
+        const calculatedHours = isLeave ? calculateLeaveHours(leaveStart, leaveEnd) : null;
+        const leaveInvalid = isLeave && (!Number.isFinite(hours) || hours < 0.5 || hours > 8 || !isHalfHourIncrement(hours) || !isChronologicalPair(leaveStart, leaveEnd) || calculatedHours === null || Math.abs(calculatedHours - hours) > 1e-9 || (leaveColumn === 'G' && !otherLeaveName));
         const partialActual = status === 'hourLeave' && ((inTime && !outTime) || (!inTime && outTime));
-        const invalidActual = status === 'hourLeave' && ((inTime && !isValidTime(inTime)) || (outTime && !isValidTime(outTime)));
+        const invalidActual = status === 'hourLeave' && ((inTime && !isValidTime(inTime)) || (outTime && !isValidTime(outTime)) || (inTime && outTime && !isChronologicalPair(inTime, outTime)));
         const duplicateActual = status === 'hourLeave' && ((inTime && seenIn.has(inTime)) || (outTime && seenOut.has(outTime)));
         if (leaveInvalid || partialActual || invalidActual || duplicateActual) {
           rowEl.classList.add('invalid');
@@ -971,7 +1102,7 @@ function showAttendanceModal(fileName, workRows) {
         adjustments.set(source.row, { status, leaveColumn, otherLeaveName, remark, hours, leaveStart, leaveEnd, inTime, outTime });
       });
       if (hasInvalid) {
-        descEl.textContent = '請檢查紅框：請假時段需完整、時數須為 0.5–8 小時；其他假別須填名稱；實際上下班須成對填寫且不可重複。';
+        descEl.textContent = '請檢查紅框：結束時間須晚於開始時間；請假時數會扣除 12:00～13:00 午休，且須為 0.5–8 小時及 0.5 小時倍數；實際上下班須成對、順序正確且不可重複。';
         return;
       }
       cleanup();
@@ -1046,6 +1177,87 @@ function showAnomalyModal(fileName, anomalies) {
   });
 }
 
+function applyAttendanceAdjustments(sheetXml, dateRows, adjustments, decisions) {
+  const counts = { filledCount: 0, skippedCount: 0, preservedCount: 0, fullLeaveCount: 0, hourLeaveCount: 0, pendingCount: 0 };
+  const usedIn = new Set();
+  const usedOut = new Set();
+
+  // Reserve every time that will remain in the final workbook before generating new values.
+  for (const row of dateRows) {
+    const isAnomaly = decisions !== null && decisions.has(row.row);
+    const shouldFill = isAnomaly ? decisions.get(row.row) : !row.gray;
+    const adjustment = adjustments.get(row.row);
+    if (!shouldFill || !adjustment || adjustment.status === 'preserve') {
+      if (isValidTime(row.inText)) usedIn.add(row.inText);
+      if (isValidTime(row.outText)) usedOut.add(row.outText);
+      continue;
+    }
+    if (adjustment.status === 'hourLeave') {
+      const keepIn = isValidTime(adjustment.inTime) ? adjustment.inTime : (isValidTime(row.inText) ? row.inText : '');
+      const keepOut = isValidTime(adjustment.outTime) ? adjustment.outTime : (isValidTime(row.outText) ? row.outText : '');
+      if (keepIn) usedIn.add(keepIn);
+      if (keepOut) usedOut.add(keepOut);
+    }
+  }
+
+  for (const row of dateRows) {
+    const isAnomaly = decisions !== null && decisions.has(row.row);
+    const shouldFill = isAnomaly ? decisions.get(row.row) : !row.gray;
+    if (!shouldFill) {
+      counts.skippedCount++;
+      continue;
+    }
+
+    const adjustment = adjustments.get(row.row) || { status: 'normal' };
+    if (adjustment.status === 'preserve') {
+      counts.preservedCount++;
+      continue;
+    }
+
+    const leaveDetail = adjustment.status === 'normal' ? '' :
+      (adjustment.leaveColumn === 'G' ? adjustment.otherLeaveName + ' ' : '') + adjustment.leaveStart + '~' + adjustment.leaveEnd + ',' + adjustment.hours + 'hr';
+
+    if (adjustment.status === 'fullLeave') {
+      sheetXml = setCellInlineStr(sheetXml, 'B' + row.row, '');
+      sheetXml = setCellInlineStr(sheetXml, 'C' + row.row, '');
+      for (const column of ['D', 'E', 'F', 'G']) {
+        sheetXml = setCellInlineStr(sheetXml, column + row.row, column === adjustment.leaveColumn ? leaveDetail : '');
+      }
+      sheetXml = setCellInlineStr(sheetXml, 'H' + row.row, adjustment.remark || '');
+      counts.fullLeaveCount++;
+      continue;
+    }
+
+    if (adjustment.status === 'hourLeave') {
+      for (const column of ['D', 'E', 'F', 'G']) {
+        sheetXml = setCellInlineStr(sheetXml, column + row.row, column === adjustment.leaveColumn ? leaveDetail : '');
+      }
+      sheetXml = setCellInlineStr(sheetXml, 'H' + row.row, adjustment.remark || '');
+      counts.hourLeaveCount++;
+      const hasBothTimes = isChronologicalPair(adjustment.inTime, adjustment.outTime);
+      if (!hasBothTimes) {
+        counts.pendingCount++;
+        continue;
+      }
+      sheetXml = setCellInlineStr(sheetXml, 'B' + row.row, adjustment.inTime);
+      sheetXml = setCellInlineStr(sheetXml, 'C' + row.row, adjustment.outTime);
+      counts.filledCount++;
+      continue;
+    }
+
+    // Selecting normal on an existing row is an explicit reset of leave and note data.
+    if (row.leaveTexts.some(Boolean) || row.remarkText) {
+      for (const column of ['D', 'E', 'F', 'G', 'H']) sheetXml = setCellInlineStr(sheetXml, column + row.row, '');
+    }
+    const unique = randomUniqueFillTimes(usedIn, usedOut);
+    sheetXml = setCellInlineStr(sheetXml, 'B' + row.row, unique.inText);
+    sheetXml = setCellInlineStr(sheetXml, 'C' + row.row, unique.outText);
+    counts.filledCount++;
+  }
+
+  return { sheetXml, counts };
+}
+
 async function processFile(file) {
   log('讀取「' + file.name + '」…', 'info');
   let zip;
@@ -1089,7 +1301,9 @@ async function processFile(file) {
         gray,
         weekend,
         inText: getCellText(sheetXml, 'B' + row, sharedStrings) || '',
-        outText: getCellText(sheetXml, 'C' + row, sharedStrings) || ''
+        outText: getCellText(sheetXml, 'C' + row, sharedStrings) || '',
+        leaveTexts: ['D', 'E', 'F', 'G'].map(column => getCellText(sheetXml, column + row, sharedStrings) || ''),
+        remarkText: getCellText(sheetXml, 'H' + row, sharedStrings) || ''
       });
       row++;
     }
@@ -1130,64 +1344,9 @@ async function processFile(file) {
     }
 
     // Phase 4: only now write values into the workbook.
-    let filledCount = 0;
-    let skippedCount = 0;
-    let fullLeaveCount = 0;
-    let hourLeaveCount = 0;
-    let pendingCount = 0;
-    const usedIn = new Set();
-    const usedOut = new Set();
-
-    for (const r of workRows) {
-      const a = adjustments.get(r.row);
-      if (!a || a.status !== 'hourLeave') continue;
-      const keepIn = isValidTime(a.inTime) ? a.inTime : (isValidTime(r.inText) ? r.inText : '');
-      const keepOut = isValidTime(a.outTime) ? a.outTime : (isValidTime(r.outText) ? r.outText : '');
-      if (keepIn) usedIn.add(keepIn);
-      if (keepOut) usedOut.add(keepOut);
-    }
-
-    for (const r of dateRows) {
-      const isAnomaly = decisions !== null && decisions.has(r.row);
-      const shouldFill = isAnomaly ? decisions.get(r.row) : !r.gray;
-
-      if (!shouldFill) {
-        skippedCount++;
-        continue;
-      }
-      const adjustment = adjustments.get(r.row) || { status: 'normal' };
-      const leaveDetail = adjustment.status === 'normal' ? '' :
-        (adjustment.leaveColumn === 'G' ? adjustment.otherLeaveName + ' ' : '') + adjustment.leaveStart + '~' + adjustment.leaveEnd + ',' + adjustment.hours + 'hr' +
-        (adjustment.remark ? '；備註：' + adjustment.remark : '');
-      if (adjustment.status === 'fullLeave') {
-        sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, '');
-        sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, '');
-        for (const col of ['D', 'E', 'F', 'G']) {
-          sheetXml = setCellInlineStr(sheetXml, col + r.row, col === adjustment.leaveColumn ? leaveDetail : '');
-        }
-        fullLeaveCount++;
-        continue;
-      }
-      if (adjustment.status === 'hourLeave') {
-        for (const col of ['D', 'E', 'F', 'G']) {
-          sheetXml = setCellInlineStr(sheetXml, col + r.row, col === adjustment.leaveColumn ? leaveDetail : '');
-        }
-        hourLeaveCount++;
-        const hasBothTimes = isValidTime(adjustment.inTime) && isValidTime(adjustment.outTime);
-        if (!hasBothTimes) {
-          pendingCount++;
-          continue;
-        }
-        sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, adjustment.inTime);
-        sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, adjustment.outTime);
-        filledCount++;
-        continue;
-      }
-      const unique = randomUniqueFillTimes(usedIn, usedOut);
-      sheetXml = setCellInlineStr(sheetXml, 'B' + r.row, unique.inText);
-      sheetXml = setCellInlineStr(sheetXml, 'C' + r.row, unique.outText);
-      filledCount++;
-    }
+    const applied = applyAttendanceAdjustments(sheetXml, dateRows, adjustments, decisions);
+    sheetXml = applied.sheetXml;
+    const { filledCount, skippedCount, preservedCount, fullLeaveCount, hourLeaveCount, pendingCount } = applied.counts;
 
     zip.file(sheetPath, sheetXml);
     const outBlob = await zip.generateAsync({
@@ -1203,7 +1362,7 @@ async function processFile(file) {
     a.remove();
     URL.revokeObjectURL(url);
 
-    log('「' + file.name + '」完成：寫入 ' + filledCount + ' 天（上班/下班時間各自不重複）；全天請假 ' + fullLeaveCount + ' 天；時數假 ' + hourLeaveCount + ' 天；灰色/非工作日略過 ' + skippedCount + ' 天' + (pendingCount ? '；待人工處理 ' + pendingCount + ' 天' : '') + ' → 已下載「' + buildOutputFilename(file.name) + '」', pendingCount ? 'warn' : 'ok');
+    log('「' + file.name + '」完成：寫入 ' + filledCount + ' 天（上班/下班時間各自不重複）；保留原紀錄 ' + preservedCount + ' 天；全天請假 ' + fullLeaveCount + ' 天；時數假 ' + hourLeaveCount + ' 天；灰色/非工作日略過 ' + skippedCount + ' 天' + (pendingCount ? '；待人工處理 ' + pendingCount + ' 天' : '') + ' → 已下載「' + buildOutputFilename(file.name) + '」', pendingCount ? 'warn' : 'ok');
   } catch (e) {
     log('「' + file.name + '」處理時發生錯誤，已略過。（' + (e && e.message ? e.message : e) + '）', 'err');
     console.error(e);

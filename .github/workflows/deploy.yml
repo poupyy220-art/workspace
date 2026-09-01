@@ -25,6 +25,8 @@ jobs:
           mkdir -p preview-dist/modules/attendance-tool
           cp index.html preview-dist/index.html
           cp modules/attendance-tool/index.html preview-dist/modules/attendance-tool/index.html
+          mkdir -p preview-dist/modules/attendance-tool/vendor
+          cp modules/attendance-tool/vendor/jszip.min.js preview-dist/modules/attendance-tool/vendor/jszip.min.js
           cp modules/bom-validator/index.html preview-dist/modules/bom-validator/index.html
           cp modules/bom-validator/sop.html preview-dist/modules/bom-validator/sop.html
           cp modules/bom-validator/bom-guide.js preview-dist/modules/bom-validator/bom-guide.js
