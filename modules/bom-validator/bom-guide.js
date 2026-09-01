@@ -1,8 +1,8 @@
 (function(global){
   const content={
-    version:'v2.15.1',
+    version:'v2.15.2',
     title:'BOM 轉檔與安檢操作 SOP',
-    updated:'2026-08-31',
+    updated:'2026-09-01',
     optimizations:[
       '自動辨識真正的 BOM 分頁與 Header 列，參考分頁只保留、不處理。',
       '依正式規則執行 NEW／OLD、PN、品名／規格 30 字及 Item Level 檢查。',
