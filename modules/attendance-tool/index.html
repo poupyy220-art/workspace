@@ -124,7 +124,7 @@
   .modal {
     background: var(--card);
     border-radius: 12px;
-    max-width: 720px;
+    max-width: 780px;
     width: 100%;
     max-height: 92vh;
     display: flex;
@@ -214,15 +214,20 @@
     font-size: 12px;
   }
   .attendance-main { display: grid; grid-template-columns: minmax(155px, 1fr) 135px; gap: 8px; align-items: center; }
-  .leave-fields { display: grid; grid-template-columns: 115px minmax(170px, 1fr) minmax(170px, auto); gap: 6px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
-  .other-leave-name { grid-column: 1 / -1; }
-  .remark-fields { grid-column:1 / -1; display:flex; align-items:center; gap:6px; }
+  .leave-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 6px 0 0 155px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
+  .leave-fields > .leave-type { flex: 0 0 110px; width: 110px; }
+  .leave-fields > .detail-toggle { flex: 0 0 auto; }
+  .leave-fields > .time-wrap,
+  .leave-fields > .hours-wrap { flex: 0 1 auto; }
+  .other-leave-name { flex: 1 1 100%; width: auto; }
+  .remark-fields { flex: 1 1 100%; display:flex; align-items:center; gap:6px; }
   .remark-fields .leave-remark { flex:1 1 auto; }
   .remark-toggle { white-space:nowrap; }
-  .actual-fields { display: grid; grid-template-columns: 85px 1fr; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
-  .batch-fields { display: flex; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
+  .actual-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 0 155px; }
+  .actual-fields > span:first-child { flex: 0 0 auto; white-space: nowrap; }
+  .batch-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 0 155px; }
   .batch-fields select { max-width: 180px; }
-  .mini-button { border: 1px solid var(--border); background: #f8fafc; color: var(--text); border-radius: 6px; padding: 5px 8px; cursor: pointer; font: inherit; }
+  .mini-button { border: 1px solid var(--border); background: #f8fafc; color: var(--text); border-radius: 6px; padding: 5px 8px; cursor: pointer; font: inherit; white-space: nowrap; }
   .mini-button:hover { background: #f1f5f9; }
   .detail-toggle { width: auto !important; }
   .attendance-row select,
@@ -235,16 +240,19 @@
     color: var(--text);
     font: inherit;
   }
-  .hours-wrap, .time-wrap { display: flex; align-items: center; gap: 6px; }
-  .hours-wrap .hours-preset { flex:1 1 88px; min-width:88px; }
-  .hours-wrap .leave-hours { flex:0 0 72px; width:72px; min-width:72px; }
+  .hours-wrap, .time-wrap { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
+  .hours-wrap .hours-preset { flex:0 0 80px; width:80px; min-width:80px; }
+  .hours-wrap .leave-hours { flex:0 0 64px; width:64px; min-width:64px; }
   .hours-wrap span, .time-wrap span { white-space: nowrap; color: var(--muted); }
+  .time-select { display: inline-flex; align-items: center; gap: 2px; width: auto; flex: 0 0 auto; }
+  .time-select select { width: auto; min-width: 46px; flex: 0 0 auto; padding: 5px 2px; }
+  .time-select span { color: var(--muted); }
   .row-note { color: var(--warn); font-size: 11px; margin: 5px 0 0 155px; }
   .attendance-row.invalid input, .attendance-row.invalid select { border-color: var(--danger); background: #fef2f2; }
   .attendance-row.existing { background:#fffaf0; }
   .existing-note { color:#92400e; font-size:11px; margin:5px 0 0 155px; }
   @media (max-width: 700px) {
-    .attendance-main, .leave-fields, .actual-fields { grid-template-columns: 1fr; }
+    .attendance-main { grid-template-columns: 1fr; }
     .leave-fields, .actual-fields, .batch-fields, .row-note { margin-left: 0; }
     .batch-fields { align-items: stretch; flex-direction: column; }
   }
@@ -308,7 +316,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-title">🕒 出勤管理中心</div>
-      <div class="brand-version">v10.3 · 本機 Excel 工具</div>
+      <div class="brand-version">v10.4 · 本機 Excel 工具</div>
     </div>
     <nav>
       <div class="nav-section">出勤工具</div>
@@ -345,7 +353,8 @@
       <div>4. 儲存格未反灰，且為週一至週五 → 填寫</div>
       <div style="margin-top:8px;">每個工作日隨機套用規則 1 或規則 2，並在區間內隨機取分鐘，讓時間看起來自然。</div>
       <div style="margin-top:8px;">若儲存格反灰狀態與星期六日不一致（例如平日被反灰、或週六日未反灰），會跳出視窗讓你逐筆確認是否要填寫。</div>
-      <div style="margin-top:8px;"><b>產生前會顯示「本月出勤確認」：</b>已有資料預設保留；時數假可快速選 1／2／4 小時或自訂，詳細時間與時數雙向連動並扣除 12:00～13:00 午休；備註寫入 H 欄。</div>
+      <div style="margin-top:8px;"><b>產生前會顯示「本月出勤確認」：</b>已有資料預設保留；時數假可快速選 1／2／4 小時或自訂，詳細時間與時數雙向連動並扣除 12:00～13:00 午休；實際上下班預設與假別時間相同，可再自行修改；備註寫入 H 欄。</div>
+      <div style="margin-top:8px;">時間選擇一律採 24 小時制，分鐘僅提供 00／10／20／30／40／50。</div>
     </div>
   </details>
 
@@ -378,7 +387,7 @@
 <script>
 // Bump this every time the tool's fill/detection logic is modified, so output filenames
 // record which version produced them (helps track down issues to a specific revision).
-const TOOL_VERSION = 'v10.3';
+const TOOL_VERSION = 'v10.4';
 const LUNCH_START_MINUTES = 12 * 60;
 const LUNCH_END_MINUTES = 13 * 60;
 
@@ -802,6 +811,76 @@ function isChronologicalPair(startValue, endValue) {
   return start !== null && end !== null && end > start;
 }
 
+const TIME_SELECT_MINUTES = [0, 10, 20, 30, 40, 50];
+
+// 使用固定的 24 小時制「時／分」下拉，避免作業系統顯示上午／下午，
+// 並將分鐘限制為 10 分鐘一格。對外保留 .value = HH:MM，讓既有邏輯不需改寫。
+function createTimeSelect(ariaLabel, className, opts) {
+  const allowEmpty = Boolean(opts && opts.allowEmpty);
+  const wrap = document.createElement('span');
+  wrap.className = 'time-select' + (className ? ' ' + className : '');
+
+  const hourSel = document.createElement('select');
+  hourSel.setAttribute('aria-label', ariaLabel + '（時，24 小時制）');
+  if (allowEmpty) {
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '--';
+    hourSel.appendChild(blank);
+  }
+  for (let h = 0; h <= 23; h++) {
+    const opt = document.createElement('option');
+    opt.value = pad2(h);
+    opt.textContent = pad2(h);
+    hourSel.appendChild(opt);
+  }
+
+  const sep = document.createElement('span');
+  sep.textContent = ':';
+
+  const minuteSel = document.createElement('select');
+  minuteSel.setAttribute('aria-label', ariaLabel + '（分）');
+  if (allowEmpty) {
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '--';
+    minuteSel.appendChild(blank);
+  }
+  TIME_SELECT_MINUTES.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = pad2(m);
+    opt.textContent = pad2(m);
+    minuteSel.appendChild(opt);
+  });
+
+  wrap.append(hourSel, sep, minuteSel);
+
+  Object.defineProperty(wrap, 'value', {
+    get() {
+      if (!hourSel.value || !minuteSel.value) return '';
+      return hourSel.value + ':' + minuteSel.value;
+    },
+    set(v) {
+      if (!v) {
+        hourSel.value = '';
+        minuteSel.value = '';
+        return;
+      }
+      const match = String(v).match(/^(\d{1,2}):(\d{1,2})$/);
+      if (!match) return;
+      const hour = Math.max(0, Math.min(23, parseInt(match[1], 10)));
+      const rawMinute = Math.max(0, Math.min(59, parseInt(match[2], 10)));
+      const minute = TIME_SELECT_MINUTES.reduce((best, candidate) =>
+        Math.abs(candidate - rawMinute) < Math.abs(best - rawMinute) ? candidate : best
+      , 0);
+      hourSel.value = pad2(hour);
+      minuteSel.value = pad2(minute);
+    }
+  });
+
+  return wrap;
+}
+
 function showAttendanceModal(fileName, workRows) {
   return new Promise((resolve) => {
     const overlay = document.getElementById('modalOverlay');
@@ -827,6 +906,7 @@ function showAttendanceModal(fileName, workRows) {
       const rowEl = document.createElement('div');
       rowEl.className = 'attendance-row';
       rowEl.dataset.idx = String(idx);
+      rowEl.dataset.actualTouched = 'false';
 
       const main = document.createElement('div');
       main.className = 'attendance-main';
@@ -876,18 +956,12 @@ function showAttendanceModal(fileName, workRows) {
 
       const leaveTimeWrap = document.createElement('div');
       leaveTimeWrap.className = 'time-wrap';
-      const leaveStart = document.createElement('input');
-      leaveStart.type = 'time';
-      leaveStart.className = 'leave-start';
+      const leaveStart = createTimeSelect('請假開始時間', 'leave-start');
       leaveStart.value = '09:00';
-      leaveStart.setAttribute('aria-label', '請假開始時間');
       const leaveSep = document.createElement('span');
       leaveSep.textContent = '至';
-      const leaveEnd = document.createElement('input');
-      leaveEnd.type = 'time';
-      leaveEnd.className = 'leave-end';
+      const leaveEnd = createTimeSelect('請假結束時間', 'leave-end');
       leaveEnd.value = '18:00';
-      leaveEnd.setAttribute('aria-label', '請假結束時間');
       leaveTimeWrap.append(leaveStart, leaveSep, leaveEnd);
 
       const hoursWrap = document.createElement('div');
@@ -931,6 +1005,7 @@ function showAttendanceModal(fileName, workRows) {
         if (!custom) hours.value = hoursPreset.value;
         const endValue = addWorkingHours(leaveStart.value, hours.value);
         if (endValue) leaveEnd.value = endValue;
+        mirrorActualToLeave();
       });
       function syncHoursFromTimes() {
         const calculated = calculateLeaveHours(leaveStart.value, leaveEnd.value);
@@ -945,12 +1020,17 @@ function showAttendanceModal(fileName, workRows) {
         const endValue = addWorkingHours(leaveStart.value, hours.value);
         if (endValue) leaveEnd.value = endValue;
         syncHoursFromTimes();
+        mirrorActualToLeave();
       });
-      leaveEnd.addEventListener('change', syncHoursFromTimes);
+      leaveEnd.addEventListener('change', () => {
+        syncHoursFromTimes();
+        mirrorActualToLeave();
+      });
       hours.addEventListener('change', () => {
         const endValue = addWorkingHours(leaveStart.value, hours.value);
         if (endValue) leaveEnd.value = endValue;
         syncHoursFromTimes();
+        mirrorActualToLeave();
       });
       detailToggle.addEventListener('click', () => {
         const show = leaveTimeWrap.hidden;
@@ -966,18 +1046,20 @@ function showAttendanceModal(fileName, workRows) {
       actualLabel.textContent = '實際上下班';
       const timeWrap = document.createElement('div');
       timeWrap.className = 'time-wrap';
-      const inTime = document.createElement('input');
-      inTime.type = 'time';
-      inTime.className = 'actual-in';
-      inTime.setAttribute('aria-label', '實際上班時間');
+      const inTime = createTimeSelect('實際上班時間', 'actual-in', { allowEmpty: true });
       const sep = document.createElement('span');
       sep.textContent = '至';
-      const outTime = document.createElement('input');
-      outTime.type = 'time';
-      outTime.className = 'actual-out';
-      outTime.setAttribute('aria-label', '實際下班時間');
+      const outTime = createTimeSelect('實際下班時間', 'actual-out', { allowEmpty: true });
       timeWrap.append(inTime, sep, outTime);
       actualFields.append(actualLabel, timeWrap);
+      let actualTouched = false;
+      function mirrorActualToLeave() {
+        if (actualTouched) return;
+        inTime.value = leaveStart.value;
+        outTime.value = leaveEnd.value;
+      }
+      inTime.addEventListener('change', () => { actualTouched = true; rowEl.dataset.actualTouched = 'true'; });
+      outTime.addEventListener('change', () => { actualTouched = true; rowEl.dataset.actualTouched = 'true'; });
 
       const batchFields = document.createElement('div');
       batchFields.className = 'batch-fields';
@@ -995,7 +1077,7 @@ function showAttendanceModal(fileName, workRows) {
       const note = document.createElement('div');
       note.className = 'row-note';
       note.hidden = true;
-      note.textContent = '時數假：詳細時間會自動換算時數並扣除 12:00～13:00 午休；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+      note.textContent = '時數假：詳細時間會自動換算時數並扣除 12:00～13:00 午休；實際上下班預設同假別時間，可自行修改。';
 
       status.addEventListener('change', () => {
         const preserve = status.value === 'preserve';
@@ -1026,7 +1108,10 @@ function showAttendanceModal(fileName, workRows) {
           leaveTimeWrap.hidden = false;
           hoursWrap.hidden = false;
           detailToggle.hidden = true;
-          note.textContent = '時數假：詳細時間會自動換算時數並扣除 12:00～13:00 午休；實際上下班若留白，B/C 保留原值並列為待人工處理。';
+          actualTouched = false;
+          rowEl.dataset.actualTouched = 'false';
+          mirrorActualToLeave();
+          note.textContent = '時數假：詳細時間會自動換算時數並扣除 12:00～13:00 午休；實際上下班預設同假別時間，可自行修改。';
         } else if (status.value === 'normal' && hasExistingData) {
           note.textContent = '重新填寫正常出勤會清除原有 D～H 請假與備註資料。';
         } else if (preserve) {
@@ -1050,6 +1135,7 @@ function showAttendanceModal(fileName, workRows) {
           target.querySelector('.hours-preset').value = hoursPreset.value;
           target.querySelector('.hours-preset').dispatchEvent(new Event('change'));
           target.querySelector('.leave-end').value = leaveEnd.value;
+          target.querySelector('.leave-end').dispatchEvent(new Event('change'));
         });
         note.textContent = '已套用到接下來 ' + Math.min(count, Math.max(0, rows.length - currentIndex - 1)) + ' 個工作日；實際上下班時間未複製；備註也未複製。';
       });
