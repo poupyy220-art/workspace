@@ -32,7 +32,33 @@ const context = {
   Map,
   LUNCH_START_MINUTES: 720,
   LUNCH_END_MINUTES: 780,
+  TIME_SELECT_MINUTES: [0, 10, 20, 30, 40, 50],
 };
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName.toUpperCase();
+    this.children = [];
+    this.options = this.tagName === 'SELECT' ? this.children : undefined;
+    this.attributes = {};
+    this.className = '';
+    this.textContent = '';
+    this._value = '';
+  }
+  appendChild(child) {
+    this.children.push(child);
+    if (this.tagName === 'SELECT' && this.children.length === 1) this._value = child.value;
+    return child;
+  }
+  append(...children) { children.forEach(child => this.appendChild(child)); }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  get value() { return this._value; }
+  set value(value) {
+    const text = String(value);
+    this._value = this.tagName !== 'SELECT' || this.children.some(option => option.value === text) ? text : '';
+  }
+}
+context.document = { createElement: tagName => new FakeElement(tagName) };
 vm.createContext(context);
 for (const name of [
   'randInt', 'pad2', 'fmt', 'escapeXml', 'decodeXmlEntities', 'resolveRelTarget',
@@ -42,6 +68,7 @@ for (const name of [
   'setCellInlineStr', 'isWeekendText', 'randomFillTimes', 'randomUniqueFillTimes',
   'isValidTime', 'timeToMinutes', 'minutesToTime', 'calculateLeaveHours',
   'addWorkingHours', 'isHalfHourIncrement', 'isChronologicalPair',
+  'createTimeSelect',
   'applyAttendanceAdjustments',
 ]) vm.runInContext(extractFunction(name), context);
 
@@ -79,6 +106,18 @@ async function scanWorkbook(zip) {
 }
 
 (async () => {
+  const requiredTime = context.createTimeSelect('請假開始時間', 'leave-start');
+  const requiredHour = requiredTime.children[0];
+  const requiredMinute = requiredTime.children[2];
+  check('24 小時制提供 00-23 共 24 個小時', requiredHour.options.length === 24 && requiredHour.options[0].value === '00' && requiredHour.options[23].value === '23');
+  check('分鐘只提供 00/10/20/30/40/50', requiredMinute.options.map(option => option.value).join(',') === '00,10,20,30,40,50');
+  requiredTime.value = '14:20';
+  check('時間下拉可讀寫 HH:MM', requiredTime.value === '14:20');
+  requiredTime.value = '09:26';
+  check('非 10 分鐘時間會靠近至合法選項', requiredTime.value === '09:30');
+  const optionalTime = context.createTimeSelect('實際上班時間', 'actual-in', { allowEmpty: true });
+  check('實際上下班時間可保留空白選項', optionalTime.value === '' && optionalTime.children[0].options[0].value === '' && optionalTime.children[2].options[0].value === '');
+
   check('09:00-18:00 扣午休為 8hr', context.calculateLeaveHours('09:00', '18:00') === 8);
   check('11:00-14:00 扣午休為 2hr', context.calculateLeaveHours('11:00', '14:00') === 2);
   check('12:00-13:00 扣午休為 0hr', context.calculateLeaveHours('12:00', '13:00') === 0);
