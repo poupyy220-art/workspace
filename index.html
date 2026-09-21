@@ -444,7 +444,7 @@ body{display:flex;background:#f0f4f8;}
       <input type="file" id="cust-import" accept=".xlsx,.xls,.csv" style="display:none" onchange="custImport(event)">
       <hr style="margin:14px 0;border-color:#eee;">
       <div class="panel-title">🔍 多關鍵字查詢</div>
-      <small style="color:#888;display:block;margin-bottom:6px;">每行一個關鍵字</small>
+      <small style="color:#888;display:block;margin-bottom:6px;">每行一個關鍵字，也可用逗點 , ， 分隔多個關鍵字</small>
       <textarea id="cust-query" rows="6" placeholder="F0J6&#10;Fighting&#10;L039" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:5px;font-size:0.85em;font-family:monospace;resize:vertical;"></textarea>
       <button class="action-btn" style="background:#e67e22;width:100%;margin-top:8px;" onclick="custQuery()">🔍 開始查詢</button>
       <button class="action-btn" id="cust-dl-btn" style="background:#27ae60;width:100%;margin-top:6px;display:none;" onclick="custDownload()">⬇️ 下載查詢結果 Excel</button>
@@ -1730,7 +1730,7 @@ function custQuery() {
   var q = document.getElementById('cust-query').value.trim();
   if(!q) { alert('請輸入查詢關鍵字'); return; }
   if(!custDB.length) { custSetStatus('⚠️ 請先 Pull 載入或匯入 Excel', 'err'); return; }
-  var keys = q.split('\n').map(k=>k.trim()).filter(k=>k);
+  var keys = q.split(/[\n,，]+/).map(k=>k.trim()).filter(k=>k);
   var thead = document.getElementById('cust-thead');
   var tbody = document.getElementById('cust-tbody');
   custResults = [];
