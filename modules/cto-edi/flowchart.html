@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CTO EDI 新專案維護流程圖</title>
+  <style>
+    :root{--blue:#235d9f;--teal:#087f75;--line:#cfdae6;--ink:#243142;--muted:#64748b}
+    *{box-sizing:border-box}body{margin:0;background:#f4f7fa;color:var(--ink);font-family:"Microsoft JhengHei",Arial,sans-serif}.wrap{max-width:900px;margin:auto;padding:28px}.head{background:linear-gradient(135deg,var(--blue),var(--teal));color:#fff;border-radius:15px;padding:24px}.head h1{margin:0 0 8px}.head p{margin:0;line-height:1.7}.flow{margin-top:20px}.step{position:relative;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:28px;box-shadow:0 3px 10px #2341}.step:not(:last-child):after{content:'↓';position:absolute;bottom:-27px;left:50%;font-size:24px;color:var(--blue);font-weight:900}.title{display:flex;align-items:center;gap:12px;font-weight:900;font-size:18px}.no{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--blue);color:#fff}.detail{margin:10px 0 0 50px;color:var(--muted);line-height:1.7}.decision{border-color:#e7bd64;background:#fffaf0}.done{border-color:#9ad0b2;background:#f5fff8}.note{background:#fff;border-left:4px solid var(--teal);padding:13px 16px;border-radius:8px;line-height:1.7}.foot{font-size:12px;color:var(--muted);text-align:center;margin-top:18px}@media(max-width:600px){.wrap{padding:14px}.detail{margin-left:0}}
+  </style>
+</head>
+<body><main class="wrap">
+  <header class="head"><h1>CTO EDI 新專案維護流程圖</h1><p>適用於新專案接近量產階段，從收到 CTO BOM 到完成 IT 設定檔交付。</p></header>
+  <section class="flow">
+    <article class="step"><div class="title"><span class="no">1</span>收到 CTO BOM</div><div class="detail">建立專案 Checklist，貼上 MTM 前四碼；系統依固定公式自動展開 CTO PN。</div></article>
+    <article class="step"><div class="title"><span class="no">2</span>詢問 SE／RD／Fany</div><div class="detail">確認新專案是否會接 CTO EDI 訂單，以及是否需要 Configured 標籤。</div></article>
+    <article class="step decision"><div class="title"><span class="no">3</span>Fany 回覆 CTO EDI？</div><div class="detail">No：記錄結果後停止。Yes：取得 Fany 郵件附檔，並繼續收集包裝 RD 棧板清單。</div></article>
+    <article class="step"><div class="title"><span class="no">4</span>提供兩份來源（可並行）</div><div class="detail">於新增專案區提供 Fany PPT 與包裝 RD 棧板清單；前者用於「根據專案加入」，後者用於「自動加棧板設並」的自動產出。</div></article>
+    <article class="step"><div class="title"><span class="no">5</span>在既有 4 個頁簽底端新增資料</div><div class="detail">不建立新頁簽；Mapping、自動加入品名規格、根據專案加入、自動加棧板設並分別追加新專案資料。</div></article>
+    <article class="step"><div class="title"><span class="no">6</span>同事人工確認與交付前驗證</div><div class="detail">逐頁核對新增列、欄位、筆數、PN、公式與檔案可正常開啟；驗證失敗不得發布。</div></article>
+    <article class="step done"><div class="title"><span class="no">7</span>發布最新版並交付 IT</div><div class="detail">上傳完成更新且驗證通過的正式 Excel，保留上一版，提供下一位同事下載接續。</div></article>
+  </section>
+  <div class="note"><b>版本接續：</b>同事下載最新版本完成自己的專案，再上傳新版本；系統保留上一版，下一位同事接續使用最新版。</div>
+  <div class="foot">本流程圖不含真實客戶、料號或內部檔案內容，可作為 SOP 知識庫入口。</div>
+</main></body></html>

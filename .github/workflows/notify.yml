@@ -25,7 +25,7 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "${{ github.event_name == 'workflow_dispatch' && '🧪 Dashboard 料號管理中心 測試通知' || '📢 Dashboard 料號管理中心 已更新' }}"
           
-          to: "${{ github.event_name == 'workflow_dispatch' && 'liann_huang@avc.co' || 'may_chen@avc.co, pauline_cheng@avc.co, doris_lu@avc.co, liann_huang@avc.co' }}"
+          to: "${{ github.event_name == 'workflow_dispatch' && secrets.MAIL_TEST_RECIPIENT || secrets.MAIL_RECIPIENTS }}"
           
           from: "Dashboard 通知 <${{ secrets.MAIL_USERNAME }}>"
           body: |

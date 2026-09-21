@@ -2,7 +2,9 @@
   "name": "bom-part-number-center-dev",
   "private": true,
   "scripts": {
-    "test:bom": "node tests/bom-validator-golden.cjs"
+    "test:bom": "node tests/bom-validator-golden.cjs",
+    "test:cto": "node tests/cto-edi-data-model.cjs",
+    "test:attendance": "node tests/attendance-tool-regression.cjs"
   },
   "devDependencies": {
     "exceljs": "4.4.0",

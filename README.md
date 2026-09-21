@@ -6,6 +6,7 @@
 
 - 首頁與既有工具：`index.html`
 - BOM 轉檔與安檢：`modules/bom-validator/`
+- 出勤表自動填寫：`modules/attendance-tool/`（Excel 僅在使用者瀏覽器本機處理）
 - Cloudflare 預覽部署：`wrangler.jsonc`
 - 自動部署設定：`.github/workflows/deploy.yml`
 

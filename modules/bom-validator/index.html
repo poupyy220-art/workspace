@@ -8,7 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <script src="vendor/opencc-js/cn2t.js?v=1.4.1"></script>
-  <script src="bom-guide.js?v=20260821-1"></script>
+  <script src="bom-guide.js?v=20260902-1"></script>
   <script src="feedback-config.js?v=20260820-2"></script>
   <script src="bom-rules.js?v=20260821-1"></script>
   <script src="workbook-io.js?v=20260820-2"></script>
@@ -32,7 +32,7 @@
 <main class="wrap">
   <section class="panel">
     <h1>🧪 BOM 轉檔與安檢</h1>
-    <div class="sub">系統格式轉換、NEW／OLD 判定、品名與規格檢查、BOM 階層檢查及異常報告｜v2.14.5</div>
+    <div class="sub">系統格式轉換、NEW／OLD 判定、品名與規格檢查、BOM 階層檢查及異常報告｜v2.15.3</div>
     <div class="privacy">🔒 全程在瀏覽器本地處理，不會把 BOM 上傳至伺服器或 AI。原始分頁格式保留，僅修改規則指定的儲存格。</div>
   </section>
   <details class="panel guide" open>
@@ -65,6 +65,7 @@
   <section id="detectPanel" class="panel hidden">
     <h2>2. 系統辨識結果</h2>
     <div class="table-wrap"><table><thead><tr><th>分頁</th><th>角色</th><th>Header</th><th>PN</th><th>Status</th><th>品名／規格</th><th>狀態</th></tr></thead><tbody id="metadataBody"></tbody></table></div>
+    <div id="detectWarning" class="status hidden"></div>
     <div class="actions"><button id="runButton">開始轉檔與安檢</button><button id="resetButton" class="secondary">重新選檔</button></div>
   </section>
   <section id="resultPanel" class="panel hidden">
@@ -129,7 +130,16 @@
       const desc=[m.enColumn&&`EN ${colName(m.enColumn)}`,m.zfColumn&&`ZF ${colName(m.zfColumn)}`,m.zhColumn&&`ZH ${colName(m.zhColumn)}`,m.viColumn&&`VI ${colName(m.viColumn)}`,m.specColumn&&`規格 ${colName(m.specColumn)}`].filter(Boolean).join(' / ')||'—';
       return `<tr><td>${escapeHtml(m.sheetName)}</td><td>${m.excluded?'參考分頁':'BOM'}</td><td>${m.headerRow||'—'}</td><td>${colName(m.pnColumn)}</td><td>${colName(m.statusColumn)}<br><small>${m.statusDetectionMethod||''}</small></td><td>${desc}</td><td>${state}</td></tr>`;
     }).join('');
-    $('runButton').disabled=detectedMetadata.filter(m=>!m.excluded).every(m=>m.warnings.some(w=>w.severity==='BLOCKER'));
+    const processableSheets=detectedMetadata.filter(m=>!m.excluded);
+    const noProcessableSheets=processableSheets.length===0;
+    const warningEl=$('detectWarning');
+    if(noProcessableSheets){
+      warningEl.className='status bad';
+      warningEl.textContent='⚠️ 找不到任何可處理的 BOM 分頁：全部分頁都被系統視為「參考用、不處理」，因此無法開始轉檔。請確認真正的 BOM 分頁索引標籤顏色是否為綠色（RGB 00B050 或 92D050），或分頁名稱是否為「BOM格式」，調整後重新選擇檔案。';
+    }else{
+      warningEl.className='status hidden';warningEl.textContent='';
+    }
+    $('runButton').disabled=noProcessableSheets||processableSheets.every(m=>m.warnings.some(w=>w.severity==='BLOCKER'));
   }
   async function runProcessing(){
     $('runButton').disabled=true;$('runButton').textContent='處理中…';

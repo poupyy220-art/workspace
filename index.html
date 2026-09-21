@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.14.5</title>
+<title>料號管理中心 v2.15.3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -133,7 +133,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.14.5 · 全雲端整合平台</div>
+    <div class="logo-sub">v2.15.3 · 整合工具平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -152,15 +152,19 @@ body{display:flex;background:#f0f4f8;}
   <div class="nav-item" data-p="spb"><span class="nav-icon">🔀</span>SPB vs L10 v3.0</div>
   <div class="nav-item" data-p="pim"><span class="nav-icon">🗂️</span>PIM 合併 v4.9</div>
   <div class="nav-item" data-p="bomcheck"><span class="nav-icon">🧪</span>BOM 轉檔與安檢</div>
+  <div class="nav-item" data-p="ctoedi"><span class="nav-icon">📦</span>CTO EDI 新專案</div>
+
+  <div class="nav-section">行政工具</div>
+  <div class="nav-item" data-p="attendance"><span class="nav-icon">🕒</span>出勤表填寫<span class="nav-badge">本機</span></div>
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.14.5</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.15.3</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.14.5 · 2026-08-21<br>
-    🧪 BOM 轉檔與安檢<br>
+    v2.15.3 · 2026-09-02<br>
+    🕒 出勤表填寫<br>
     維護：料號管理員
   </div>
 </div>
@@ -172,7 +176,7 @@ body{display:flex;background:#f0f4f8;}
   <div id="topbar">
     <button id="hamburgerBtn" type="button" aria-label="開啟導航選單" onclick="toggleMobileSidebar()">☰</button>
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.14.5</div>
+    <div class="topbar-right">料號管理中心 v2.15.3</div>
   </div>
   <div id="content">
 
@@ -183,18 +187,49 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.14.5</span>
-          <span class="announce-date">2026-08-21</span>
+          <span class="announce-ver">v2.15.3</span>
+          <span class="announce-date">2026-09-02</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
         <ul class="announce-list">
-          <li><span class="announce-fix">🔧 FIX</span> 修正 BOM 中間有空白分隔列時，尾端資料未執行代碼轉換的問題</li>
-          <li><span class="announce-fix">🔧 FIX</span> 分群碼、來源碼、單位與特殊屬性支援純描述、全形冒號及漏冒號格式，並與 Python baseline 對齊</li>
-          <li><span class="announce-new">🛡️ SAFE</span> 代碼前綴與說明不一致或說明未知時保留原值，避免錯誤自動轉換</li>
+          <li><span class="announce-fix">🎨 UX</span> 出勤時間改為 24 小時制下拉，分鐘固定為 00／10／20／30／40／50</li>
+          <li><span class="announce-fix">🔧 FIX</span> 請假起訖時間、請假時數及實際上下班預設同步連動</li>
+          <li><span class="announce-new">🛡️ SAFE</span> 請假區塊改為彈性換行，並保留本機處理與上下班時間不可重複驗證</li>
         </ul>
         <!-- 歷史版本 -->
         <details style="margin-top:10px;">
           <summary style="font-size:0.8em;color:#92400e;cursor:pointer;user-select:none;">📋 歷史版本紀錄</summary>
+          <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
+            <div style="margin-bottom:4px;"><span class="announce-ver">v2.15.2</span><span class="announce-date" style="margin-left:6px;">2026-09-01</span></div>
+            <ul class="announce-list" style="margin-top:4px;">
+              <li><span class="announce-fix">🔧 FIX</span> 時數假詳細時間與 X 小時雙向連動，並自動排除 12:00–13:00 午休</li>
+              <li><span class="announce-fix">🔧 FIX</span> 選填備註改寫入 Excel H 欄，請假內容不再混入備註</li>
+              <li><span class="announce-new">🛡️ SAFE</span> 已有出勤紀錄預設保留，並安全補寫範本中缺少的儲存格</li>
+            </ul>
+          </div>
+          <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
+            <div style="margin-bottom:4px;"><span class="announce-ver">v2.15.1</span><span class="announce-date" style="margin-left:6px;">2026-08-31</span></div>
+            <ul class="announce-list" style="margin-top:4px;">
+              <li><span class="announce-fix">🔧 FIX</span> 修正時數假選擇「自訂」後，小時輸入欄位過窄而無法操作的問題</li>
+              <li><span class="announce-fix">🎨 UX</span> 自訂時數欄固定顯示足夠寬度，可直接輸入 0.5–8 小時並以 0.5 小時調整</li>
+            </ul>
+          </div>
+          <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
+            <div style="margin-bottom:4px;"><span class="announce-ver">v2.15.0</span><span class="announce-date" style="margin-left:6px;">2026-08-31</span></div>
+            <ul class="announce-list" style="margin-top:4px;">
+              <li><span class="announce-new">🆕 NEW</span> 新增「出勤表自動填寫」模組，可在產生前逐日確認正常出勤、全天請假或時數假</li>
+              <li><span class="announce-fix">🎨 UX</span> 時數假要求確認實際上下班；支援批次套用並維持精簡操作介面</li>
+              <li><span class="announce-new">🛡️ SAFE</span> Excel 僅在瀏覽器本機處理，並檢查上下班時間不可重複；個人紀錄只保存在目前瀏覽器</li>
+            </ul>
+          </div>
+          <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
+            <div style="margin-bottom:4px;"><span class="announce-ver">v2.14.5</span><span class="announce-date" style="margin-left:6px;">2026-08-21</span></div>
+            <ul class="announce-list" style="margin-top:4px;">
+              <li><span class="announce-fix">🔧 FIX</span> 修正 BOM 中間有空白分隔列時，尾端資料未執行代碼轉換的問題</li>
+              <li><span class="announce-fix">🔧 FIX</span> 分群碼、來源碼、單位與特殊屬性支援純描述、全形冒號及漏冒號格式，並與 Python baseline 對齊</li>
+              <li><span class="announce-new">🛡️ SAFE</span> 代碼前綴與說明不一致或說明未知時保留原值，避免錯誤自動轉換</li>
+            </ul>
+          </div>
           <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
             <div style="margin-bottom:4px;"><span class="announce-ver">v2.14.4</span><span class="announce-date" style="margin-left:6px;">2026-08-20</span></div>
             <ul class="announce-list" style="margin-top:4px;">
@@ -312,10 +347,23 @@ body{display:flex;background:#f0f4f8;}
           <div class="card-desc">BOM 系統格式轉換、NEW／OLD 判定、品名與規格檢查、階層安檢及異常報告。保留原 Excel 格式。</div>
           <div class="card-footer"><span class="card-tag local">本地處理</span><span class="card-go">開啟 →</span></div>
         </div>
+        <div class="home-card teal" onclick="goPage('ctoedi')">
+          <div class="home-icon">📦</div><div class="home-title">CTO EDI 新專案維護</div>
+          <div class="home-desc">依流程完成 Mapping、品名規格、棧板設定與專案固定標籤，並管理 Google Drive 最新版本。</div>
+          <div class="home-tag">Checklist · 多筆 MTM · Drive 版本管理</div>
+        </div>
         <div class="home-card sop" onclick="goPage('sop')">
           <div class="card-head">📖 SOP 知識庫</div>
           <div class="card-desc">12 篇 SOP 快速查詢，新人教學路徑 4 步驟，直連 Notion 知識庫。</div>
           <div class="card-footer"><span class="card-tag local">Notion</span><span class="card-go">開啟 →</span></div>
+        </div>
+      </div>
+      <div class="section-title">行政工具</div>
+      <div class="home-grid">
+        <div class="home-card green" onclick="goPage('attendance')">
+          <div class="card-head">🕒 出勤表自動填寫</div>
+          <div class="card-desc">上傳每月出勤表，確認正常出勤、全天請假或時數假後產生 Excel。保留灰色、週末及異常確認規則。</div>
+          <div class="card-footer"><span class="card-tag local">本地處理</span><span class="card-go">開啟 →</span></div>
         </div>
       </div>
     </div>
@@ -411,7 +459,7 @@ body{display:flex;background:#f0f4f8;}
       <input type="file" id="cust-import" accept=".xlsx,.xls,.csv" style="display:none" onchange="custImport(event)">
       <hr style="margin:14px 0;border-color:#eee;">
       <div class="panel-title">🔍 多關鍵字查詢</div>
-      <small style="color:#888;display:block;margin-bottom:6px;">每行一個關鍵字</small>
+      <small style="color:#888;display:block;margin-bottom:6px;">每行一個關鍵字，也可用逗點 , ， 分隔多個關鍵字</small>
       <textarea id="cust-query" rows="6" placeholder="F0J6&#10;Fighting&#10;L039" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:5px;font-size:0.85em;font-family:monospace;resize:vertical;"></textarea>
       <button class="action-btn" style="background:#e67e22;width:100%;margin-top:8px;" onclick="custQuery()">🔍 開始查詢</button>
       <button class="action-btn" id="cust-dl-btn" style="background:#27ae60;width:100%;margin-top:6px;display:none;" onclick="custDownload()">⬇️ 下載查詢結果 Excel</button>
@@ -1193,6 +1241,16 @@ function getDefaultPartNo() {
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals"></iframe>
     </div>
 
+    <div id="page-attendance" class="page">
+      <iframe class="tool-iframe" src="modules/attendance-tool/index.html?v=10.4"
+        sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals"></iframe>
+    </div>
+
+    <div id="page-ctoedi" class="page">
+      <iframe class="tool-iframe" src="modules/cto-edi/index.html?v=20260831-2"
+        sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox"></iframe>
+    </div>
+
     <!-- SOP -->
     <div id="page-sop" class="page">
       <div style="padding:20px 24px;overflow-y:auto;flex:1;">
@@ -1263,8 +1321,8 @@ var TITLES = {
   countrydb:'🛠️ 國別 DB 維護  ☁️ Google Sheet → CountryDB',
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.0', spb:'🔀 SPB vs L10 v3.0',
-  pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.14.5',
+  pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
+  testplan:'📋 測試清單 v2.15.3',
   docs:'📄 說明文件 v2.6'
 };
 
@@ -1315,8 +1373,10 @@ window.matchMedia('(min-width:768px)').addEventListener('change', function(e){
 
 // ═══ SOP 知識庫 (可自訂欄位) ═══
 var SOP_BUILTIN_BOM = {title:'BOM 轉檔與安檢操作 SOP', url:'modules/bom-validator/sop.html', color:'#16a085', builtin:true};
+var SOP_BUILTIN_CTO = {title:'CTO EDI 新專案維護流程', url:'modules/cto-edi/flowchart.html', color:'#16a085', builtin:true};
 var SOP_DEFAULT = [
   SOP_BUILTIN_BOM,
+  SOP_BUILTIN_CTO,
   {title:'PN 建立流程',         url:'https://calico-dream-9aa.notion.site/SOP-32728ae15e99808081d9c9f12db8af77', color:'#2980b9'},
   {title:'PN 命名規則',         url:'https://calico-dream-9aa.notion.site/SOP-32728ae15e99808081d9c9f12db8af77', color:'#2980b9'},
   {title:'共用料查詢',          url:'https://calico-dream-9aa.notion.site/SOP-32728ae15e99808081d9c9f12db8af77', color:'#2980b9'},
@@ -1378,7 +1438,7 @@ function sopLoad() {
 function sopRender() {
   var grid = document.getElementById('sop-grid');
   if(!grid) return;
-  var visibleCards = [SOP_BUILTIN_BOM].concat(sopCards.filter(function(c) { return c.title !== SOP_BUILTIN_BOM.title; }));
+  var visibleCards = [SOP_BUILTIN_BOM, SOP_BUILTIN_CTO].concat(sopCards.filter(function(c) { return c.title !== SOP_BUILTIN_BOM.title && c.title !== SOP_BUILTIN_CTO.title; }));
   grid.innerHTML = visibleCards.map(function(c,i) {
     return '<div class="sop-card" data-url="'+encodeURIComponent(c.url)+'" style="cursor:pointer;">' +
       '<div class="sop-dot" style="background:'+c.color+'"></div>' +
@@ -1699,7 +1759,7 @@ function custQuery() {
   var q = document.getElementById('cust-query').value.trim();
   if(!q) { alert('請輸入查詢關鍵字'); return; }
   if(!custDB.length) { custSetStatus('⚠️ 請先 Pull 載入或匯入 Excel', 'err'); return; }
-  var keys = q.split('\n').map(k=>k.trim()).filter(k=>k);
+  var keys = q.split(/[\n,，]+/).map(k=>k.trim()).filter(k=>k);
   var thead = document.getElementById('cust-thead');
   var tbody = document.getElementById('cust-tbody');
   custResults = [];
