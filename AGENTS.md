@@ -6,6 +6,8 @@
 
 不得只依賴聊天室記憶或上一輪摘要。若 `RELEASE_CHECKLIST.md` 與使用者本次明確指示衝突，以使用者本次指示為準，並同步更新 checklist，避免下次再次遺漏。
 
+這個 repo 同時有 Mac（`my-agent`）與 Windows（`Work-Agent`）兩份獨立 clone 在維護，任何一邊都可能在另一邊不知情的狀況下推送新 commit。開始任何修改前，先執行 `git fetch` 並比對本機 `main` 與 `origin/main`；若落後，先確認遠端新增了什麼（可能是另一台機器剛完成的工作），評估是否要先 `pull`／整合到最新基礎再開始改，不要在過時版本上工作到最後才發現衝突。
+
 ## BOM Business Rule
 
 - `convert_multi_sheets.py` 是 BOM 轉檔／安檢 Business Rule baseline，不是參考範例。
