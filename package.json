@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "test:bom": "node tests/bom-validator-golden.cjs",
+    "test:bom-simplified-code": "node tests/bom-validator-simplified-code-mapping-regression.cjs",
     "test:cto": "node tests/cto-edi-data-model.cjs",
     "test:attendance": "node tests/attendance-tool-regression.cjs"
   },
