@@ -60,8 +60,16 @@
         let current = global.BomRules.cellText(cell); let normalized = current;
         if (['規格', '繁中品名', '簡中品名'].some(key => header.includes(key))) normalized = global.BomRules.toTraditionalChinese(current);
         if (normalized !== current) safeSet(ctx, worksheet, row, col, normalized, 'BR-003', '指定字元正規化');
-        const codeValue = global.BomRules.convertCode(global.BomRules.cellText(cell));
-        if (String(codeValue) !== global.BomRules.cellText(cell)) safeSet(ctx, worksheet, row, col, codeValue, 'BR-002', 'CODE_MAPPING');
+        // 分群碼/來源碼/單位/特殊屬性等代碼欄位可能填簡體字（如「材料阶」「个」）；
+        // 對照表鍵值只有繁體字，直接比對會漏轉。簡轉繁後再比對一次可以補上這種情況，
+        // 但 OpenCC 的繁體正規化本身會動到「台」等本來就合法的既有繁體字（台->臺），
+        // 導致「個/台/套/條」這種本來就能直接比對成功的既有繁體內容比對失敗；因此只有在
+        // 簡轉繁後的字串真的命中代碼表時才採用該結果，沒命中就完全保留原始內容不覆寫。
+        const rawCode = global.BomRules.convertCode(current);
+        const traditionalized = global.BomRules.toTraditionalChinese(current);
+        const traditionalCode = global.BomRules.convertCode(traditionalized);
+        const codeValue = rawCode !== current ? rawCode : (traditionalCode !== traditionalized ? traditionalCode : current);
+        if (String(codeValue) !== current) safeSet(ctx, worksheet, row, col, codeValue, 'BR-002', 'CODE_MAPPING');
       });
 
       if (valueIsBlank(statusBefore)) safeSet(ctx, worksheet, row, metadata.statusColumn, pn && global.BomRules.isStandardPn(pn) ? 'OLD' : 'NEW', 'BR-018', 'NEW/OLD 自動判定');
