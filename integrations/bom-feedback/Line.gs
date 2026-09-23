@@ -68,7 +68,7 @@ function handleLineEvent_(event) {
   }
 
   if (event.type === 'join') {
-    lineReply_(event.replyToken, '大家好，我是料號小幫手 🤖\n網站有問題時，訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n一般聊天我不會回、也不會記錄。');
+    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n網站有問題時，訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n一般聊天我不會回、也不會記錄。');
     return;
   }
   if (event.type !== 'message' || !event.message) return;
@@ -394,7 +394,7 @@ function notifyLineReport_(reportId, now, tool, description) {
       to: requiredProperty_('NOTIFY_EMAIL'),
       subject: `[LINE 回報] ${tool || '工具待確認'}｜${reportId}`,
       htmlBody: `<p><b>回報編號：</b>${escapeHtml_(reportId)}</p><p><b>時間：</b>${escapeHtml_(formatDate_(now))}</p><p><b>工具：</b>${escapeHtml_(tool || '待確認')}</p><p><b>問題：</b>${escapeHtml_(description)}</p><p>截圖會陸續寫入 Sheet 的圖片連結欄。</p>`,
-      name: '料號小幫手'
+      name: 'Debug 小幫手'
     });
   } catch (mailError) {
     console.error(mailError);

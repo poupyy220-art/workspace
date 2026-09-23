@@ -1,4 +1,4 @@
-# LINE 料號小幫手：設定步驟與排查
+# LINE Debug 小幫手：設定步驟與排查
 
 ## 資料流
 
@@ -26,7 +26,7 @@
 
 ## 一次性設定（標「你」的步驟需要本人登入操作）
 
-1. **你：建立 LINE 官方帳號並啟用 Messaging API。** 到 LINE Official Account Manager 建立新的工作用官方帳號（例如「料號小幫手」），再到「設定 → Messaging API」按啟用。不要沿用家庭用的機器人。官方介面若有變動，以 LINE 當下畫面為準。
+1. **你：建立 LINE 官方帳號並啟用 Messaging API。** 到 LINE Official Account Manager 建立新的工作用官方帳號（例如「Debug 小幫手」），再到「設定 → Messaging API」按啟用。不要沿用家庭用的機器人。官方介面若有變動，以 LINE 當下畫面為準。
 2. **你：官方帳號設定。**
    - 「帳號設定」→ 允許「加入群組或多人聊天室」。
    - 「回應設定」→ 關閉「自動回應訊息」與「加入好友的歡迎訊息」，開啟「Webhook」。
@@ -40,7 +40,7 @@
    - `LINE_SETUP_MODE` = `true`（第 9 步完成後刪除）
 6. **你：重新部署同一個網址。** 部署 → 管理部署 → 編輯（鉛筆）→ 版本選「新版本」→ 部署。**不要按「新增部署」**，否則網址會變，網站的回饋按鈕會失效。
 7. **你：在編輯器依序執行兩個函式**（上方下拉選單選函式 → 執行）：
-   - `checkLineSetup`：第一次會要求授權「連線到外部服務」，同意後應顯示「LINE 機器人「料號小幫手」連線正常」。
+   - `checkLineSetup`：第一次會要求授權「連線到外部服務」，同意後應顯示「LINE 機器人「Debug 小幫手」連線正常」。
    - 先執行 `setupLineWebhookKey`：自動產生暗號並在執行紀錄顯示 `k=` 後的暗號（不要截圖）。Webhook URL ＝「管理部署作業」裡結尾 `/exec` 的網址＋`?k=暗號`；**不要用 `/dev` 網址**，LINE 連不進去。
    - 再執行 `checkLineSetup` 確認 token 與暗號。
 8. **你：LINE Developers Console →「Messaging API」分頁 → Webhook URL** 貼上第 7 步的網址，打開「Use webhook」。按「Verify」若顯示錯誤，先別急，直接做第 9 步實測。
@@ -51,7 +51,7 @@
     - 貼一張無敏感資訊的截圖 → 應回「已附上第 1 張截圖」；Sheet 有連結。
     - 在 Sheet 的 O 欄寫「測試回覆」、P 欄改 `核准發送` → 執行 `processLineOutbox` → 群組收到「F001：測試回覆」。
 11. **你：執行 `setupLineTriggers`**，建立每 10 分鐘自動送出回覆的排程。
-12. **你：正式群組。** 把機器人拉進工作群組 → 輸入 `#群組ID`（需暫時把 `LINE_SETUP_MODE` 改回 `true`）→ 把正式群組 ID 用逗號加到 `LINE_GROUP_IDS` → 再刪除 `LINE_SETUP_MODE`。在群組公告：「料號小幫手只記錄 #回報 開頭的訊息，一般聊天不會記錄」。
+12. **你：正式群組。**（只用一個機器人：Apps Script 只存一組 token，兩個官方帳號不能同時接同一個 Webhook） 把機器人拉進工作群組 → 輸入 `#群組ID`（需暫時把 `LINE_SETUP_MODE` 改回 `true`）→ 把正式群組 ID 用逗號加到 `LINE_GROUP_IDS` → 再刪除 `LINE_SETUP_MODE`。在群組公告：「Debug 小幫手只記錄 #回報 開頭的訊息，一般聊天不會記錄」。
 
 ## 機器人沒反應時，依序檢查 3 個地方
 
