@@ -4,6 +4,15 @@
 
 `BOM 網頁 → Apps Script Web App → BOM Feedback Google Sheet＋私人 Google Drive 圖片資料夾 → 維護人員通知信`
 
+LINE 工作群組的「#回報」入口共用同一個 Apps Script 與 Sheet，程式在 `Line.gs`，設定與排查步驟見 [LINE_SETUP.md](LINE_SETUP.md)。
+
+## 測試
+
+```bash
+node integrations/bom-feedback/Code.test.cjs
+node integrations/bom-feedback/Line.test.cjs
+```
+
 ## 隱私與防護
 
 - 僅接受問題類型、分頁／列號、問題描述及選填圖片，不接受 Excel 或 BOM 檔案。
