@@ -143,8 +143,8 @@
   }
   async function runProcessing(){
     $('runButton').disabled=true;$('runButton').textContent='處理中…';
-    try{result=BomEngine.processWorkbook(workbook);outputBuffer=await BomWorkbookIO.writeWorkbook(workbook);renderResults();$('resultPanel').classList.remove('hidden');}
-    catch(error){console.error(error);alert('處理失敗：'+error.message)}finally{$('runButton').textContent='已完成'}
+    try{result=BomEngine.processWorkbook(workbook);outputBuffer=await BomWorkbookIO.writeWorkbook(workbook);renderResults();$('resultPanel').classList.remove('hidden');$('runButton').textContent='已完成';}
+    catch(error){console.error(error);alert('處理失敗：'+error.message);$('runButton').textContent='處理失敗，請按「重新選檔」'}
   }
   function renderResults(){
     $('sheetCount').textContent=result.metadata.filter(m=>!m.excluded).length;$('itemCount').textContent=result.itemCount;$('newCount').textContent=result.newCount;$('blockerCount').textContent=result.blockerCount;$('warningCount').textContent=result.warningCount;
