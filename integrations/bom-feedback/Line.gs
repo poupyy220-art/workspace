@@ -131,7 +131,8 @@ function createLineReport_(event, groupId, userId, description) {
       const sheet = getSheet_(FEEDBACK_SHEET);
       ensureLineHeaders_(sheet);
       const row = [
-        reportId, now, sheetText_(MODULE_VERSION), 'LINE 回報', sheetText_(tool ? `工具：${tool}` : '工具：待確認'),
+        // LINE 不知道同事實際使用的網站版本，模組版本欄留空避免誤導
+        reportId, now, '', 'LINE 回報', sheetText_(tool ? `工具：${tool}` : '工具：待確認'),
         sheetText_(safeDescription), '新回饋', '', '', '', 'LINE', '', 0, groupId, '', '', ''
       ];
       sheet.appendRow(row);
