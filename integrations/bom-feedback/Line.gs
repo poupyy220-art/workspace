@@ -20,6 +20,15 @@ const LINE_CLOSE_PATTERN = /^[#＃]?\s*(F\d{3,})\s*(ok|好了|可以了|沒問�
 const LINE_PENDING_SECONDS = 600;
 const LINE_MAX_IMAGES = 3;
 const LINE_COLUMNS = { status: 7, source: 11, imageLinks: 12, imageCount: 13, group: 14, reply: 15, replyStatus: 16, replyTime: 17 };
+
+// 「#更新」資料更新需求：另存「Data Requests」分頁（U001 起編號）；AI 只做比對預覽，寫入一律由維護者在 Claude 觸發
+const LINE_UPDATE_PREFIX = /^[#＃]\s*更新\s*/;
+const DATA_REQUEST_SHEET = 'Data Requests';
+const DATA_COLUMNS = { type: 3, description: 4, fileLinks: 5, fileCount: 6, status: 7, group: 8, reply: 9, replyStatus: 10, replyTime: 11 };
+const DATA_HEADERS = ['需求編號', '送出時間', '更新類型', '說明', '檔案連結', '檔案數量', '處理狀態', 'LINE 群組', '給同事的回覆', '回覆狀態', '回覆時間'];
+const DATA_MAX_FILES = 3;
+const DATA_MAX_FILE_BYTES = 10 * 1024 * 1024;
+const DATA_TYPES = [{ name: 'PN_Project_Map', keys: ['pn_project_map', 'project_map', 'project map', '專案對照', '料號對照'] }];
 // 由具體到籠統排序：先比對專有名稱，最後才用 bom、pn 這種常見字
 const LINE_TOOLS = [
   { name: 'PIM 合併', keys: ['pim'] },
@@ -68,7 +77,7 @@ function handleLineEvent_(event) {
   }
 
   if (event.type === 'join') {
-    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n網站有問題時，訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n一般聊天我不會回、也不會記錄。');
+    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題：訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n・要更新 PN_Project_Map：打「#更新 PN_Project_Map」再傳 BOM_TREE Excel 檔。\n一般聊天我不會回、也不會記錄。');
     return;
   }
   if (event.type !== 'message' || !event.message) return;
@@ -76,6 +85,7 @@ function handleLineEvent_(event) {
   const userId = source.userId || 'unknown';
   if (event.message.type === 'text') handleLineText_(event, groupId, userId, event.message.text || '');
   else if (event.message.type === 'image') handleLineImage_(event, groupId, userId);
+  else if (event.message.type === 'file') handleLineFile_(event, groupId, userId);
 }
 
 function handleLineText_(event, groupId, userId, rawText) {
@@ -83,6 +93,11 @@ function handleLineText_(event, groupId, userId, rawText) {
 
   if (LINE_REPORT_PREFIX.test(text)) {
     createLineReport_(event, groupId, userId, text.replace(LINE_REPORT_PREFIX, ''));
+    return;
+  }
+
+  if (LINE_UPDATE_PREFIX.test(text)) {
+    createDataRequest_(event, groupId, userId, text.replace(LINE_UPDATE_PREFIX, ''));
     return;
   }
 
@@ -157,6 +172,10 @@ function handleLineImage_(event, groupId, userId) {
   // 只收「剛打完 #回報的同一個人」接著貼的圖，一般聊天的圖不碰
   const pending = getLinePending_(groupId, userId);
   if (!pending) return;
+  if (pending.kind === 'data') {
+    lineReply_(event.replyToken, `${pending.id} 需要的是 Excel 檔（BOM_TREE_….xlsx），截圖沒有記錄。`);
+    return;
+  }
   if (pending.images >= LINE_MAX_IMAGES) {
     lineReply_(event.replyToken, `${pending.id} 最多附 ${LINE_MAX_IMAGES} 張截圖，這張沒有記錄。`);
     return;
@@ -193,6 +212,147 @@ function fetchLineImage_(messageId) {
   if (!matchesImageSignature_(bytes, mimeType)) throw new Error('Image content does not match type');
   const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
   return { mimeType: mimeType, bytes: bytes, extension: extension };
+}
+
+// ---------- 資料更新需求（#更新） ----------
+
+function createDataRequest_(event, groupId, userId, description) {
+  let safeDescription;
+  try {
+    safeDescription = safeText_(description, 500, false);
+  } catch (lengthError) {
+    lineReply_(event.replyToken, '說明超過 500 字，請精簡後再送一次。');
+    return;
+  }
+  const type = detectDataType_(safeDescription);
+  const now = new Date();
+  let requestId = '';
+
+  try {
+    withLock_(function () {
+      const guard = checkFeedbackGuard_('DATA', groupId, safeDescription || type, 0, now);
+      requestId = nextDataRequestId_();
+      getDataRequestSheet_().appendRow([
+        requestId, now, type || '待確認', sheetText_(safeDescription), '', 0, '新需求', groupId, '', '', ''
+      ]);
+      commitFeedbackGuard_(guard);
+    });
+  } catch (guardError) {
+    const message = String(guardError.message || guardError);
+    if (/Duplicate/.test(message)) lineReply_(event.replyToken, '這個更新需求 5 分鐘內已經送過了，不用重複送 👍');
+    else if (/Daily/.test(message)) lineReply_(event.replyToken, '今天的需求數量已達上限，請直接私訊維護人員。');
+    else throw guardError;
+    return;
+  }
+
+  putLinePending_(groupId, userId, { id: requestId, kind: 'data', files: 0 });
+  notifyDataRequest_(requestId, now, type, safeDescription);
+  const typeText = type ? `（${type}）` : '';
+  const unsupported = type ? '' : '\n目前自動比對只支援 PN_Project_Map，其他資料會由維護人員另外處理。';
+  lineReply_(event.replyToken, `收到 ${requestId}${typeText} 📥\n請在 10 分鐘內傳 BOM_TREE Excel 檔（最多 ${DATA_MAX_FILES} 個）。\nAI 會先比對預覽，確認前不會改動資料。${unsupported}`);
+}
+
+function handleLineFile_(event, groupId, userId) {
+  // 只收「剛打完 #更新 的同一個人」接著傳的 Excel，一般聊天的檔案不碰
+  const pending = getLinePending_(groupId, userId);
+  if (!pending || pending.kind !== 'data') return;
+  if (pending.files >= DATA_MAX_FILES) {
+    lineReply_(event.replyToken, `${pending.id} 最多附 ${DATA_MAX_FILES} 個檔案，這個沒有記錄。`);
+    return;
+  }
+  const fileName = String(event.message.fileName || '');
+  if (!/\.xlsx?$/i.test(fileName)) {
+    lineReply_(event.replyToken, `${pending.id} 只收 Excel 檔（.xlsx／.xls），「${fileName}」沒有記錄。`);
+    return;
+  }
+  if (Number(event.message.fileSize || 0) > DATA_MAX_FILE_BYTES) {
+    lineReply_(event.replyToken, `${pending.id}：檔案超過 10 MB，沒有記錄，請直接私訊維護人員。`);
+    return;
+  }
+
+  const bytes = fetchLineContent_(event.message.id);
+  if (!bytes.length || bytes.length > DATA_MAX_FILE_BYTES) throw new Error('Data file exceeds size limit');
+  if (!matchesExcelSignature_(bytes)) {
+    lineReply_(event.replyToken, `${pending.id}：「${fileName}」內容不是有效的 Excel，沒有記錄。`);
+    return;
+  }
+
+  const folder = DriveApp.getFolderById(PropertiesService.getScriptProperties().getProperty('DATA_REQUEST_FOLDER_ID') || requiredProperty_('FEEDBACK_IMAGE_FOLDER_ID'));
+  const safeName = fileName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+  const mimeType = /\.xls$/i.test(fileName) ? 'application/vnd.ms-excel' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const file = folder.createFile(Utilities.newBlob(bytes, mimeType, `${pending.id}_${safeName}`));
+  file.setDescription(`Data request file for ${pending.id}`);
+
+  withLock_(function () {
+    const sheet = getDataRequestSheet_();
+    const rowNumber = findFeedbackRow_(sheet, pending.id);
+    if (!rowNumber) throw new Error('Data request row not found');
+    const linkCell = sheet.getRange(rowNumber, DATA_COLUMNS.fileLinks);
+    const links = String(linkCell.getValue() || '');
+    linkCell.setValue(links ? `${links}\n${file.getUrl()}` : file.getUrl());
+    sheet.getRange(rowNumber, DATA_COLUMNS.fileCount).setValue(pending.files + 1);
+  });
+
+  pending.files += 1;
+  putLinePending_(groupId, userId, pending);
+  lineReply_(event.replyToken, `📎 ${pending.id} 已收到檔案：${safeName}\nAI 比對完會把預覽交給維護人員確認。`);
+}
+
+function fetchLineContent_(messageId) {
+  const response = UrlFetchApp.fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
+    headers: { Authorization: `Bearer ${requiredProperty_('LINE_CHANNEL_ACCESS_TOKEN')}` },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) throw new Error(`LINE content fetch failed: ${response.getResponseCode()}`);
+  return response.getBlob().getBytes();
+}
+
+function matchesExcelSignature_(bytes) {
+  const byte = function (index) { return ((bytes[index] || 0) + 256) % 256; };
+  const isZip = byte(0) === 0x50 && byte(1) === 0x4B && byte(2) === 0x03 && byte(3) === 0x04; // .xlsx
+  const isOle = [0xD0, 0xCF, 0x11, 0xE0].every(function (value, index) { return byte(index) === value; }); // .xls
+  return isZip || isOle;
+}
+
+function detectDataType_(text) {
+  const lower = String(text).toLowerCase();
+  for (let i = 0; i < DATA_TYPES.length; i += 1) {
+    if (DATA_TYPES[i].keys.some(function (key) { return lower.indexOf(key) >= 0; })) return DATA_TYPES[i].name;
+  }
+  return '';
+}
+
+function nextDataRequestId_() {
+  const properties = PropertiesService.getScriptProperties();
+  const next = Number(properties.getProperty('LINE_DATA_SEQ') || 0) + 1;
+  properties.setProperty('LINE_DATA_SEQ', String(next));
+  return `U${String(next).padStart(3, '0')}`;
+}
+
+/** 第一次使用時自動建立「Data Requests」分頁；版面比照 BOM Feedback（第 4 列標題、第 5 列起資料）。 */
+function getDataRequestSheet_() {
+  const spreadsheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID'));
+  let sheet = spreadsheet.getSheetByName(DATA_REQUEST_SHEET);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(DATA_REQUEST_SHEET);
+    sheet.getRange(1, 1).setValue('資料更新需求（LINE #更新）');
+    sheet.getRange(2, 1).setValue('AI 只做比對預覽；寫入一律由維護者在 Claude 確認後執行。');
+    sheet.getRange(4, 1, 1, DATA_HEADERS.length).setValues([DATA_HEADERS]);
+  }
+  return sheet;
+}
+
+function notifyDataRequest_(requestId, now, type, description) {
+  try {
+    MailApp.sendEmail({
+      to: requiredProperty_('NOTIFY_EMAIL'),
+      subject: `[LINE 更新需求] ${type || '類型待確認'}｜${requestId}`,
+      htmlBody: `<p><b>需求編號：</b>${escapeHtml_(requestId)}</p><p><b>時間：</b>${escapeHtml_(formatDate_(now))}</p><p><b>類型：</b>${escapeHtml_(type || '待確認')}</p><p><b>說明：</b>${escapeHtml_(description || '（未填）')}</p><p>檔案會陸續寫入「Data Requests」分頁；確認預覽前不會寫入任何資料。</p>`,
+      name: 'Debug 小幫手'
+    });
+  } catch (mailError) {
+    console.error(mailError);
+  }
 }
 
 // ---------- 結案 ----------
@@ -260,26 +420,32 @@ function collectMergedPullRequests_() {
 }
 
 function sendApprovedLineReplies_() {
-  const sheet = getSheet_(FEEDBACK_SHEET);
+  sendApprovedRepliesFrom_(getSheet_(FEEDBACK_SHEET), LINE_COLUMNS);
+  // Data Requests 分頁要等第一個 #更新 才會建立；沒有就略過
+  const dataSheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET);
+  if (dataSheet) sendApprovedRepliesFrom_(dataSheet, DATA_COLUMNS);
+}
+
+function sendApprovedRepliesFrom_(sheet, columns) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 5) return;
-  const rows = sheet.getRange(5, 1, lastRow - 4, LINE_COLUMNS.replyTime).getValues();
+  const rows = sheet.getRange(5, 1, lastRow - 4, columns.replyTime).getValues();
   rows.forEach(function (row, index) {
-    const replyStatus = String(row[LINE_COLUMNS.replyStatus - 1]);
+    const replyStatus = String(row[columns.replyStatus - 1]);
     if (replyStatus !== '核准發送' && replyStatus !== '修好待通知') return;
     const rowNumber = index + 5;
     const reportId = String(row[0]);
-    const groupId = String(row[LINE_COLUMNS.group - 1] || '');
-    const reply = String(row[LINE_COLUMNS.reply - 1] || '').trim();
+    const groupId = String(row[columns.group - 1] || '');
+    const reply = String(row[columns.reply - 1] || '').trim();
     if (!groupId || !reply) {
-      sheet.getRange(rowNumber, LINE_COLUMNS.replyStatus).setValue(groupId ? '缺回覆內容' : '非 LINE 來源');
+      sheet.getRange(rowNumber, columns.replyStatus).setValue(groupId ? '缺回覆內容' : '非 LINE 來源');
       return;
     }
     const fixed = replyStatus === '修好待通知';
     const tail = fixed ? `\n沒問題的話請回「${reportId} OK」` : '';
     const ok = linePush_(groupId, `${reportId}：${reply}${tail}`);
-    sheet.getRange(rowNumber, LINE_COLUMNS.replyStatus).setValue(ok ? (fixed ? '修好已通知' : '已發送') : '發送失敗');
-    sheet.getRange(rowNumber, LINE_COLUMNS.replyTime).setValue(new Date());
+    sheet.getRange(rowNumber, columns.replyStatus).setValue(ok ? (fixed ? '修好已通知' : '已發送') : '發送失敗');
+    sheet.getRange(rowNumber, columns.replyTime).setValue(new Date());
   });
 }
 

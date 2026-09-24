@@ -10,6 +10,15 @@
 - 合併標題含 `[F024]` 的 PR 後約 5–15 分鐘，機器人自動通知同事；同事回「F024 OK」才結案。
 - 不需要修 PR 的回覆（例如操作說明）：在 Sheet「給同事的回覆」欄寫內容，「回覆狀態」改成 `核准發送`，10 分鐘內送出。
 
+## 資料更新需求（#更新）
+
+- 打「#更新 PN_Project_Map（說明）」→ 機器人回「收到 U001」；同一人 10 分鐘內傳的 Excel（.xlsx／.xls，最多 3 個、每個 10 MB 內）存入私人 Drive。
+- 記錄在同一試算表的「Data Requests」分頁（第一次使用時自動建立，第 4 列標題）：
+  A 需求編號｜B 時間｜C 更新類型｜D 說明｜E 檔案連結｜F 檔案數量｜G 處理狀態｜H LINE 群組｜I 給同事的回覆｜J 回覆狀態｜K 回覆時間。
+- AI 排程只跑 PN_Project_Map 比對預覽（不加 `--write`）；寫入只在維護者於 Claude 說「執行 U00X」後進行。
+- 回覆同事：I 欄寫內容、J 欄改「核准發送」，由 processLineOutbox 送出。
+- 選用指令碼屬性 `DATA_REQUEST_FOLDER_ID`：Excel 另存的私人資料夾；未設定時存到 `FEEDBACK_IMAGE_FOLDER_ID`。
+
 ## Sheet 欄位（BOM Feedback 分頁，第 4 列標題）
 
 | 欄 | 內容 | LINE 回報時 |

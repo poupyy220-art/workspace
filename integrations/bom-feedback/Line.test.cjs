@@ -13,25 +13,35 @@ function createWorld() {
     LINE_CHANNEL_ACCESS_TOKEN: 'token', LINE_WEBHOOK_KEY: KEY, LINE_GROUP_IDS: GROUP
   };
   const cache = {};
-  const rows = {};
   const calls = { replies: [], pushes: [], mails: [], files: [] };
   let pulls = [];
-  let lastRow = 4;
 
-  const cell = (r, c) => (rows[r] || [])[c - 1] ?? '';
-  const setCell = (r, c, v) => { rows[r] = rows[r] || []; rows[r][c - 1] = v; if (r > lastRow) lastRow = r; };
-  const sheet = {
-    getLastRow: () => lastRow,
-    appendRow(values) { lastRow += 1; rows[lastRow] = values.slice(); },
-    getRange(r, c, nr = 1, nc = 1) {
-      return {
-        getValue: () => cell(r, c),
-        setValue: (v) => setCell(r, c, v),
-        getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => cell(r + i, c + j))),
-        setValues: (values) => values.forEach((line, i) => line.forEach((v, j) => setCell(r + i, c + j, v)))
-      };
-    }
-  };
+  function makeSheet(startRow) {
+    const data = {};
+    let last = startRow;
+    const cell = (r, c) => (data[r] || [])[c - 1] ?? '';
+    const setCell = (r, c, v) => { data[r] = data[r] || []; data[r][c - 1] = v; if (r > last) last = r; };
+    return {
+      data,
+      setCell,
+      getLastRow: () => last,
+      appendRow(values) { last = Math.max(last, 4) + 1; data[last] = values.slice(); },
+      getRange(r, c, nr = 1, nc = 1) {
+        return {
+          getValue: () => cell(r, c),
+          setValue: (v) => setCell(r, c, v),
+          getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => cell(r + i, c + j))),
+          setValues: (values) => values.forEach((line, i) => line.forEach((v, j) => setCell(r + i, c + j, v)))
+        };
+      }
+    };
+  }
+  const sheets = { 'BOM Feedback': makeSheet(4) };
+  const sheet = sheets['BOM Feedback'];
+  const rows = sheet.data;
+  const setCell = sheet.setCell;
+  const xlsxBytes = Array.from(Buffer.concat([Buffer.from([0x50, 0x4B, 0x03, 0x04]), Buffer.alloc(60)]));
+  const textBytes = Array.from(Buffer.from('not an excel file'));
 
   const response = (code, body, blob) => ({
     getResponseCode: () => code,
@@ -53,7 +63,7 @@ function createWorld() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => properties[k] ?? null, setProperty: (k, v) => { properties[k] = v; } }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    SpreadsheetApp: { openById: () => ({ getSheetByName: (name) => (name === 'BOM Feedback' ? sheet : null) }) },
+    SpreadsheetApp: { openById: () => ({ getSheetByName: (name) => sheets[name] || null, insertSheet: (name) => (sheets[name] = makeSheet(0)) }) },
     DriveApp: { getFolderById: () => ({ createFile(blob) { calls.files.push(blob.name); return { setDescription() {}, getUrl: () => `https://drive/${blob.name}`, setTrashed() {} }; } }) },
     MailApp: { sendEmail: (m) => calls.mails.push(m) },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
@@ -61,6 +71,8 @@ function createWorld() {
       fetch(url, options = {}) {
         if (url.includes('/message/reply')) { calls.replies.push(JSON.parse(options.payload)); return response(200, '{}'); }
         if (url.includes('/message/push')) { calls.pushes.push(JSON.parse(options.payload)); return response(200, '{}'); }
+        if (url.includes('api-data.line.me/v2/bot/message/file')) return response(200, '', { getContentType: () => 'application/octet-stream', getBytes: () => xlsxBytes });
+        if (url.includes('api-data.line.me/v2/bot/message/bad')) return response(200, '', { getContentType: () => 'application/octet-stream', getBytes: () => textBytes });
         if (url.includes('api-data.line.me')) return response(200, '', { getContentType: () => 'image/png', getBytes: () => pngBytes });
         if (url.includes('api.github.com')) return response(200, pulls);
         throw new Error(`Unexpected fetch ${url}`);
@@ -79,10 +91,12 @@ function createWorld() {
   });
   const text = (value, user = 'Ualice', group = GROUP) => ({ type: 'message', replyToken: `r${++tokenSeq}`, source: { type: 'group', groupId: group, userId: user }, message: { type: 'text', id: `m${tokenSeq}`, text: value } });
   const image = (user = 'Ualice', group = GROUP) => ({ type: 'message', replyToken: `r${++tokenSeq}`, source: { type: 'group', groupId: group, userId: user }, message: { type: 'image', id: `img${tokenSeq}` } });
+  const file = (fileName, { user = 'Ualice', kind = 'file', size = 2048 } = {}) => ({ type: 'message', replyToken: `r${++tokenSeq}`, source: { type: 'group', groupId: GROUP, userId: user }, message: { type: 'file', id: `${kind}${tokenSeq}`, fileName, fileSize: size } });
   const lastReply = () => (calls.replies.at(-1) || { messages: [{ text: '' }] }).messages[0].text;
   const row = (n) => rows[n] || [];
+  const dataRow = (n) => (sheets['Data Requests'] ? sheets['Data Requests'].data[n] || [] : []);
 
-  return { api: context.api, post, text, image, calls, rows, row, properties, lastReply, setPulls: (p) => { pulls = p; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
+  return { api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
 }
 
 const tests = [];
@@ -196,6 +210,63 @@ test('join event introduces the bot in an allowed group', () => {
   const w = createWorld();
   w.post([{ type: 'join', replyToken: 'rj', source: { type: 'group', groupId: GROUP } }]);
   assert(w.lastReply().includes('#回報'), 'Join intro missing');
+});
+
+test('#更新 creates U001 in a new Data Requests sheet without touching feedback rows', () => {
+  const w = createWorld();
+  w.post([w.text('#更新 PN_Project_Map Neo50q G6 漏了幾顆料')]);
+  const r = w.dataRow(5);
+  assert(r[0] === 'U001' && r[2] === 'PN_Project_Map' && r[6] === '新需求' && r[7] === GROUP, `Unexpected data row ${JSON.stringify(r)}`);
+  assert(w.sheets['Data Requests'].data[4][0] === '需求編號', 'Header row not created');
+  assert(!w.row(5).length, 'Feedback sheet must stay untouched');
+  assert(w.lastReply().includes('收到 U001') && w.lastReply().includes('確認前不會改動資料'), 'Reply wrong');
+  assert(w.calls.mails.at(-1).subject.includes('U001'), 'Maintainer email missing');
+});
+
+test('#更新 accepts Excel files from the same requester only, max three', () => {
+  const w = createWorld();
+  w.post([w.text('＃更新 PN_Project_Map')]);
+  w.post([w.file('BOM_TREE_20260922_001.xlsx', { user: 'Ubob' })]);
+  assert(w.calls.files.length === 0, 'Other user file must be ignored');
+  w.post([w.file('BOM_TREE_1.xlsx'), w.file('BOM_TREE_2.xlsx'), w.file('BOM_TREE_3.xlsx')]);
+  assert(w.calls.files.length === 3 && w.dataRow(5)[5] === 3, 'Three files should be stored');
+  assert(w.calls.files[0] === 'U001_BOM_TREE_1.xlsx', `File naming wrong: ${w.calls.files[0]}`);
+  w.post([w.file('BOM_TREE_4.xlsx')]);
+  assert(w.calls.files.length === 3 && w.lastReply().includes('最多附 3 個'), 'Fourth file must be refused');
+});
+
+test('#更新 rejects non-Excel, fake Excel, oversized files and screenshots', () => {
+  const w = createWorld();
+  w.post([w.text('#更新 PN_Project_Map')]);
+  w.post([w.file('notes.pdf')]);
+  assert(w.lastReply().includes('只收 Excel'), 'PDF should be refused');
+  w.post([w.file('fake.xlsx', { kind: 'bad' })]);
+  assert(w.lastReply().includes('不是有效的 Excel'), 'Fake Excel should be refused');
+  w.post([w.file('huge.xlsx', { size: 20 * 1024 * 1024 })]);
+  assert(w.lastReply().includes('超過 10 MB'), 'Oversized file should be refused');
+  w.post([w.image()]);
+  assert(w.lastReply().includes('需要的是 Excel'), 'Screenshot for data request should be refused');
+  assert(w.calls.files.length === 0, 'Nothing should be stored');
+});
+
+test('files without a pending #更新, or after #回報, are ignored', () => {
+  const w = createWorld();
+  w.post([w.file('BOM_TREE.xlsx')]);
+  w.post([w.text('#回報 BOM 轉檔錯誤'), w.file('BOM_TREE.xlsx')]);
+  assert(w.calls.files.length === 0, 'Files outside #更新 must be ignored');
+  assert(!w.sheets['Data Requests'], 'Data sheet must not be created');
+});
+
+test('unknown update type is recorded as 待確認 and approved data replies are pushed', () => {
+  const w = createWorld();
+  w.post([w.text('#更新 國別 DB 新增一個代碼')]);
+  assert(w.dataRow(5)[2] === '待確認' && w.lastReply().includes('只支援 PN_Project_Map'), 'Unknown type handling wrong');
+  w.sheets['Data Requests'].setCell(5, 9, '已請維護人員處理');
+  w.sheets['Data Requests'].setCell(5, 10, '核准發送');
+  w.api.processLineOutbox();
+  const push = w.calls.pushes.at(-1);
+  assert(push && push.messages[0].text === 'U001：已請維護人員處理', `Push wrong: ${push && push.messages[0].text}`);
+  assert(w.dataRow(5)[9] === '已發送', 'Data reply status not updated');
 });
 
 test('line-reply extraction and tool ordering', () => {
