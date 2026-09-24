@@ -18,6 +18,9 @@
 
 const LINE_REPORT_PREFIX = /^[#＃]\s*回報\s*/;
 const LINE_CLOSE_PATTERN = /^[#＃]?\s*(F\d{3,})\s*(ok|好了|可以了|沒問題)/i;
+const LINE_SUPPLEMENT_PATTERN = /^[#＃]?\s*([FU]\d{3,})\s*[:：,，]?\s*(\S[\s\S]*)$/i;
+// 同事補充記在每列最後兩欄：BOM Feedback R／S 欄、Data Requests L／M 欄
+const SUPPLEMENT_COLUMNS = { F: { text: 18, time: 19 }, U: { text: 12, time: 13 } };
 const LINE_PENDING_SECONDS = 600;
 // #更新 要找 BOM 檔，收檔時間比截圖長
 const DATA_PENDING_SECONDS = 1800;
@@ -112,6 +115,10 @@ function handleLineText_(event, groupId, userId, rawText) {
     closeLineReport_(event, groupId, closeMatch[1].toUpperCase());
     return;
   }
+
+  // 「F005 ②」「U003 還少一個檔」：同事對既有編號的補充，記錄後自動回覆
+  const supplementMatch = text.match(LINE_SUPPLEMENT_PATTERN);
+  if (supplementMatch && addLineSupplement_(event, groupId, supplementMatch[1].toUpperCase(), supplementMatch[2])) return;
 
   // 剛回報、機器人追問「哪一個工具」時，下一句當作回答
   const pending = getLinePending_(groupId, userId);
@@ -522,6 +529,46 @@ function buildDataUpdateCard_(id, card) {
     }
   };
   return bubble;
+}
+
+// ---------- 同事補充（F／U 編號後面接文字） ----------
+
+/** 找得到同群組的編號才記錄並回覆；找不到就回 false，當一般聊天處理（不回、不記）。 */
+function addLineSupplement_(event, groupId, id, rawText) {
+  const text = String(rawText || '').trim().slice(0, 500);
+  if (!text) return false;
+  const isData = id.charAt(0) === 'U';
+  const columns = SUPPLEMENT_COLUMNS[id.charAt(0)];
+  const recorded = withLock_(function () {
+    const sheet = isData
+      ? SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET)
+      : getSheet_(FEEDBACK_SHEET);
+    if (!sheet) return false;
+    const rowNumber = findFeedbackRow_(sheet, id);
+    if (!rowNumber) return false;
+    const groupColumn = isData ? DATA_COLUMNS.group : LINE_COLUMNS.group;
+    if (String(sheet.getRange(rowNumber, groupColumn).getValue()) !== groupId) return false;
+    if (!sheet.getRange(4, columns.text).getValue()) sheet.getRange(4, columns.text, 1, 2).setValues([['同事補充', '補充時間']]);
+    const cell = sheet.getRange(rowNumber, columns.text);
+    const previous = String(cell.getValue() || '');
+    const stamp = Utilities.formatDate(new Date(), 'Asia/Taipei', 'MM/dd HH:mm');
+    cell.setValue(sheetText_(previous ? `${previous}\n[${stamp}] ${text}` : `[${stamp}] ${text}`));
+    sheet.getRange(rowNumber, columns.time).setValue(new Date());
+    return true;
+  });
+  if (!recorded) return false;
+  try {
+    MailApp.sendEmail({
+      to: requiredProperty_('NOTIFY_EMAIL'),
+      subject: `[LINE 補充] ${id}`,
+      htmlBody: `<p><b>編號：</b>${escapeHtml_(id)}</p><p><b>補充內容：</b>${escapeHtml_(text)}</p>`,
+      name: 'Debug 小幫手'
+    });
+  } catch (mailError) {
+    console.error(mailError);
+  }
+  lineReply_(event.replyToken, `收到 ${id} 的補充 👍 維護人員會接著處理`);
+  return true;
 }
 
 // ---------- 結案 ----------

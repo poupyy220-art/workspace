@@ -364,6 +364,31 @@ test('every quick-reply tool name maps back to itself', () => {
   names.forEach((name) => assert(w.api.detectLineTool_(name) === name, `${name} maps to ${w.api.detectLineTool_(name)}`));
 });
 
+test('colleague supplement "F001 ②" is recorded, acknowledged, and emailed', () => {
+  const w = createWorld();
+  w.post([w.text('#回報 PIM 合併少一列')]);
+  w.post([w.text('F001 ②', 'Ubob')]);
+  assert(w.lastReply() === '收到 F001 的補充 👍 維護人員會接著處理', `Ack wrong: ${w.lastReply()}`);
+  assert(String(w.row(5)[17]).endsWith('] ②') && w.row(5)[18], `Supplement not recorded: ${w.row(5)[17]}`);
+  assert(w.rows[4][17] === '同事補充' && w.rows[4][18] === '補充時間', 'Supplement headers missing');
+  assert(w.calls.mails.at(-1).subject === '[LINE 補充] F001', 'Maintainer email missing');
+  w.post([w.text('F001：希望加在 A 欄')]);
+  assert(String(w.row(5)[17]).split('\n').length === 2, 'Second supplement should append');
+});
+
+test('supplements for U rows, unknown ids, and F00x OK keep their own behaviour', () => {
+  const w = createWorld();
+  w.post([w.text('#更新 PN_Project_Map 測試')]);
+  w.post([w.text('U001 還有一個檔案晚點補')]);
+  assert(String(w.dataRow(5)[11]).includes('還有一個檔案晚點補') && w.lastReply().includes('U001 的補充'), 'U supplement failed');
+  const repliesBefore = w.calls.replies.length;
+  w.post([w.text('F999 這個編號不存在')]);
+  assert(w.calls.replies.length === repliesBefore, 'Unknown id must be ignored silently');
+  w.post([w.text('#回報 BOM 轉檔錯誤')]);
+  w.post([w.text('F001 OK')]);
+  assert(w.lastReply().includes('還在處理中'), 'F00x OK must still go to the close flow');
+});
+
 test('line-reply extraction and tool ordering', () => {
   const w = createWorld();
   assert(w.api.extractLineReply_('a<!-- line-reply --> 已修好 <!-- /line-reply -->b') === '已修好', 'Extraction failed');
