@@ -340,8 +340,41 @@ function getDataRequestSheet_() {
     sheet.getRange(1, 1).setValue('資料更新需求（LINE #更新）');
     sheet.getRange(2, 1).setValue('AI 只做比對預覽；寫入一律由維護者在 Claude 確認後執行。');
     sheet.getRange(4, 1, 1, DATA_HEADERS.length).setValues([DATA_HEADERS]);
+    try { applyDataRequestFormat_(sheet); } catch (formatError) { console.error(formatError); }
   }
   return sheet;
+}
+
+/** 在編輯器手動執行一次：替既有的 Data Requests 分頁套用與 BOM Feedback 一致的格式與下拉選單（不動資料）。 */
+function formatDataRequestSheet() {
+  const sheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET);
+  if (!sheet) return logSetupResult_('還沒有 Data Requests 分頁（第一次 #更新 時會自動建立並套用格式）');
+  applyDataRequestFormat_(sheet);
+  return logSetupResult_('Data Requests 分頁格式與處理狀態下拉選單已套用');
+}
+
+// 版面比照 BOM Feedback：第 1 列深藍標題、第 2 列淡黃說明、第 4 列欄位標題、資料列藍白相間
+function applyDataRequestFormat_(sheet) {
+  const width = DATA_HEADERS.length;
+  sheet.getRange(1, 1, 1, width).merge().setBackground('#1f4e79').setFontColor('#ffffff').setFontWeight('bold').setFontSize(14);
+  sheet.getRange(2, 1, 1, width).merge().setBackground('#fff2cc').setFontColor('#7f6000');
+  sheet.getRange(4, 1, 1, width).setBackground('#dce6f1').setFontColor('#1f3864').setFontWeight('bold');
+  sheet.setFrozenRows(4);
+  [90, 150, 130, 220, 180, 80, 100, 120, 320, 100, 110].forEach(function (px, index) { sheet.setColumnWidth(index + 1, px); });
+
+  const dataRows = Math.max(sheet.getMaxRows() - 4, 1);
+  const body = sheet.getRange(5, 1, dataRows, width);
+  body.setVerticalAlignment('middle');
+  sheet.getRange(5, DATA_COLUMNS.description, dataRows, 1).setWrap(true);
+  sheet.getRange(5, DATA_COLUMNS.reply, dataRows, 1).setWrap(true);
+  sheet.getRange(4, 1, dataRows + 1, width).getBandings().forEach(function (banding) { banding.remove(); });
+  sheet.getRange(4, 1, dataRows + 1, width).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_BLUE, true, false);
+
+  const statusRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['新需求', '預覽完成', '已完成', '不處理'], true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(5, DATA_COLUMNS.status, dataRows, 1).setDataValidation(statusRule);
 }
 
 function notifyDataRequest_(requestId, now, type, description) {
