@@ -8,6 +8,8 @@
  *   ALLOWED_RECIPIENTS Comma-separated release-notification recipients
  *   MODULE_URL         Public BOM module URL
  *
+ * LINE 群組回報入口見同專案的 Line.gs（doPost 收到 LINE events 時轉交）。
+ *
  * Deploy as a Web app only after the owner reviews permissions.
  * Do not send BOM files, PN, customer names, company names, or filenames.
  */
@@ -27,6 +29,7 @@ const FEEDBACK_CATEGORIES = [
 function doPost(e) {
   try {
     const payload = parsePayload_(e);
+    if (Array.isArray(payload.events)) return handleLineWebhook_(e, payload);
     if (payload.action !== 'feedback') throw new Error('Unsupported action');
     if (['bom-feedback-v1', 'bom-feedback-v2'].indexOf(payload.schema) < 0) throw new Error('Unsupported schema');
     if (String(payload.consent) !== 'true') throw new Error('Consent is required');
