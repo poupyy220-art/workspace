@@ -18,6 +18,8 @@
 const LINE_REPORT_PREFIX = /^[#＃]\s*回報\s*/;
 const LINE_CLOSE_PATTERN = /^[#＃]?\s*(F\d{3,})\s*(ok|好了|可以了|沒問題)/i;
 const LINE_PENDING_SECONDS = 600;
+// #更新 要找 BOM 檔，收檔時間比截圖長
+const DATA_PENDING_SECONDS = 1800;
 const LINE_MAX_IMAGES = 3;
 const LINE_COLUMNS = { status: 7, source: 11, imageLinks: 12, imageCount: 13, group: 14, reply: 15, replyStatus: 16, replyTime: 17 };
 
@@ -249,7 +251,7 @@ function createDataRequest_(event, groupId, userId, description) {
   notifyDataRequest_(requestId, now, type, safeDescription);
   const typeText = type ? `（${type}）` : '';
   const unsupported = type ? '' : '\n目前自動比對只支援 PN_Project_Map，其他資料會由維護人員另外處理。';
-  lineReply_(event.replyToken, `收到 ${requestId}${typeText} 📥\n請在 10 分鐘內傳 BOM_TREE Excel 檔（最多 ${DATA_MAX_FILES} 個）。\nAI 會先比對預覽，確認前不會改動資料。${unsupported}`);
+  lineReply_(event.replyToken, `收到 ${requestId}${typeText} 📥\n請在 30 分鐘內傳 BOM_TREE Excel 檔（最多 ${DATA_MAX_FILES} 個）。\nAI 會先比對預覽，確認前不會改動資料。${unsupported}`);
 }
 
 function handleLineFile_(event, groupId, userId) {
@@ -552,7 +554,8 @@ function getLinePending_(groupId, userId) {
 }
 
 function putLinePending_(groupId, userId, pending) {
-  CacheService.getScriptCache().put(`LINE_PENDING_${groupId}_${userId}`, JSON.stringify(pending), LINE_PENDING_SECONDS);
+  const seconds = pending.kind === 'data' ? DATA_PENDING_SECONDS : LINE_PENDING_SECONDS;
+  CacheService.getScriptCache().put(`LINE_PENDING_${groupId}_${userId}`, JSON.stringify(pending), seconds);
 }
 
 function notifyLineReport_(reportId, now, tool, description) {

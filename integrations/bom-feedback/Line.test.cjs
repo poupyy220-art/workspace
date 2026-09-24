@@ -13,6 +13,7 @@ function createWorld() {
     LINE_CHANNEL_ACCESS_TOKEN: 'token', LINE_WEBHOOK_KEY: KEY, LINE_GROUP_IDS: GROUP
   };
   const cache = {};
+  const ttls = {};
   const calls = { replies: [], pushes: [], mails: [], files: [] };
   let pulls = [];
 
@@ -61,7 +62,7 @@ function createWorld() {
       DigestAlgorithm: { SHA_256: 'SHA-256' }
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => properties[k] ?? null, setProperty: (k, v) => { properties[k] = v; } }) },
-    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v) => { cache[k] = v; } }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v, ttl) => { cache[k] = v; ttls[k] = ttl; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     SpreadsheetApp: { openById: () => ({ getSheetByName: (name) => sheets[name] || null, insertSheet: (name) => (sheets[name] = makeSheet(0)) }) },
     DriveApp: { getFolderById: () => ({ createFile(blob) { calls.files.push(blob.name); return { setDescription() {}, getUrl: () => `https://drive/${blob.name}`, setTrashed() {} }; } }) },
@@ -96,7 +97,7 @@ function createWorld() {
   const row = (n) => rows[n] || [];
   const dataRow = (n) => (sheets['Data Requests'] ? sheets['Data Requests'].data[n] || [] : []);
 
-  return { api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
+  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
 }
 
 const tests = [];
@@ -267,6 +268,16 @@ test('unknown update type is recorded as 待確認 and approved data replies are
   const push = w.calls.pushes.at(-1);
   assert(push && push.messages[0].text === 'U001：已請維護人員處理', `Push wrong: ${push && push.messages[0].text}`);
   assert(w.dataRow(5)[9] === '已發送', 'Data reply status not updated');
+});
+
+test('#更新 waits 30 minutes for files while #回報 screenshots stay 10 minutes', () => {
+  const w = createWorld();
+  w.post([w.text('#回報 PIM 合併少一列')]);
+  const pendingTtls = () => Object.keys(w.ttls).filter((k) => k.startsWith('LINE_PENDING_')).map((k) => w.ttls[k]);
+  assert(pendingTtls().length === 1 && pendingTtls()[0] === 600, '#回報 window must stay 10 minutes');
+  w.post([w.text('#更新 PN_Project_Map')]);
+  assert(pendingTtls()[0] === 1800, '#更新 window must be 30 minutes');
+  assert(w.lastReply().includes('30 分鐘內'), 'Reply should say 30 minutes');
 });
 
 test('line-reply extraction and tool ordering', () => {

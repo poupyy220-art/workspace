@@ -12,7 +12,7 @@
 
 ## 資料更新需求（#更新）
 
-- 打「#更新 PN_Project_Map（說明）」→ 機器人回「收到 U001」；同一人 10 分鐘內傳的 Excel（.xlsx／.xls，最多 3 個、每個 10 MB 內）存入私人 Drive。
+- 打「#更新 PN_Project_Map（說明）」→ 機器人回「收到 U001」；同一人 30 分鐘內傳的 Excel（.xlsx／.xls，最多 3 個、每個 10 MB 內）存入私人 Drive。
 - 記錄在同一試算表的「Data Requests」分頁（第一次使用時自動建立，第 4 列標題）：
   A 需求編號｜B 時間｜C 更新類型｜D 說明｜E 檔案連結｜F 檔案數量｜G 處理狀態｜H LINE 群組｜I 給同事的回覆｜J 回覆狀態｜K 回覆時間。
 - AI 排程只跑 PN_Project_Map 比對預覽（不加 `--write`）；寫入只在維護者於 Claude 說「執行 U00X」後進行。
