@@ -280,6 +280,46 @@ test('#更新 waits 30 minutes for files while #回報 screenshots stay 10 minut
   assert(w.lastReply().includes('30 分鐘內'), 'Reply should say 30 minutes');
 });
 
+test('Claude reply entry: wrong key or unknown id does nothing', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#更新 PN_Project_Map 測試')]);
+  const pushesBefore = w.calls.pushes.length;
+  const bad = w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeReply: { key: 'wrong', id: 'U001', text: 'x' } }) } });
+  assert(JSON.parse(bad).error === 'unauthorized', 'Wrong key must be rejected');
+  const missing = w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeReply: { key: 'claude-key', id: 'U999', text: 'x' } }) } });
+  assert(JSON.parse(missing).error === 'id not found', 'Unknown id must be rejected');
+  const noKeySet = createWorld();
+  const unset = noKeySet.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeReply: { key: '', id: 'U001', text: 'x' } }) } });
+  assert(JSON.parse(unset).error === 'unauthorized', 'Missing CLAUDE_REPLY_KEY must reject');
+  assert(w.calls.pushes.length === pushesBefore, 'Nothing must be pushed');
+});
+
+test('Claude reply entry: pushes to the row group, records the reply, and never double-sends', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#更新 PN_Project_Map 多檔測試')]);
+  const call = (text) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeReply: { key: 'claude-key', id: 'u001', text } }) } }));
+  const first = call('多檔測試完成，不需要更新 👍');
+  assert(first.ok && first.sent, `First call should send: ${JSON.stringify(first)}`);
+  const push = w.calls.pushes.at(-1);
+  assert(push.to === GROUP && push.messages[0].text === 'U001：多檔測試完成，不需要更新 👍', `Push wrong: ${JSON.stringify(push)}`);
+  assert(w.dataRow(5)[8] === '多檔測試完成，不需要更新 👍' && w.dataRow(5)[9] === '已發送' && w.dataRow(5)[10], 'Row not recorded');
+  const again = call('多檔測試完成，不需要更新 👍');
+  assert(again.duplicate && w.calls.pushes.length === 1, 'Same text must not be sent twice');
+});
+
+test('Claude reply entry: fixed notice on F rows asks for OK and enables closing', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#回報 BOM 轉檔錯誤')]);
+  const result = JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeReply: { key: 'claude-key', id: 'F001', text: '已修好', fixed: true } }) } }));
+  assert(result.sent && w.calls.pushes.at(-1).messages[0].text.includes('F001 OK'), 'Fixed notice should ask for OK');
+  assert(w.row(5)[15] === '修好已通知', 'Reply status should allow closing');
+  w.post([w.text('F001 OK')]);
+  assert(w.row(5)[6] === '已解決', 'OK should close after Claude fixed notice');
+});
+
 test('line-reply extraction and tool ordering', () => {
   const w = createWorld();
   assert(w.api.extractLineReply_('a<!-- line-reply --> 已修好 <!-- /line-reply -->b') === '已修好', 'Extraction failed');

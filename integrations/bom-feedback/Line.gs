@@ -11,6 +11,7 @@
  * Optional:
  *   LINE_SETUP_MODE            'true' 時，未登記群組輸入「#群組ID」會回覆該群組 ID；設定完請刪除
  *   LINE_GITHUB_REPO           預設 poupyy220-art/workspace；合併的 PR 標題含 [F024] 會觸發通知
+ *   CLAUDE_REPLY_KEY           Claude 代發已核准回覆的暗號（本機 feedback.local.json 存同一值，不得寫進 Repository）
  *
  * Apps Script 讀不到 X-Line-Signature header，因此以「網址暗號＋群組白名單」代替簽章驗證。
  */
@@ -49,6 +50,9 @@ const LINE_TOOLS = [
 // ---------- Webhook 入口（由 Code.gs 的 doPost 轉進來） ----------
 
 function handleLineWebhook_(e, payload) {
+  // Claude 代發已核准回覆：沿用 events 路由（不必改 Code.gs），但用另一把 CLAUDE_REPLY_KEY 驗證
+  if (payload.claudeReply) return json_(handleClaudeReply_(payload.claudeReply));
+
   // 暗號不對就當作沒看到，不透露任何資訊
   const key = e && e.parameter ? String(e.parameter.k || '') : '';
   const expected = PropertiesService.getScriptProperties().getProperty('LINE_WEBHOOK_KEY');
@@ -400,6 +404,51 @@ function notifyDataRequest_(requestId, now, type, description) {
   } catch (mailError) {
     console.error(mailError);
   }
+}
+
+// ---------- Claude 代發已核准回覆 ----------
+
+/**
+ * 維護者在 Claude 對話中說「發」之後，由本機 send-line-reply.js 呼叫。
+ * 只能把回覆寫進「已存在」的 F／U 編號列，並推送到該列原本的 LINE 群組；不能指定群組、不能新增資料。
+ * payload：{ events: [], claudeReply: { key, id, text, fixed } }；key 需等於指令碼屬性 CLAUDE_REPLY_KEY。
+ */
+function handleClaudeReply_(request) {
+  const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
+  if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
+
+  const id = String(request.id || '').trim().toUpperCase();
+  if (!/^[FU]\d{3,}$/.test(id)) return { ok: false, error: 'invalid id' };
+  const text = String(request.text || '').trim();
+  if (!text || text.length > 4800) return { ok: false, error: 'text must be 1-4800 characters' };
+
+  const isData = id.charAt(0) === 'U';
+  const columns = isData ? DATA_COLUMNS : LINE_COLUMNS;
+  const fixed = !isData && request.fixed === true;
+
+  return withLock_(function () {
+    const sheet = isData
+      ? SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET)
+      : getSheet_(FEEDBACK_SHEET);
+    const rowNumber = sheet ? findFeedbackRow_(sheet, id) : 0;
+    if (!rowNumber) return { ok: false, error: 'id not found' };
+    const row = sheet.getRange(rowNumber, 1, 1, columns.replyTime).getValues()[0];
+    const groupId = String(row[columns.group - 1] || '');
+    if (!groupId || !isAllowedLineGroup_(groupId)) return { ok: false, error: 'no allowed LINE group for this id' };
+
+    // 同一段文字已送過就不重送（避免重複呼叫洗版）
+    const previousStatus = String(row[columns.replyStatus - 1]);
+    if (String(row[columns.reply - 1]).trim() === text && (previousStatus === '已發送' || previousStatus === '修好已通知')) {
+      return { ok: true, id: id, sent: false, duplicate: true };
+    }
+
+    const tail = fixed ? `\n沒問題的話請回「${id} OK」` : '';
+    const sent = linePush_(groupId, `${id}：${text}${tail}`);
+    sheet.getRange(rowNumber, columns.reply).setValue(sheetText_(text));
+    sheet.getRange(rowNumber, columns.replyStatus).setValue(sent ? (fixed ? '修好已通知' : '已發送') : '發送失敗');
+    sheet.getRange(rowNumber, columns.replyTime).setValue(new Date());
+    return { ok: sent, id: id, sent: sent };
+  });
 }
 
 // ---------- 結案 ----------
