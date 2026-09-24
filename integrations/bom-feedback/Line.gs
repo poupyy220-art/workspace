@@ -10,7 +10,8 @@
  *   LINE_GROUP_IDS             允許的群組 ID，逗號分隔；其他來源一律忽略
  * Optional:
  *   LINE_SETUP_MODE            'true' 時，未登記群組輸入「#群組ID」會回覆該群組 ID；設定完請刪除
- *   LINE_GITHUB_REPO           預設 poupyy220-art/workspace；合併的 PR 標題含 [F024] 會觸發通知
+ *   LINE_GITHUB_REPO           預設 poupyy220-art/workspace；合併的 PR 標題含 [F024] 會觸發通知；main 的 index.html commit 標題含 vX.Y.Z 會推「網站已更新」到白名單群組
+ *   LINE_SITE_LAST_SHA         （自動寫入）最後一次已通知的網站 commit，刪除後下次只重新記錄、不補發
  *   CLAUDE_REPLY_KEY           Claude 代發已核准回覆的暗號（本機 feedback.local.json 存同一值，不得寫進 Repository）
  *
  * Apps Script 讀不到 X-Line-Signature header，因此以「網址暗號＋群組白名單」代替簽章驗證。
@@ -21,6 +22,7 @@ const LINE_CLOSE_PATTERN = /^[#＃]?\s*(F\d{3,})\s*(ok|好了|可以了|沒問�
 const LINE_SUPPLEMENT_PATTERN = /^[#＃]?\s*([FU]\d{3,})\s*[:：,，]?\s*(\S[\s\S]*)$/i;
 // 同事補充記在每列最後兩欄：BOM Feedback R／S 欄、Data Requests L／M 欄
 const SUPPLEMENT_COLUMNS = { F: { text: 18, time: 19 }, U: { text: 12, time: 13 } };
+const LINE_SITE_URL = 'https://poupyy220-art.github.io/workspace/';
 const LINE_PENDING_SECONDS = 600;
 // 「#回報」選單按鈕送出的文字；按下後同一人的下一句就是描述
 const LINE_REPORT_MODES = { '選擇:問題': { label: '問題' }, '選擇:需求': { label: '需求' } };
@@ -627,7 +629,48 @@ function closeLineReport_(event, groupId, reportId) {
  */
 function processLineOutbox() {
   try { collectMergedPullRequests_(); } catch (error) { console.error(error); }
+  try { notifySiteUpdates_(); } catch (error) { console.error(error); }
   sendApprovedLineReplies_();
+}
+
+// 網站有新版本（main 上 index.html 的 commit 標題含 vX.Y.Z）→ 部署 5 分鐘後推到所有白名單群組。
+// 第一次執行只記下目前最新的 commit，不補發舊版本。
+function notifySiteUpdates_() {
+  const props = PropertiesService.getScriptProperties();
+  const repo = props.getProperty('LINE_GITHUB_REPO') || 'poupyy220-art/workspace';
+  const response = UrlFetchApp.fetch(`https://api.github.com/repos/${repo}/commits?sha=main&path=index.html&per_page=10`, {
+    headers: { Accept: 'application/vnd.github+json' },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) throw new Error(`GitHub commits API failed: ${response.getResponseCode()}`);
+  const commits = JSON.parse(response.getContentText());
+  if (!commits.length) return;
+  const lastSha = props.getProperty('LINE_SITE_LAST_SHA');
+  const now = Date.now();
+  const ready = commits.filter(function (commit) { return now - new Date(commit.commit.committer.date).getTime() >= 5 * 60 * 1000; });
+  if (!ready.length) return;
+  if (!lastSha) { props.setProperty('LINE_SITE_LAST_SHA', ready[0].sha); return; }
+
+  const fresh = [];
+  for (let i = 0; i < ready.length && ready[i].sha !== lastSha; i += 1) fresh.push(ready[i]);
+  if (!fresh.length) return;
+  props.setProperty('LINE_SITE_LAST_SHA', ready[0].sha);
+
+  const lines = fresh.map(function (commit) {
+    const subject = String(commit.commit.message || '').split('\n')[0];
+    const version = subject.match(/v\d+\.\d+(?:\.\d+)?/);
+    if (!version) return null;
+    const summary = subject.replace(/^\w+(\([^)]*\))?!?:\s*/, '').replace(/\s*[（(]?v\d+\.\d+(?:\.\d+)?[)）]?\s*/, ' ').trim();
+    return { version: version[0], summary: summary };
+  }).filter(Boolean).reverse().slice(-5);
+  if (!lines.length) return;
+
+  const latest = lines[lines.length - 1].version;
+  const text = [`🆕 料號管理中心已更新到 ${latest}`]
+    .concat(lines.map(function (line) { return `・${line.version} ${line.summary}`.slice(0, 200); }))
+    .concat(['請重新整理網頁（Ctrl+F5）後使用', LINE_SITE_URL]).join('\n');
+  String(props.getProperty('LINE_GROUP_IDS') || '').split(',').map(function (id) { return id.trim(); }).filter(Boolean)
+    .forEach(function (groupId) { linePush_(groupId, text); });
 }
 
 function collectMergedPullRequests_() {

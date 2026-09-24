@@ -16,6 +16,7 @@ function createWorld() {
   const ttls = {};
   const calls = { replies: [], pushes: [], mails: [], files: [] };
   let pulls = [];
+  let commits = [];
 
   function makeSheet(startRow) {
     const data = {};
@@ -75,6 +76,7 @@ function createWorld() {
         if (url.includes('api-data.line.me/v2/bot/message/file')) return response(200, '', { getContentType: () => 'application/octet-stream', getBytes: () => xlsxBytes });
         if (url.includes('api-data.line.me/v2/bot/message/bad')) return response(200, '', { getContentType: () => 'application/octet-stream', getBytes: () => textBytes });
         if (url.includes('api-data.line.me')) return response(200, '', { getContentType: () => 'image/png', getBytes: () => pngBytes });
+        if (url.includes('api.github.com') && url.includes('/commits')) return response(200, commits);
         if (url.includes('api.github.com')) return response(200, pulls);
         throw new Error(`Unexpected fetch ${url}`);
       }
@@ -97,7 +99,7 @@ function createWorld() {
   const row = (n) => rows[n] || [];
   const dataRow = (n) => (sheets['Data Requests'] ? sheets['Data Requests'].data[n] || [] : []);
 
-  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
+  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCommits: (c) => { commits = c; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
 }
 
 const tests = [];
@@ -412,6 +414,33 @@ test('supplements for U rows, unknown ids, and F00x OK keep their own behaviour'
   w.post([w.text('#回報 BOM 轉檔錯誤')]);
   w.post([w.text('F001 OK')]);
   assert(w.lastReply().includes('還在處理中'), 'F00x OK must still go to the close flow');
+});
+
+test('site update: first run only remembers, later versions are pushed once after 5 minutes', () => {
+  const w = createWorld();
+  const at = (minutes) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
+  const commit = (sha, message, minutes) => ({ sha, commit: { message, committer: { date: at(minutes) } } });
+  w.setCommits([commit('a1', 'fix: 舊版本 (v2.16.4)', 60)]);
+  w.api.processLineOutbox();
+  assert(w.calls.pushes.length === 0 && w.properties.LINE_SITE_LAST_SHA === 'a1', 'First run must not announce old versions');
+
+  w.setCommits([commit('c3', 'feat: 剛推還在部署 (v2.16.7)', 1), commit('b2', 'fix: BOM 轉檔按鈕不再誤顯示完成 (v2.16.5)\n\nbody', 10), commit('a1', 'fix: 舊版本 (v2.16.4)', 60)]);
+  w.api.processLineOutbox();
+  const push = w.calls.pushes.at(-1);
+  assert(push && push.to === GROUP, 'Site update should go to the allowed group');
+  const text = push.messages[0].text;
+  assert(text.startsWith('🆕 料號管理中心已更新到 v2.16.5') && text.includes('・v2.16.5 BOM 轉檔按鈕不再誤顯示完成') && !text.includes('v2.16.7') && !text.includes('body'), `Text wrong: ${text}`);
+  assert(text.includes('https://poupyy220-art.github.io/workspace/'), 'Site link missing');
+
+  w.api.processLineOutbox();
+  assert(w.calls.pushes.length === 1, 'Same version must not be pushed twice');
+
+  w.setCommits([commit('d4', 'chore: 文件調整', 10), commit('c3', 'feat: 剛推還在部署 (v2.16.7)', 10), commit('b2', 'fix: x (v2.16.5)', 20)]);
+  w.api.processLineOutbox();
+  assert(w.calls.pushes.length === 2 && w.calls.pushes.at(-1).messages[0].text.includes('v2.16.7') && !w.calls.pushes.at(-1).messages[0].text.includes('文件調整'), 'Only versioned commits are announced');
+  w.setCommits([commit('e5', 'docs: 沒有版本號', 10), commit('d4', 'chore: 文件調整', 20)]);
+  w.api.processLineOutbox();
+  assert(w.calls.pushes.length === 2, 'Commits without a version stay silent');
 });
 
 test('line-reply extraction and tool ordering', () => {
