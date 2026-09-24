@@ -45,6 +45,9 @@ const LINE_TODO_LIST_PATTERN = /^[#＃]\s*待辦\s*清單\s*$/;
 const LINE_TODO_PREFIX = /^[#＃]\s*待辦\s*/;
 const LINE_TODO_STATUS_PATTERN = /^[#＃]?\s*(T\d{3,})\s*(完成|取消|進行中)\s*$/i;
 const LINE_MY_ID_PATTERN = /^[#＃]\s*我的\s*ID\s*$/i;
+// 「#額度」查本月 LINE 推播用量（只有維護者）；用量達 80% 時每月寄一次提醒信
+const LINE_QUOTA_PATTERN = /^[#＃]\s*額度\s*$/;
+const LINE_QUOTA_WARN_RATIO = 0.8;
 const TODO_SHEET = 'To Do';
 const TODO_HEADERS = ['待辦編號', '建立時間', '內容', '狀態', '完成時間', 'LINE 群組', '備註'];
 const TODO_COLUMNS = { content: 3, status: 4, doneTime: 5, group: 6, note: 7 };
@@ -127,6 +130,11 @@ function handleLineText_(event, groupId, userId, rawText) {
   // 設定模式下查自己的 LINE 使用者 ID（填 LINE_ADMIN_USER_IDS 用）
   if (LINE_MY_ID_PATTERN.test(text)) {
     if (PropertiesService.getScriptProperties().getProperty('LINE_SETUP_MODE') === 'true') lineReply_(event.replyToken, `你的 LINE 使用者 ID：\n${userId}\n請填入 Apps Script 的 LINE_ADMIN_USER_IDS。`);
+    return;
+  }
+
+  if (LINE_QUOTA_PATTERN.test(text)) {
+    if (requireLineAdmin_(event, userId)) lineReply_(event.replyToken, formatLineQuota_(getLineQuota_()));
     return;
   }
 
@@ -785,6 +793,7 @@ function closeLineReport_(event, groupId, reportId) {
 function processLineOutbox() {
   try { collectMergedPullRequests_(); } catch (error) { console.error(error); }
   try { notifySiteUpdates_(); } catch (error) { console.error(error); }
+  try { checkLineQuota_(); } catch (error) { console.error(error); }
   sendApprovedLineReplies_();
 }
 
@@ -1074,6 +1083,42 @@ function buildReportMenuCard_() {
 
 function linePush_(to, text) {
   return lineApi_('https://api.line.me/v2/bot/message/push', { to: to, messages: [{ type: 'text', text: text }] });
+}
+
+// ---------- 推播額度 ----------
+
+/** 回傳 { limit: 數字或 null（無上限）, used: 數字 }；查詢失敗回 null。回覆（reply）不計入，只有推播（push）算。 */
+function getLineQuota_() {
+  const headers = { Authorization: `Bearer ${requiredProperty_('LINE_CHANNEL_ACCESS_TOKEN')}` };
+  const quota = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/quota', { headers: headers, muteHttpExceptions: true });
+  const usage = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/quota/consumption', { headers: headers, muteHttpExceptions: true });
+  if (quota.getResponseCode() !== 200 || usage.getResponseCode() !== 200) return null;
+  const q = JSON.parse(quota.getContentText());
+  return { limit: q.type === 'limited' ? Number(q.value) : null, used: Number(JSON.parse(usage.getContentText()).totalUsage || 0) };
+}
+
+function formatLineQuota_(quota) {
+  if (!quota) return '暫時查不到 LINE 額度，請稍後再試，或到 LINE 官方帳號後台 →「分析」查看。';
+  if (quota.limit === null) return `📊 本月已推播 ${quota.used} 則（目前方案沒有上限）`;
+  const left = Math.max(quota.limit - quota.used, 0);
+  const percent = quota.limit ? Math.round((quota.used / quota.limit) * 100) : 0;
+  return `📊 本月 LINE 推播額度\n已用 ${quota.used} / ${quota.limit} 則（${percent}%），剩 ${left} 則\n・機器人馬上回的那句不算額度\n・發到群組的訊息依群組人數計算\n・每月 1 日重新計算`;
+}
+
+// 由 processLineOutbox 順便檢查：用量達 80% 時寄一次提醒信（每月最多一次）
+function checkLineQuota_() {
+  const properties = PropertiesService.getScriptProperties();
+  const month = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM');
+  if (properties.getProperty('LINE_QUOTA_WARNED_MONTH') === month) return;
+  const quota = getLineQuota_();
+  if (!quota || quota.limit === null || quota.used < quota.limit * LINE_QUOTA_WARN_RATIO) return;
+  properties.setProperty('LINE_QUOTA_WARNED_MONTH', month);
+  MailApp.sendEmail({
+    to: requiredProperty_('NOTIFY_EMAIL'),
+    subject: `[LINE 額度] 本月已用 ${quota.used}/${quota.limit} 則`,
+    htmlBody: `<p>${escapeHtml_(formatLineQuota_(quota)).replace(/\n/g, '<br>')}</p><p>額度用完後推播（代發回覆、修好通知、網站更新通知）會發不出去，不會扣款；機器人即時回覆不受影響。</p>`,
+    name: 'Debug 小幫手'
+  });
 }
 
 function lineApi_(url, body) {
