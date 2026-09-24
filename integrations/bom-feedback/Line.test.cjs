@@ -364,6 +364,12 @@ test('every quick-reply tool name maps back to itself', () => {
   names.forEach((name) => assert(w.api.detectLineTool_(name) === name, `${name} maps to ${w.api.detectLineTool_(name)}`));
 });
 
+test('EC Tracking wording maps to PN 工具, not EC 受限制', () => {
+  const w = createWorld();
+  assert(w.api.detectLineTool_('8️⃣ EC Tracking 待貼入報表產生異常數據') === 'PN 工具', 'EC Tracking should map to PN 工具');
+  assert(w.api.detectLineTool_('EC 受限制清單錯誤') === 'EC 受限制物料分析器', 'EC 受限 should stay');
+});
+
 test('colleague supplement "F001 ②" is recorded, acknowledged, and emailed', () => {
   const w = createWorld();
   w.post([w.text('#回報 PIM 合併少一列')]);

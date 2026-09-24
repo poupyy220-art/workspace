@@ -47,7 +47,7 @@ const LINE_TOOLS = [
   { name: '萬用專案查詢', keys: ['萬用', '專案查詢'] },
   { name: '出勤表自動填寫', keys: ['出勤'] },
   { name: 'SOP 知識庫', keys: ['sop'] },
-  { name: 'PN 工具', keys: ['pn', '料號查詢'] }
+  { name: 'PN 工具', keys: ['pn', '料號查詢', 'ec tracking', '待貼入'] }
 ];
 
 // ---------- Webhook 入口（由 Code.gs 的 doPost 轉進來） ----------
