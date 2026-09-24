@@ -17,6 +17,7 @@ function createWorld() {
   const calls = { replies: [], pushes: [], mails: [], files: [] };
   let pulls = [];
   let commits = [];
+  const quota = { limit: 200, used: 12 };
 
   function makeSheet(startRow) {
     const data = {};
@@ -76,6 +77,8 @@ function createWorld() {
         if (url.includes('api-data.line.me/v2/bot/message/file')) return response(200, '', { getContentType: () => 'application/octet-stream', getBytes: () => xlsxBytes });
         if (url.includes('api-data.line.me/v2/bot/message/bad')) return response(200, '', { getContentType: () => 'application/octet-stream', getBytes: () => textBytes });
         if (url.includes('api-data.line.me')) return response(200, '', { getContentType: () => 'image/png', getBytes: () => pngBytes });
+        if (url.endsWith('/message/quota')) return response(200, quota.limit === null ? { type: 'none' } : { type: 'limited', value: quota.limit });
+        if (url.endsWith('/message/quota/consumption')) return response(200, { totalUsage: quota.used });
         if (url.includes('api.github.com') && url.includes('/commits')) return response(200, commits);
         if (url.includes('api.github.com')) return response(200, pulls);
         throw new Error(`Unexpected fetch ${url}`);
@@ -99,7 +102,7 @@ function createWorld() {
   const row = (n) => rows[n] || [];
   const dataRow = (n) => (sheets['Data Requests'] ? sheets['Data Requests'].data[n] || [] : []);
 
-  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCommits: (c) => { commits = c; }, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
+  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCommits: (c) => { commits = c; }, quota, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
 }
 
 const tests = [];
@@ -483,6 +486,29 @@ test('#我的ID only answers in setup mode', () => {
   w.properties.LINE_SETUP_MODE = 'true';
   w.post([w.text('#我的ID')]);
   assert(w.lastReply().includes('Ualice') && w.lastReply().includes('LINE_ADMIN_USER_IDS'), 'Setup mode should reveal user ID');
+});
+
+test('#額度 shows monthly push usage to the admin only', () => {
+  const w = createWorld();
+  w.post([w.text('#額度')]);
+  assert(w.lastReply().includes('只有維護人員'), 'Non-admin must be refused');
+  w.properties.LINE_ADMIN_USER_IDS = 'Ualice';
+  w.post([w.text('#額度')]);
+  assert(w.lastReply().includes('已用 12 / 200 則（6%），剩 188 則'), `Quota reply wrong: ${w.lastReply()}`);
+  w.quota.limit = null;
+  w.post([w.text('＃額度')]);
+  assert(w.lastReply().includes('沒有上限'), 'Unlimited plan wording missing');
+});
+
+test('quota warning email is sent once a month at 80%', () => {
+  const w = createWorld();
+  w.api.processLineOutbox();
+  assert(!w.calls.mails.some((m) => m.subject.startsWith('[LINE 額度]')), 'No warning below 80%');
+  w.quota.used = 165;
+  w.api.processLineOutbox();
+  w.api.processLineOutbox();
+  const warnings = w.calls.mails.filter((m) => m.subject.startsWith('[LINE 額度]'));
+  assert(warnings.length === 1 && warnings[0].subject.includes('165/200'), `Warning count wrong: ${warnings.length}`);
 });
 
 test('line-reply extraction and tool ordering', () => {
