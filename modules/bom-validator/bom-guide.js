@@ -1,9 +1,10 @@
 (function(global){
   const content={
-    version:'v2.15.6',
+    version:'v2.15.7',
     title:'BOM 轉檔與安檢操作 SOP',
-    updated:'2026-09-22',
+    updated:'2026-09-24',
     optimizations:[
+      '處理失敗時按鈕會顯示「處理失敗，請按『重新選檔』」並停用，請重新選檔後再執行；成功才會顯示「已完成」。',
       '自動辨識真正的 BOM 分頁與 Header 列，參考分頁只保留、不處理。',
       '依正式規則執行 NEW／OLD、PN、品名／規格 30 字及 Item Level 檢查。',
       '使用 OpenCC 完整簡體轉繁體，並處理 H PN → LINEFIT 與品名連動。',
