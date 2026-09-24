@@ -367,8 +367,20 @@ function applyDataRequestFormat_(sheet) {
   body.setVerticalAlignment('middle');
   sheet.getRange(5, DATA_COLUMNS.description, dataRows, 1).setWrap(true);
   sheet.getRange(5, DATA_COLUMNS.reply, dataRows, 1).setWrap(true);
-  sheet.getRange(4, 1, dataRows + 1, width).getBandings().forEach(function (banding) { banding.remove(); });
-  sheet.getRange(4, 1, dataRows + 1, width).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_BLUE, true, false);
+  // 藍白相間用條件式格式（applyRowBanding 在部分試算表會丟 Unexpected error）；失敗也不擋後面的下拉選單
+  try {
+    const zebraRule = SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND(ROW()>=5,ISEVEN(ROW()))')
+      .setBackground('#dbe9f7')
+      .setRanges([body])
+      .build();
+    const otherRules = sheet.getConditionalFormatRules().filter(function (rule) {
+      return !rule.getBooleanCondition() || rule.getBooleanCondition().getCriteriaValues().join('') !== '=AND(ROW()>=5,ISEVEN(ROW()))';
+    });
+    sheet.setConditionalFormatRules(otherRules.concat([zebraRule]));
+  } catch (zebraError) {
+    console.error(zebraError);
+  }
 
   const statusRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['新需求', '預覽完成', '已完成', '不處理'], true)
