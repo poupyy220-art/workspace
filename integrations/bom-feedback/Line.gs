@@ -83,7 +83,7 @@ function handleLineEvent_(event) {
   }
 
   if (event.type === 'join') {
-    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題：訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n・要更新 PN_Project_Map：打「#更新 PN_Project_Map」再傳 BOM_TREE Excel 檔。\n一般聊天我不會回、也不會記錄。');
+    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題：訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n・要更新資料：打「#更新」，從選單選擇資料類型後傳 Excel 檔。\n一般聊天我不會回、也不會記錄。');
     return;
   }
   if (event.type !== 'message' || !event.message) return;
@@ -170,8 +170,11 @@ function createLineReport_(event, groupId, userId, description) {
   putLinePending_(groupId, userId, { id: reportId, needTool: !tool, images: 0 });
   notifyLineReport_(reportId, now, tool, safeDescription);
 
-  const ask = tool ? '' : '\n請問是哪一個工具？直接回名稱即可，例如：BOM 轉檔、PN、EC 受限制、出勤表';
-  lineReply_(event.replyToken, `收到 ${reportId}，處理中 🔧\n有截圖的話，10 分鐘內直接貼上來即可。${ask}`);
+  const ask = tool ? '' : '\n請問是哪一個工具？點下方按鈕，或直接回名稱';
+  const message = { type: 'text', text: `收到 ${reportId}，處理中 🔧\n有截圖的話，10 分鐘內直接貼上來即可。${ask}` };
+  // 工具不明時附上快速回覆按鈕；按下等於送出工具名稱，由 needTool 流程補寫
+  if (!tool) message.quickReply = { items: LINE_TOOLS.slice(0, 13).map(function (item) { return { type: 'action', action: { type: 'message', label: item.name.slice(0, 20), text: item.name } }; }) };
+  lineReplyMessages_(event.replyToken, [message]);
 }
 
 function handleLineImage_(event, groupId, userId) {
@@ -223,6 +226,11 @@ function fetchLineImage_(messageId) {
 // ---------- 資料更新需求（#更新） ----------
 
 function createDataRequest_(event, groupId, userId, description) {
+  // 只打「#更新」不加字：跳出資料類型按鈕選單（按下等於送出「#更新 類型」），不建立需求
+  if (!String(description || '').trim()) {
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: '要更新哪一種資料？請選擇', contents: buildUpdateMenuCard_() }]);
+    return;
+  }
   let safeDescription;
   try {
     safeDescription = safeText_(description, 500, false);
@@ -731,8 +739,39 @@ function notifyLineReport_(reportId, now, tool, description) {
 }
 
 function lineReply_(replyToken, text) {
+  return lineReplyMessages_(replyToken, [{ type: 'text', text: text }]);
+}
+
+function lineReplyMessages_(replyToken, messages) {
   if (!replyToken) return false;
-  return lineApi_('https://api.line.me/v2/bot/message/reply', { replyToken: replyToken, messages: [{ type: 'text', text: text }] });
+  return lineApi_('https://api.line.me/v2/bot/message/reply', { replyToken: replyToken, messages: messages });
+}
+
+/** 「#更新」選單：每個可自動處理的資料類型一顆按鈕，最後一顆給其他資料（人工處理）。 */
+function buildUpdateMenuCard_() {
+  const typeButtons = DATA_TYPES.map(function (item) {
+    return { type: 'button', style: 'primary', color: '#1E7E34', height: 'sm', action: { type: 'message', label: `🗂️ ${item.name}`.slice(0, 20), text: `#更新 ${item.name}` } };
+  });
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#E6F4EA', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: '🗂️ 要更新哪一種資料？', size: 'lg', weight: 'bold', color: '#1E7E34' },
+        { type: 'text', text: '點選後請在 30 分鐘內傳 Excel 檔', size: 'xs', color: '#3C8D50' }
+      ]
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: typeButtons.concat([
+        { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '📝 其他資料（人工處理）', text: '#更新 其他資料' } }
+      ])
+    },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '🔒 AI 會先比對預覽，維護人員確認後才更新', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+    }
+  };
 }
 
 function linePush_(to, text) {

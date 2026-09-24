@@ -335,6 +335,35 @@ test('Claude reply entry: sends a Flex card with stats and link when card data i
   assert(w.dataRow(5)[8] === 'Yoga mini 已更新' && w.dataRow(5)[9] === '已發送', 'Row must record the text version');
 });
 
+test('#更新 alone shows a button menu and creates nothing; tapping a button starts the request', () => {
+  const w = createWorld();
+  w.post([w.text('#更新')]);
+  const message = w.calls.replies.at(-1).messages[0];
+  assert(message.type === 'flex', 'Menu must be a flex card');
+  const json = JSON.stringify(message.contents);
+  assert(json.includes('"text":"#更新 PN_Project_Map"') && json.includes('#更新 其他資料'), 'Menu buttons missing');
+  assert(!w.sheets['Data Requests'], 'Menu must not create a request');
+  w.post([w.text('#更新 PN_Project_Map')]);
+  assert(w.dataRow(5)[0] === 'U001' && w.dataRow(5)[2] === 'PN_Project_Map', 'Button text should create U001');
+});
+
+test('#回報 without a tool offers quick-reply tool buttons that fill the tool', () => {
+  const w = createWorld();
+  w.post([w.text('#回報 畫面一直轉圈圈')]);
+  const message = w.calls.replies.at(-1).messages[0];
+  const labels = (message.quickReply && message.quickReply.items || []).map((item) => item.action.text);
+  assert(labels.includes('BOM 轉檔與安檢') && labels.includes('出勤表自動填寫') && labels.length <= 13, `Quick replies wrong: ${labels.join(',')}`);
+  labels.forEach((label) => assert(label.length <= 20, `Label too long: ${label}`));
+  w.post([w.text('萬用專案查詢')]);
+  assert(w.row(5)[4] === '工具：萬用專案查詢', `Quick reply should fill tool: ${w.row(5)[4]}`);
+});
+
+test('every quick-reply tool name maps back to itself', () => {
+  const w = createWorld();
+  const names = ['PIM 合併', 'SPB vs L10', 'EC 受限制物料分析器', 'CTO EDI 新專案維護', 'BOM 轉檔與安檢', 'MTM 國別查詢', '國別 DB 維護', '萬用專案查詢', '出勤表自動填寫', 'SOP 知識庫', 'PN 工具'];
+  names.forEach((name) => assert(w.api.detectLineTool_(name) === name, `${name} maps to ${w.api.detectLineTool_(name)}`));
+});
+
 test('line-reply extraction and tool ordering', () => {
   const w = createWorld();
   assert(w.api.extractLineReply_('a<!-- line-reply --> 已修好 <!-- /line-reply -->b') === '已修好', 'Extraction failed');
