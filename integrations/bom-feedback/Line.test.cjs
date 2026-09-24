@@ -320,6 +320,21 @@ test('Claude reply entry: fixed notice on F rows asks for OK and enables closing
   assert(w.row(5)[6] === '已解決', 'OK should close after Claude fixed notice');
 });
 
+test('Claude reply entry: sends a Flex card with stats and link when card data is given', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#更新 PN_Project_Map Yoga mini')]);
+  const card = { project: 'Yoga mini', added: ['SBB1', 'SBB2', 'SBB3', 'SBB4', 'SBB5', 'SBB6', 'SBB7'], tagged: 50, unchanged: 184, rowsBefore: 4571, rowsAfter: 4617, link: 'https://docs.google.com/spreadsheets/d/x/edit', date: '2026/09/24' };
+  const result = JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeReply: { key: 'claude-key', id: 'U001', text: 'Yoga mini 已更新', card } }) } }));
+  assert(result.sent, 'Card should be sent');
+  const message = w.calls.pushes.at(-1).messages[0];
+  assert(message.type === 'flex' && message.altText.startsWith('U001：Yoga mini 已更新'), `Expected flex message: ${JSON.stringify(message).slice(0, 120)}`);
+  const json = JSON.stringify(message.contents);
+  assert(json.includes('Yoga mini 更新完成') && json.includes('"7"') && json.includes('"50"') && json.includes('"184"'), 'Card stats missing');
+  assert(json.includes('…等 7 筆') && json.includes('查看完整清單') && json.includes('4571 → 4617'), 'Card preview/link/footer missing');
+  assert(w.dataRow(5)[8] === 'Yoga mini 已更新' && w.dataRow(5)[9] === '已發送', 'Row must record the text version');
+});
+
 test('line-reply extraction and tool ordering', () => {
   const w = createWorld();
   assert(w.api.extractLineReply_('a<!-- line-reply --> 已修好 <!-- /line-reply -->b') === '已修好', 'Extraction failed');

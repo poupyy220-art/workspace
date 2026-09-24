@@ -443,12 +443,77 @@ function handleClaudeReply_(request) {
     }
 
     const tail = fixed ? `\n沒問題的話請回「${id} OK」` : '';
-    const sent = linePush_(groupId, `${id}：${text}${tail}`);
+    // 有卡片資料就送 LINE 卡片（Flex），卡片失敗時退回純文字，確保一定送得出去
+    let sent = false;
+    if (request.card) {
+      try {
+        sent = lineApi_('https://api.line.me/v2/bot/message/push', {
+          to: groupId,
+          messages: [{ type: 'flex', altText: `${id}：${text}`.slice(0, 390), contents: buildDataUpdateCard_(id, request.card) }]
+        });
+      } catch (cardError) {
+        console.error(cardError);
+      }
+    }
+    if (!sent) sent = linePush_(groupId, `${id}：${text}${tail}`);
     sheet.getRange(rowNumber, columns.reply).setValue(sheetText_(text));
     sheet.getRange(rowNumber, columns.replyStatus).setValue(sent ? (fixed ? '修好已通知' : '已發送') : '發送失敗');
     sheet.getRange(rowNumber, columns.replyTime).setValue(new Date());
     return { ok: sent, id: id, sent: sent };
   });
+}
+
+/**
+ * 資料更新結果卡片：標題、三個數字（新增／補標籤／已存在）、新增料號預覽、查看完整清單按鈕。
+ * card = { project, added: [料號...], tagged, unchanged, rowsBefore, rowsAfter, link, date, note }
+ */
+function buildDataUpdateCard_(id, card) {
+  const added = (Array.isArray(card.added) ? card.added : []).map(String).slice(0, 300);
+  const count = function (value) { return String(Math.max(0, Number(value) || 0)); };
+  const preview = added.length ? added.slice(0, 6).join('、') + (added.length > 6 ? ` …等 ${added.length} 筆` : '') : '這次沒有新增料號';
+  const stat = function (icon, number, label, background, color) {
+    return {
+      type: 'box', layout: 'vertical', flex: 1, backgroundColor: background, cornerRadius: '10px', paddingAll: '8px',
+      contents: [
+        { type: 'text', text: icon, size: 'md', align: 'center' },
+        { type: 'text', text: number, size: 'xl', weight: 'bold', color: color, align: 'center' },
+        { type: 'text', text: label, size: 'xs', color: color, align: 'center' }
+      ]
+    };
+  };
+  const footerText = card.rowsBefore && card.rowsAfter ? `🛡️ 總列數 ${card.rowsBefore} → ${card.rowsAfter} · 已核對` : '🛡️ 已核對';
+  const bubble = {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#E6F4EA', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: `#️⃣ ${id} · PN_Project_Map`, size: 'xs', color: '#1E7E34' },
+        { type: 'text', text: `${String(card.project || '資料')} 更新完成 ✅`, size: 'lg', weight: 'bold', color: '#1E7E34', wrap: true },
+        { type: 'text', text: `${String(card.date || '')} · 維護人員已確認`.replace(/^ · /, ''), size: 'xs', color: '#3C8D50' }
+      ]
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'md',
+      contents: [
+        { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
+          stat('➕', count(card.added ? added.length : 0), '新增料號', '#E8F0FE', '#1A56B8'),
+          stat('🏷️', count(card.tagged), '補上標籤', '#FEF3E2', '#A15C00'),
+          stat('✅', count(card.unchanged), '已存在', '#F1F3F4', '#3C4043')
+        ] },
+        { type: 'text', text: `📝 新增：${preview}`, size: 'xs', color: '#5F6368', wrap: true },
+        card.note ? { type: 'text', text: String(card.note).slice(0, 300), size: 'xs', color: '#5F6368', wrap: true } : null
+      ].filter(Boolean)
+    },
+    footer: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [
+        card.link ? { type: 'button', style: 'primary', color: '#1E7E34', height: 'sm', action: { type: 'uri', label: '📋 查看完整清單', uri: String(card.link) } } : null,
+        { type: 'text', text: '💬 有問題請直接在群組告訴維護人員', size: 'xs', color: '#80868B', align: 'center' },
+        { type: 'text', text: footerText, size: 'xxs', color: '#9AA0A6', align: 'center' }
+      ].filter(Boolean)
+    }
+  };
+  return bubble;
 }
 
 // ---------- 結案 ----------
