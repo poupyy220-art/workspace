@@ -160,7 +160,7 @@ test('attaches up to three screenshots from the same reporter only', () => {
 test('handles empty and duplicate reports', () => {
   const w = createWorld();
   w.post([w.text('#回報')]);
-  assert(!w.row(5).length && w.lastReply().includes('後面寫問題'), 'Empty report should show guidance');
+  assert(!w.row(5).length && w.calls.replies.at(-1).messages[0].type === 'flex', 'Empty report should show the menu');
   w.post([w.text('#回報 EC 受限制分析器當掉')]);
   w.post([w.text('#回報 EC 受限制分析器當掉')]);
   assert(!w.row(6).length && w.lastReply().includes('已經回報過'), 'Duplicate should be refused');
@@ -345,6 +345,25 @@ test('#更新 alone shows a button menu and creates nothing; tapping a button st
   assert(!w.sheets['Data Requests'], 'Menu must not create a request');
   w.post([w.text('#更新 PN_Project_Map')]);
   assert(w.dataRow(5)[0] === 'U001' && w.dataRow(5)[2] === 'PN_Project_Map', 'Button text should create U001');
+});
+
+test('#回報 alone shows a menu; picking 問題／需求 turns the next message into the report', () => {
+  const w = createWorld();
+  w.post([w.text('#回報')]);
+  const json = JSON.stringify(w.calls.replies.at(-1).messages[0].contents);
+  assert(json.includes('#回報 選擇:問題') && json.includes('#回報 選擇:需求') && json.includes('"text":"#更新"'), 'Menu buttons missing');
+  assert(!w.row(5).length, 'Menu must not create a report');
+  w.post([w.text('#回報 選擇:需求')]);
+  assert(!w.row(5).length && w.lastReply().includes('10 分鐘內'), 'Picking should ask for the description');
+  w.post([w.image()]);
+  assert(w.lastReply().includes('請先用文字描述') && !w.row(5).length, 'Image before description must not attach');
+  w.post([w.text('PN 工具的 Excel 希望多一欄序號')]);
+  assert(w.row(5)[0] === 'F001' && w.row(5)[3] === 'LINE 需求' && w.row(5)[4] === '工具：PN 工具', `Request row wrong: ${w.row(5).slice(0, 6)}`);
+  w.post([w.text('#回報 選擇:問題')]);
+  w.post([w.text('PIM 合併少一列')]);
+  assert(w.row(6)[3] === 'LINE 回報' && w.row(6)[5] === 'PIM 合併少一列', 'Problem mode should create a normal report');
+  w.post([w.text('今天午餐吃什麼')]);
+  assert(!w.row(7).length, 'After the report, normal chat stays ignored');
 });
 
 test('#回報 without a tool offers quick-reply tool buttons that fill the tool', () => {

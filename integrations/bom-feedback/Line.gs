@@ -22,6 +22,8 @@ const LINE_SUPPLEMENT_PATTERN = /^[#＃]?\s*([FU]\d{3,})\s*[:：,，]?\s*(\S[\s\
 // 同事補充記在每列最後兩欄：BOM Feedback R／S 欄、Data Requests L／M 欄
 const SUPPLEMENT_COLUMNS = { F: { text: 18, time: 19 }, U: { text: 12, time: 13 } };
 const LINE_PENDING_SECONDS = 600;
+// 「#回報」選單按鈕送出的文字；按下後同一人的下一句就是描述
+const LINE_REPORT_MODES = { '選擇:問題': { label: '問題' }, '選擇:需求': { label: '需求' } };
 // #更新 要找 BOM 檔，收檔時間比截圖長
 const DATA_PENDING_SECONDS = 1800;
 const LINE_MAX_IMAGES = 3;
@@ -86,7 +88,7 @@ function handleLineEvent_(event) {
   }
 
   if (event.type === 'join') {
-    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題：訊息開頭打「#回報」再寫問題，可以接著貼截圖。\n・要更新資料：打「#更新」，從選單選擇資料類型後傳 Excel 檔。\n一般聊天我不會回、也不會記錄。');
+    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題或想調整：打「#回報」從選單選擇，或直接打「#回報 問題描述」，可以接著貼截圖。\n・要更新資料：打「#更新」，從選單選擇資料類型後傳 Excel 檔。\n一般聊天我不會回、也不會記錄。');
     return;
   }
   if (event.type !== 'message' || !event.message) return;
@@ -107,6 +109,13 @@ function handleLineText_(event, groupId, userId, rawText) {
 
   if (LINE_UPDATE_PREFIX.test(text)) {
     createDataRequest_(event, groupId, userId, text.replace(LINE_UPDATE_PREFIX, ''));
+    return;
+  }
+
+  // 從 #回報 選單按了「回報問題／提出需求」：這句就是描述
+  const waiting = getLinePending_(groupId, userId);
+  if (waiting && waiting.kind === 'awaitReport') {
+    createLineReport_(event, groupId, userId, text, waiting.mode);
     return;
   }
 
@@ -135,11 +144,21 @@ function handleLineText_(event, groupId, userId, rawText) {
 
 // ---------- 建立回報 ----------
 
-function createLineReport_(event, groupId, userId, description) {
+function createLineReport_(event, groupId, userId, description, mode) {
+  // 只打「#回報」：跳出選單（回報問題／提出需求／更新資料），不建立回報
   if (!description) {
-    lineReply_(event.replyToken, '請在「#回報」後面寫問題，例如：\n#回報 BOM 轉檔後第 35 列品名變亂碼');
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: '要回報什麼？請選擇', contents: buildReportMenuCard_() }]);
     return;
   }
+  const picked = LINE_REPORT_MODES[String(description).replace(/\s/g, '').replace('：', ':')];
+  if (picked) {
+    putLinePending_(groupId, userId, { kind: 'awaitReport', mode: picked.label });
+    lineReply_(event.replyToken, picked.label === '需求'
+      ? '好的，請直接打出希望新增或調整的地方（10 分鐘內），例如：\nEC Tracking 下載的 Excel 希望多一欄序號'
+      : '好的，請直接打出遇到的問題（10 分鐘內），例如：\nBOM 轉檔後第 35 列品名變亂碼');
+    return;
+  }
+  const isRequest = mode === '需求';
   let safeDescription;
   try {
     safeDescription = safeText_(description, 1000, true);
@@ -160,7 +179,7 @@ function createLineReport_(event, groupId, userId, description) {
       ensureLineHeaders_(sheet);
       const row = [
         // LINE 不知道同事實際使用的網站版本，模組版本欄留空避免誤導
-        reportId, now, '', 'LINE 回報', sheetText_(tool ? `工具：${tool}` : '工具：待確認'),
+        reportId, now, '', isRequest ? 'LINE 需求' : 'LINE 回報', sheetText_(tool ? `工具：${tool}` : '工具：待確認'),
         sheetText_(safeDescription), '新回饋', '', '', '', 'LINE', '', 0, groupId, '', '', ''
       ];
       sheet.appendRow(row);
@@ -188,6 +207,10 @@ function handleLineImage_(event, groupId, userId) {
   // 只收「剛打完 #回報的同一個人」接著貼的圖，一般聊天的圖不碰
   const pending = getLinePending_(groupId, userId);
   if (!pending) return;
+  if (pending.kind === 'awaitReport') {
+    lineReply_(event.replyToken, '請先用文字描述，建立編號後再貼截圖 🙏');
+    return;
+  }
   if (pending.kind === 'data') {
     lineReply_(event.replyToken, `${pending.id} 需要的是 Excel 檔（BOM_TREE_….xlsx），截圖沒有記錄。`);
     return;
@@ -817,6 +840,36 @@ function buildUpdateMenuCard_() {
     footer: {
       type: 'box', layout: 'vertical',
       contents: [{ type: 'text', text: '🔒 AI 會先比對預覽，維護人員確認後才更新', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+    }
+  };
+}
+
+function buildReportMenuCard_() {
+  function button(style, color, label, text) {
+    const item = { type: 'button', style: style, height: 'sm', action: { type: 'message', label: label, text: text } };
+    if (color) item.color = color;
+    return item;
+  }
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#FDECEA', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: '🛠️ 要回報什麼？', size: 'lg', weight: 'bold', color: '#B3261E' },
+        { type: 'text', text: '點選後直接打文字說明，可接著貼截圖', size: 'xs', color: '#C5534A', wrap: true }
+      ]
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [
+        button('primary', '#B3261E', '🐞 回報問題', '#回報 選擇:問題'),
+        button('primary', '#1A73E8', '💡 提出需求／格式調整', '#回報 選擇:需求'),
+        button('secondary', '', '🗂️ 更新資料', '#更新')
+      ]
+    },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '也可以直接打「#回報 問題描述」一次送出', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
     }
   };
 }
