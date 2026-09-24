@@ -12,7 +12,8 @@
  *   LINE_SETUP_MODE            'true' 時，未登記群組輸入「#群組ID」會回覆該群組 ID；設定完請刪除
  *   LINE_GITHUB_REPO           預設 poupyy220-art/workspace；合併的 PR 標題含 [F024] 會觸發通知；main 的 index.html commit 標題含 vX.Y.Z 會推「網站已更新」到白名單群組
  *   LINE_SITE_LAST_SHA         （自動寫入）最後一次已通知的網站 commit，刪除後下次只重新記錄、不補發
- *   CLAUDE_REPLY_KEY           Claude 代發已核准回覆的暗號（本機 feedback.local.json 存同一值，不得寫進 Repository）
+ *   LINE_ADMIN_USER_IDS        可使用 #待辦 的 LINE 使用者 ID（逗號分隔）；設定模式下在群組打「#我的ID」可查
+ *   CLAUDE_REPLY_KEY          Claude 代發已核准回覆的暗號（本機 feedback.local.json 存同一值，不得寫進 Repository）
  *
  * Apps Script 讀不到 X-Line-Signature header，因此以「網址暗號＋群組白名單」代替簽章驗證。
  */
@@ -39,6 +40,15 @@ const DATA_HEADERS = ['需求編號', '送出時間', '更新類型', '說明', 
 const DATA_MAX_FILES = 3;
 const DATA_MAX_FILE_BYTES = 10 * 1024 * 1024;
 const DATA_TYPES = [{ name: 'PN_Project_Map', keys: ['pn_project_map', 'project_map', 'project map', '專案對照', '料號對照'] }];
+// 「#待辦」維護者自己的待辦清單（T001 起），只有 LINE_ADMIN_USER_IDS 能新增、查看、改狀態
+const LINE_TODO_LIST_PATTERN = /^[#＃]\s*待辦\s*清單\s*$/;
+const LINE_TODO_PREFIX = /^[#＃]\s*待辦\s*/;
+const LINE_TODO_STATUS_PATTERN = /^[#＃]?\s*(T\d{3,})\s*(完成|取消|進行中)\s*$/i;
+const LINE_MY_ID_PATTERN = /^[#＃]\s*我的\s*ID\s*$/i;
+const TODO_SHEET = 'To Do';
+const TODO_HEADERS = ['待辦編號', '建立時間', '內容', '狀態', '完成時間', 'LINE 群組', '備註'];
+const TODO_COLUMNS = { content: 3, status: 4, doneTime: 5, group: 6, note: 7 };
+const TODO_STATUSES = ['待辦', '進行中', '已完成', '取消'];
 // 由具體到籠統排序：先比對專有名稱，最後才用 bom、pn 這種常見字
 const LINE_TOOLS = [
   { name: 'PIM 合併', keys: ['pim'] },
@@ -111,6 +121,26 @@ function handleLineText_(event, groupId, userId, rawText) {
 
   if (LINE_UPDATE_PREFIX.test(text)) {
     createDataRequest_(event, groupId, userId, text.replace(LINE_UPDATE_PREFIX, ''));
+    return;
+  }
+
+  // 設定模式下查自己的 LINE 使用者 ID（填 LINE_ADMIN_USER_IDS 用）
+  if (LINE_MY_ID_PATTERN.test(text)) {
+    if (PropertiesService.getScriptProperties().getProperty('LINE_SETUP_MODE') === 'true') lineReply_(event.replyToken, `你的 LINE 使用者 ID：\n${userId}\n請填入 Apps Script 的 LINE_ADMIN_USER_IDS。`);
+    return;
+  }
+
+  if (LINE_TODO_LIST_PATTERN.test(text)) {
+    if (requireLineAdmin_(event, userId)) showTodoList_(event);
+    return;
+  }
+  if (LINE_TODO_PREFIX.test(text)) {
+    if (requireLineAdmin_(event, userId)) createTodo_(event, groupId, text.replace(LINE_TODO_PREFIX, ''));
+    return;
+  }
+  const todoStatusMatch = text.match(LINE_TODO_STATUS_PATTERN);
+  if (todoStatusMatch) {
+    if (requireLineAdmin_(event, userId)) updateTodoStatus_(event, todoStatusMatch[1].toUpperCase(), todoStatusMatch[2] === '完成' ? '已完成' : todoStatusMatch[2]);
     return;
   }
 
@@ -594,6 +624,131 @@ function addLineSupplement_(event, groupId, id, rawText) {
   }
   lineReply_(event.replyToken, `收到 ${id} 的補充 👍 維護人員會接著處理`);
   return true;
+}
+
+// ---------- 待辦（只有維護者） ----------
+
+function isLineAdmin_(userId) {
+  return String(PropertiesService.getScriptProperties().getProperty('LINE_ADMIN_USER_IDS') || '')
+    .split(',').map(function (value) { return value.trim(); }).filter(Boolean).indexOf(userId) >= 0;
+}
+
+function requireLineAdmin_(event, userId) {
+  if (isLineAdmin_(userId)) return true;
+  lineReply_(event.replyToken, '待辦清單只有維護人員可以使用；有需求請打「#回報」選「提出需求」🙏');
+  return false;
+}
+
+function createTodo_(event, groupId, rawText) {
+  const content = String(rawText || '').trim();
+  if (!content) {
+    lineReply_(event.replyToken, '請在「#待辦」後面寫內容，例如：\n#待辦 PN Database 清單跟公司系統比對\n看清單打「#待辦清單」，完成打「T001 完成」');
+    return;
+  }
+  let safeContent;
+  try {
+    safeContent = safeText_(content, 500, false);
+  } catch (lengthError) {
+    lineReply_(event.replyToken, '待辦內容超過 500 字，請精簡後再送一次。');
+    return;
+  }
+  const todoId = withLock_(function () {
+    const properties = PropertiesService.getScriptProperties();
+    const next = Number(properties.getProperty('LINE_TODO_SEQ') || 0) + 1;
+    properties.setProperty('LINE_TODO_SEQ', String(next));
+    const id = `T${String(next).padStart(3, '0')}`;
+    getTodoSheet_().appendRow([id, new Date(), sheetText_(safeContent), '待辦', '', groupId, '']);
+    return id;
+  });
+  lineReply_(event.replyToken, `已記下 ${todoId} 📝\n看清單打「#待辦清單」，完成打「${todoId} 完成」`);
+}
+
+function readOpenTodos_() {
+  const sheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(TODO_SHEET);
+  if (!sheet || sheet.getLastRow() < 5) return [];
+  return sheet.getRange(5, 1, sheet.getLastRow() - 4, TODO_HEADERS.length).getValues()
+    .filter(function (row) { return row[0] && (row[TODO_COLUMNS.status - 1] === '待辦' || row[TODO_COLUMNS.status - 1] === '進行中'); })
+    .map(function (row) { return { id: String(row[0]), content: String(row[TODO_COLUMNS.content - 1]), status: String(row[TODO_COLUMNS.status - 1]) }; });
+}
+
+function showTodoList_(event) {
+  const todos = readOpenTodos_();
+  if (!todos.length) {
+    lineReply_(event.replyToken, '目前沒有未完成的待辦 🎉');
+    return;
+  }
+  lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: `待辦清單：${todos.length} 項未完成`, contents: buildTodoListCard_(todos) }]);
+}
+
+function buildTodoListCard_(todos) {
+  const shown = todos.slice(0, 15);
+  const rows = shown.map(function (todo) {
+    return {
+      type: 'box', layout: 'horizontal', spacing: 'sm',
+      contents: [
+        { type: 'text', text: todo.id, size: 'sm', weight: 'bold', color: '#1A73E8', flex: 2 },
+        { type: 'text', text: todo.content.slice(0, 60), size: 'sm', wrap: true, flex: 7 },
+        { type: 'text', text: todo.status === '進行中' ? '🔄' : '⬜', size: 'sm', align: 'end', flex: 1 }
+      ]
+    };
+  });
+  if (todos.length > shown.length) rows.push({ type: 'text', text: `…另有 ${todos.length - shown.length} 項，請看 Sheet「${TODO_SHEET}」分頁`, size: 'xs', color: '#9AA0A6', wrap: true });
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#FFF4E5', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: `📝 待辦清單（${todos.length} 項未完成）`, size: 'lg', weight: 'bold', color: '#B06000' },
+        { type: 'text', text: '⬜ 待辦　🔄 進行中', size: 'xs', color: '#C77700' }
+      ]
+    },
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: rows },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '完成打「T001 完成」，也可以打「T001 進行中」「T001 取消」', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+    }
+  };
+}
+
+function updateTodoStatus_(event, todoId, status) {
+  const result = withLock_(function () {
+    const sheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(TODO_SHEET);
+    if (!sheet) return 'missing';
+    const rowNumber = findFeedbackRow_(sheet, todoId);
+    if (!rowNumber) return 'missing';
+    sheet.getRange(rowNumber, TODO_COLUMNS.status).setValue(status);
+    sheet.getRange(rowNumber, TODO_COLUMNS.doneTime).setValue(status === '已完成' || status === '取消' ? new Date() : '');
+    return 'ok';
+  });
+  const done = { 已完成: '已完成 ✅', 取消: '已取消', 進行中: '改為進行中 🔄' };
+  lineReply_(event.replyToken, result === 'ok' ? `${todoId} ${done[status]}` : `找不到 ${todoId}，請確認編號。`);
+}
+
+/** 第一次 #待辦 時自動建立「To Do」分頁；版面比照 Data Requests。 */
+function getTodoSheet_() {
+  const spreadsheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID'));
+  let sheet = spreadsheet.getSheetByName(TODO_SHEET);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(TODO_SHEET);
+    sheet.getRange(1, 1).setValue('維護者待辦（LINE #待辦）');
+    sheet.getRange(2, 1).setValue('只有維護者可以新增；狀態可在 LINE 打「T001 完成／進行中／取消」或直接改下拉選單。');
+    sheet.getRange(4, 1, 1, TODO_HEADERS.length).setValues([TODO_HEADERS]);
+    try { applyTodoFormat_(sheet); } catch (formatError) { console.error(formatError); }
+  }
+  return sheet;
+}
+
+function applyTodoFormat_(sheet) {
+  const width = TODO_HEADERS.length;
+  sheet.getRange(1, 1, 1, width).merge().setBackground('#1f4e79').setFontColor('#ffffff').setFontWeight('bold').setFontSize(14);
+  sheet.getRange(2, 1, 1, width).merge().setBackground('#fff2cc').setFontColor('#7f6000');
+  sheet.getRange(4, 1, 1, width).setBackground('#dce6f1').setFontColor('#1f3864').setFontWeight('bold');
+  sheet.setFrozenRows(4);
+  [90, 150, 360, 90, 150, 120, 200].forEach(function (px, index) { sheet.setColumnWidth(index + 1, px); });
+  const dataRows = Math.max(sheet.getMaxRows() - 4, 1);
+  sheet.getRange(5, TODO_COLUMNS.content, dataRows, 1).setWrap(true);
+  const statusRule = SpreadsheetApp.newDataValidation().requireValueInList(TODO_STATUSES, true).setAllowInvalid(false).build();
+  sheet.getRange(5, TODO_COLUMNS.status, dataRows, 1).setDataValidation(statusRule);
 }
 
 // ---------- 結案 ----------

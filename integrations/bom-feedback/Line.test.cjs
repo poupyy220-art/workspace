@@ -443,6 +443,48 @@ test('site update: first run only remembers, later versions are pushed once afte
   assert(w.calls.pushes.length === 2, 'Commits without a version stay silent');
 });
 
+test('#待辦 is admin-only: add, list, change status; others get a polite refusal', () => {
+  const w = createWorld();
+  w.post([w.text('#待辦 PN Database 清單跟公司系統比對')]);
+  assert(w.lastReply().includes('只有維護人員') && !w.sheets['To Do'], 'Non-admin must not create todos');
+
+  w.properties.LINE_ADMIN_USER_IDS = 'Ualice';
+  w.post([w.text('#待辦')]);
+  assert(w.lastReply().includes('後面寫內容') && !w.sheets['To Do'], 'Empty todo shows usage');
+  w.post([w.text('#待辦 PN Database 清單跟公司系統比對')]);
+  assert(w.lastReply().startsWith('已記下 T001'), `Todo reply wrong: ${w.lastReply()}`);
+  const sheet = w.sheets['To Do'];
+  assert(sheet && sheet.data[5][0] === 'T001' && sheet.data[5][2] === 'PN Database 清單跟公司系統比對' && sheet.data[5][3] === '待辦', 'Todo row wrong');
+  assert(sheet.data[4][0] === '待辦編號', 'Todo headers missing');
+  w.post([w.text('＃待辦 國別 DB 補 XT')]);
+  assert(sheet.data[6][0] === 'T002', 'Second todo should be T002');
+
+  w.post([w.text('#待辦清單')]);
+  const card = w.calls.replies.at(-1).messages[0];
+  assert(card.type === 'flex' && card.altText.includes('2 項') && JSON.stringify(card.contents).includes('國別 DB 補 XT'), 'List card wrong');
+
+  w.post([w.text('T001 完成')]);
+  assert(w.lastReply() === 'T001 已完成 ✅' && sheet.data[5][3] === '已完成' && sheet.data[5][4], 'Done status wrong');
+  w.post([w.text('T002 進行中')]);
+  assert(sheet.data[6][3] === '進行中', 'In-progress status wrong');
+  w.post([w.text('T009 完成')]);
+  assert(w.lastReply().includes('找不到 T009'), 'Unknown todo should say not found');
+
+  w.post([w.text('T002 完成', 'Ubob')]);
+  assert(sheet.data[6][3] === '進行中' && w.lastReply().includes('只有維護人員'), 'Non-admin cannot change status');
+  w.post([w.text('#待辦清單', 'Ubob')]);
+  assert(w.lastReply().includes('只有維護人員'), 'Non-admin cannot list');
+});
+
+test('#我的ID only answers in setup mode', () => {
+  const w = createWorld();
+  w.post([w.text('#我的ID')]);
+  assert(w.calls.replies.length === 0, 'Must stay silent outside setup mode');
+  w.properties.LINE_SETUP_MODE = 'true';
+  w.post([w.text('#我的ID')]);
+  assert(w.lastReply().includes('Ualice') && w.lastReply().includes('LINE_ADMIN_USER_IDS'), 'Setup mode should reveal user ID');
+});
+
 test('line-reply extraction and tool ordering', () => {
   const w = createWorld();
   assert(w.api.extractLineReply_('a<!-- line-reply --> 已修好 <!-- /line-reply -->b') === '已修好', 'Extraction failed');
