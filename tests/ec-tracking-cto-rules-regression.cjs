@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { context } = require('./ec-tracking-pn-map-regression.cjs');
 
 // 2026-09-23 May 確認的 CTO_ 開頭 EC 規則：
-// Disposition code 固定「---」、確認者 = Creater；整份 Flatfile 無 Change Type
+// Disposition code 固定「---」、確認者 = SE（2026-09-29 F014 起，原為 Creater）；整份 Flatfile 無 Change Type
 // 時備註「No BOM change,EC直接close」，有 ChgBom/Insert/Extract 時備註留空待人工填。
 function run() {
   let checks = 0;
@@ -16,7 +16,7 @@ function run() {
   const noChange = build([top('CTO_00405009', 'CTOSBB_13C5CTO1WW'), child('CTO_00405009', 'CTOSBB_13C5CTO1WW', '')]);
   check(noChange.length === 1);
   check(noChange[0]['Disposition code'] === '---');
-  check(noChange[0]['確認者'] === 'TEST');
+  check(noChange[0]['確認者'] === 'SE');
   check(noChange[0]['備註'] === 'No BOM change,EC直接close');
   check(noChange[0]['MTM Family'] === 'Tiny Neo2');
   check(noChange[0]['_自動判斷備註'].includes('判斷為 No BOM change'));
@@ -27,7 +27,7 @@ function run() {
   const withChange = build([top('CTO_00404566', 'CTOSBB_13C5CTO1WW'), child('CTO_00404566', 'CTOSBB_13C5CTO1WW', 'ChgBom')]);
   check(withChange.length === 1);
   check(withChange[0]['Disposition code'] === '---');
-  check(withChange[0]['確認者'] === 'TEST');
+  check(withChange[0]['確認者'] === 'SE');
   check(withChange[0]['備註'] === '');
   check(withChange[0]['_自動判斷備註'].includes('有 BOM 變更'));
 
