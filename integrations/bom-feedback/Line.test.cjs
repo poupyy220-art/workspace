@@ -340,6 +340,58 @@ test('Claude reply entry: sends a Flex card with stats and link when card data i
   assert(w.dataRow(5)[8] === 'Yoga mini 已更新' && w.dataRow(5)[9] === '已發送', 'Row must record the text version');
 });
 
+test('Claude status entry: wrong key, unknown id, or invalid status changes nothing', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#回報 BOM 轉檔錯誤')]);
+  const call = (body) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeStatus: body }) } }));
+  assert(call({ key: 'wrong', id: 'F001', status: '已解決' }).error === 'unauthorized', 'Wrong key must be rejected');
+  assert(call({ key: 'claude-key', id: 'F999', status: '已解決' }).error === 'id not found', 'Unknown id must be rejected');
+  assert(call({ key: 'claude-key', id: 'F001', status: '已完成' }).error === 'invalid status', 'F rows only accept feedback statuses');
+  const noKeySet = createWorld();
+  noKeySet.post([noKeySet.text('#回報 BOM 轉檔錯誤')]);
+  const unset = JSON.parse(noKeySet.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeStatus: { key: '', id: 'F001', status: '已解決' } }) } }));
+  assert(unset.error === 'unauthorized', 'Missing CLAUDE_REPLY_KEY must reject');
+  assert(w.row(5)[6] === '新回饋', 'Status must stay unchanged');
+});
+
+test('Claude status entry: updates F and U status columns only, without pushing to LINE', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#回報 BOM 轉檔錯誤')]);
+  w.post([w.text('#更新 PN_Project_Map 測試')]);
+  const pushesBefore = w.calls.pushes.length;
+  const repliesBefore = w.calls.replies.length;
+  const rowBefore = w.row(5).slice();
+  const call = (body) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeStatus: Object.assign({ key: 'claude-key' }, body) }) } }));
+  const f = call({ id: 'f001', status: '已解決' });
+  assert(f.ok && f.id === 'F001' && f.previous === '新回饋' && f.status === '已解決', `F result wrong: ${JSON.stringify(f)}`);
+  assert(w.row(5)[6] === '已解決', 'F status not written');
+  rowBefore.forEach((value, i) => { if (i !== 6) assert(w.row(5)[i] === value, `F column ${i + 1} must not change`); });
+  const u = call({ id: 'U001', status: '已完成' });
+  assert(u.ok && u.previous === '新需求' && w.dataRow(5)[6] === '已完成', `U result wrong: ${JSON.stringify(u)}`);
+  assert(call({ id: 'U001', status: '已解決' }).error === 'invalid status', 'U rows only accept data request statuses');
+  const same = call({ id: 'F001', status: '已解決' });
+  assert(same.ok && same.unchanged, 'Same status should report unchanged');
+  assert(w.calls.pushes.length === pushesBefore && w.calls.replies.length === repliesBefore, 'Status change must not message LINE');
+});
+
+test('LINE status command: only maintainers can change status; others are recorded as supplements', () => {
+  const w = createWorld();
+  w.properties.LINE_ADMIN_USER_IDS = 'Umaintainer';
+  w.post([w.text('#回報 BOM 轉檔錯誤')]);
+  w.post([w.text('#更新 PN_Project_Map 測試')]);
+  w.post([w.text('F001 已解決', 'Ubob')]);
+  assert(w.row(5)[6] === '新回饋', 'Non-maintainer must not change status');
+  assert(String(w.row(5)[17]).includes('已解決'), 'Non-maintainer text should be a supplement');
+  w.post([w.text('F001 已解決', 'Umaintainer')]);
+  assert(w.row(5)[6] === '已解決' && w.lastReply().includes('F001') && w.lastReply().includes('已解決'), `Maintainer change failed: ${w.lastReply()}`);
+  w.post([w.text('u001 已完成', 'Umaintainer')]);
+  assert(w.dataRow(5)[6] === '已完成', 'Maintainer should update U status');
+  w.post([w.text('U001 已解決', 'Umaintainer')]);
+  assert(w.dataRow(5)[6] === '已完成' && w.lastReply().includes('不能用'), `Invalid status must be refused: ${w.lastReply()}`);
+});
+
 test('#更新 alone shows a button menu and creates nothing; tapping a button starts the request', () => {
   const w = createWorld();
   w.post([w.text('#更新')]);
