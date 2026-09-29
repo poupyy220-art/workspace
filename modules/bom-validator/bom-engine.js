@@ -123,6 +123,10 @@
 
       if (!isNewItem) { if (levelErrorCell) markRed(levelErrorCell); continue; }
       markYellow(statusCell); markYellow(pnCell);
+      // 客戶料號必填（同事確認）：NEW 料空白只提醒，不擋交 IT
+      if (metadata.customerPnColumn && valueIsBlank(global.BomRules.cellText(worksheet.getCell(row, metadata.customerPnColumn)))) {
+        ctx.issues.push({ sheet: metadata.sheetName, excelRow: row, field: '客戶料號', severity: 'WARNING', reason: 'NEW 料客戶料號空白（必填），請補上', currentValue: '', modifiedValue: '' });
+      }
       metadata.checkColumns.forEach(col => {
         const cell = worksheet.getCell(row, col); const value = global.BomRules.cellText(cell);
         const symbols = global.BomRules.checkForbiddenSymbols(value); const length = global.BomRules.getCharLength(value);
