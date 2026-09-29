@@ -186,7 +186,7 @@
       sheetName: displaySheetName, worksheetName: worksheet.name, normalizedName: role.normalizedName, role: role.role,
       excluded: role.excluded, headerRow: null, pnColumn: null, statusColumn: null,
       statusDetectionMethod: null, enColumn: null, zfColumn: null, zhColumn: null,
-      viColumn: null, specColumn: null, basicNameColumn: null, levelColumns: [], checkColumns: [], warnings: []
+      viColumn: null, specColumn: null, basicNameColumn: null, customerPnColumn: null, levelColumns: [], checkColumns: [], warnings: []
     };
     if (role.excluded) return metadata;
 
@@ -229,6 +229,9 @@
     for (let col = 1; col <= maxColumn; col += 1) {
       const name = cellText(worksheet.getCell(metadata.headerRow, col)).trim();
       if (!metadata.pnColumn && (name.includes('料號') || name.includes('料号')) && !name.includes('客戶')) metadata.pnColumn = col;
+      // 只認完整的「客戶料號」欄，不含「客戶料號版本」等延伸欄
+      const compactName = name.replace(/\s/g, '');
+      if (!metadata.customerPnColumn && (compactName === '客戶料號' || compactName === '客户料号')) metadata.customerPnColumn = col;
       const parent = metadata.headerRow > 1 ? cellText(worksheet.getCell(metadata.headerRow - 1, col)).trim() : '';
       const full = `${parent}_${name}`.toUpperCase();
       if (name.includes('英文') || /(^|_)EN(_|$)/.test(full)) metadata.enColumn = col;
