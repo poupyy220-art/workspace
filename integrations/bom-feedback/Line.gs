@@ -20,6 +20,9 @@
 
 const LINE_REPORT_PREFIX = /^[#＃]\s*回報\s*/;
 const LINE_CLOSE_PATTERN = /^[#＃]?\s*(F\d{3,})\s*(ok|好了|可以了|沒問題)/i;
+// 維護者（或 Claude）改處理狀態：「F006 已解決」「U004 已完成」；選項與 Sheet 下拉選單一致
+const LINE_STATUS_PATTERN = /^[#＃]?\s*([FU]\d{3,})\s*(新回饋|處理中|已解決|不處理|新需求|預覽完成|已完成)\s*$/i;
+const REPORT_STATUSES = { F: ['新回饋', '處理中', '已解決', '不處理'], U: ['新需求', '預覽完成', '已完成', '不處理'] };
 const LINE_SUPPLEMENT_PATTERN = /^[#＃]?\s*([FU]\d{3,})\s*[:：,，]?\s*(\S[\s\S]*)$/i;
 // 同事補充記在每列最後兩欄：BOM Feedback R／S 欄、Data Requests L／M 欄
 const SUPPLEMENT_COLUMNS = { F: { text: 18, time: 19 }, U: { text: 12, time: 13 } };
@@ -72,6 +75,8 @@ const LINE_TOOLS = [
 function handleLineWebhook_(e, payload) {
   // Claude 代發已核准回覆：沿用 events 路由（不必改 Code.gs），但用另一把 CLAUDE_REPLY_KEY 驗證
   if (payload.claudeReply) return json_(handleClaudeReply_(payload.claudeReply));
+  // Claude 改處理狀態：同一把 CLAUDE_REPLY_KEY 驗證，只改 G 欄，不發 LINE
+  if (payload.claudeStatus) return json_(handleClaudeStatus_(payload.claudeStatus));
 
   // 暗號不對就當作沒看到，不透露任何資訊
   const key = e && e.parameter ? String(e.parameter.k || '') : '';
@@ -156,6 +161,16 @@ function handleLineText_(event, groupId, userId, rawText) {
   const waiting = getLinePending_(groupId, userId);
   if (waiting && waiting.kind === 'awaitReport') {
     createLineReport_(event, groupId, userId, text, waiting.mode);
+    return;
+  }
+
+  // 只有維護者能改狀態；同事打一樣的字照舊當作補充記錄
+  const statusMatch = text.match(LINE_STATUS_PATTERN);
+  if (statusMatch && isLineAdmin_(userId)) {
+    const result = setReportStatus_(statusMatch[1], statusMatch[2]);
+    if (result.ok) lineReply_(event.replyToken, `${result.id} 處理狀態：${result.unchanged ? '原本就是' : result.previous + ' → '}${result.status}`);
+    else if (result.error === 'invalid status') lineReply_(event.replyToken, `${result.id} 不能用「${statusMatch[2]}」，可用：${REPORT_STATUSES[result.id.charAt(0)].join('／')}`);
+    else lineReply_(event.replyToken, `找不到 ${String(statusMatch[1]).toUpperCase()}，請確認編號。`);
     return;
   }
 
@@ -538,6 +553,34 @@ function handleClaudeReply_(request) {
     sheet.getRange(rowNumber, columns.replyStatus).setValue(sent ? (fixed ? '修好已通知' : '已發送') : '發送失敗');
     sheet.getRange(rowNumber, columns.replyTime).setValue(new Date());
     return { ok: sent, id: id, sent: sent };
+  });
+}
+
+function handleClaudeStatus_(request) {
+  const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
+  if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
+  return setReportStatus_(request.id, request.status);
+}
+
+/** 改 BOM Feedback／Data Requests 的處理狀態（G 欄）；只接受該分頁下拉選單有的值，其他欄位不動。 */
+function setReportStatus_(rawId, rawStatus) {
+  const id = String(rawId || '').trim().toUpperCase();
+  if (!/^[FU]\d{3,}$/.test(id)) return { ok: false, error: 'invalid id' };
+  const status = String(rawStatus || '').trim();
+  const isData = id.charAt(0) === 'U';
+  const columns = isData ? DATA_COLUMNS : LINE_COLUMNS;
+  return withLock_(function () {
+    const sheet = isData
+      ? SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET)
+      : getSheet_(FEEDBACK_SHEET);
+    const rowNumber = sheet ? findFeedbackRow_(sheet, id) : 0;
+    if (!rowNumber) return { ok: false, id: id, error: 'id not found' };
+    if (REPORT_STATUSES[id.charAt(0)].indexOf(status) < 0) return { ok: false, id: id, error: 'invalid status' };
+    const cell = sheet.getRange(rowNumber, columns.status);
+    const previous = String(cell.getValue() || '');
+    if (previous === status) return { ok: true, id: id, previous: previous, status: status, unchanged: true };
+    cell.setValue(status);
+    return { ok: true, id: id, previous: previous, status: status };
   });
 }
 
