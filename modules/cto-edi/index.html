@@ -175,6 +175,7 @@ refreshVersionBtn.onclick=readDriveStatus;
 list.addEventListener('change',e=>{const i=Number(e.target.dataset.i);if(e.target.dataset.step){data[i].checks=data[i].checks||{};data[i].checks[e.target.dataset.step]=e.target.checked;save()}});
 list.addEventListener('click',e=>{if(e.target.dataset.del!==undefined&&confirm('確定移除此本機專案紀錄？')){data.splice(Number(e.target.dataset.del),1);save()}});
 exportBtn.onclick=()=>{const payload=CtoEdiDataModel.exportPayload(data,parseMtm);const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CTO_EDI_Project_MTM_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)};
+[latestDownloadBtn,latestDownloadBtn2,rdTemplateBtn].forEach(a=>a.addEventListener('click',e=>{if(a.getAttribute('aria-disabled')==='true'){e.preventDefault();alert('尚未取得 Google Drive 下載連結。請確認已登入 Google 帳號並重新整理頁面；仍無法下載請聯絡 May 取得檔案。')}}));
 mtm.addEventListener('input',refreshMtmPreview);bomDate.value=new Date().toISOString().slice(0,10);render();renderVersions();refreshMtmPreview();readDriveStatus();
 </script>
 <script src="generator.js?v=20260831-16"></script>
