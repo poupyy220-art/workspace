@@ -65,4 +65,12 @@ assert.throws(()=>parse(workbook(noNote(block('無鍵盤',MTMS,'900-000002','SBB
 // 備註與小表數字不同 → 擋下
 assert.throws(()=>parse(workbook(block('帶鍵盤',MTMS,'900-000001','SBBT1'),TABLE()),{mtms:MTMS}),/不一致/);pass++;
 
+// 尾數單層／雙層列 E／F 空白 → 依歷史規則補 E=1、F=D
+{const b=block('帶鍵盤',MTMS,'900-000001','SBB1');b[4][4]='';b[4][5]='';b[5][4]='';b[5][5]='';
+const rules=parse(workbook(b),{mtms:MTMS});
+assert.deepEqual(JSON.parse(JSON.stringify(rules.filter(r=>r.pn.endsWith('-11A')||r.pn.endsWith('-12A')).map(r=>[r.usage,r.base]))),[[1,3],[1,3],[1,3],[1,3],[1,3]]);pass++}
+
+// 主要棧板列 E／F 空白 → 擋下，不預設成 1
+assert.throws(()=>{const b=block('帶鍵盤',MTMS,'900-000001','SBB1');b[2][5]='';parse(workbook(b),{mtms:MTMS})},/第3列（非西歐\(含HK\)）/);pass++;
+
 console.log(`CTO EDI pallet rules: ${pass} PASS, 0 FAIL`);

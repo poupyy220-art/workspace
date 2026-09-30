@@ -49,7 +49,7 @@
       const blockMtms=[];
       const rows=[];for(let x=r+1;x<end;x++){
         for(const token of ctext(x,1).toUpperCase().split(/[\r\n,，;；\s]+/))if(/^[A-Z0-9]{4}$/.test(token))blockMtms.push(token);
-        rows.push({row:x,label:ctext(x,2),pn:ctext(x,3).replace(/\s+/g,''),pallet:Number(ws.getCell(x,5).value||1),base:Number(ws.getCell(x,6).value||1),note:ctext(x,7),sbb:ctext(x,8)});
+        rows.push({row:x,label:ctext(x,2),rawUsage:ctext(x,5),rawBase:ctext(x,6),pn:ctext(x,3).replace(/\s+/g,''),pallet:Number(ws.getCell(x,5).value||1),base:Number(ws.getCell(x,6).value||1),note:ctext(x,7),sbb:ctext(x,8)});
       }
       blocks.push({type,kindCode,headerRow:r,rows,mtms:[...new Set(blockMtms)]});
     }
@@ -88,6 +88,14 @@
     const china=rows.find(x=>x.label==='出中國'),nonWest=rows.find(x=>x.label.startsWith('非西歐')),west=rows.find(x=>x.label.startsWith('西歐')),single=rows.find(x=>x.label.includes('單層')),double=rows.find(x=>x.label.includes('雙層'));
     const missing=[!sbb&&'H 欄 SBB',!china&&'出中國列',!nonWest&&'非西歐列',!west&&'西歐列',!single&&'CTO EDI_尾數包材_單層列'].filter(Boolean);
     if(missing.length)throw new Error(`${where}區塊欄位不完整：缺 ${missing.join('、')}`);
+    // 尾數包材單層／雙層列：歷史資料一律 E=1、F=D（1個棧板用量），RD 未填時依此補齊
+    for(const x of [single,double])if(x){
+      if(x.rawUsage===''){x.pallet=1;x.rawUsage='1'}
+      const d=Number(ws.getCell(x.row,4).value);
+      if(x.rawBase===''&&d){x.base=d;x.rawBase=String(d)}
+    }
+    const blankEF=[china,nonWest,west,single,double].filter(x=>x&&(x.rawUsage===''||x.rawBase==='')).map(x=>`第${x.row}列（${x.label}）`);
+    if(blankEF.length)throw new Error(`${where}E 欄「1台機器/用量」或 F 欄「1台機器/主件底數」空白：${blankEF.join('、')}，請 RD 補齊`);
     const start=Number(ws.getCell(single.row,4).value||single.base);
     // 門檻來源：單層列 G 欄備註優先；空白時改讀 RD 單層門檻小表（用 SBB 對應）；兩者都有時必須一致
     const fromNote={nonWest:numberFromNote(single.note,'非西歐(?:/中國)?\\s*單層'),west:numberFromNote(single.note,'西歐單層')};
