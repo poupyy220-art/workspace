@@ -178,6 +178,6 @@ exportBtn.onclick=()=>{const payload=CtoEdiDataModel.exportPayload(data,parseMtm
 [latestDownloadBtn,latestDownloadBtn2,rdTemplateBtn].forEach(a=>a.addEventListener('click',e=>{if(a.getAttribute('aria-disabled')==='true'){e.preventDefault();alert('尚未取得 Google Drive 下載連結。請確認已登入 Google 帳號並重新整理頁面；仍無法下載請聯絡 May 取得檔案。')}}));
 mtm.addEventListener('input',refreshMtmPreview);bomDate.value=new Date().toISOString().slice(0,10);render();renderVersions();refreshMtmPreview();readDriveStatus();
 </script>
-<script src="generator.js?v=20260831-16"></script>
+<script src="generator.js?v=20260930-1"></script>
 </body>
 </html>

@@ -123,6 +123,16 @@
     return rules;
   }
 
+  // F018：產生前比對既有頁簽；必要頁簽都已有的 MTM 自動略過，只在部分頁簽存在就停止列差異，不自動猜
+  function planMtms(wb,p){
+    const need=['Mapping','自動加入品名規格','自動加棧板設並'].concat(p.labelNeeded?['根據專案加入']:[]);
+    const seen=new Map(need.map(n=>[n,existingMtms(getSheet(wb,n))]));
+    const todo=[],skipped=[],partial=[];
+    for(const m of p.mtms){const miss=need.filter(n=>!seen.get(n).has(m.toUpperCase()));if(!miss.length)skipped.push(m);else if(miss.length===need.length)todo.push(m);else partial.push(`${m} 缺「${miss.join('、')}」`)}
+    if(partial.length)throw new Error(`以下 MTM 只在部分頁簽存在，請先確認上次做到哪裡，補齊或刪除後再產生：${partial.join('；')}`);
+    if(!todo.length)throw new Error(`本次 MTM 都已存在於 ${need.length} 個頁簽，不需要再產生：${skipped.join('、')}`);
+    return {todo,skipped};
+  }
   function addMapping(wb,p){const ws=getSheet(wb,'Mapping'),seen=existingMtms(ws);const dup=p.mtms.filter(x=>seen.has(x));if(dup.length)throw new Error('Mapping 已存在 MTM：'+dup.join('、'));for(const m of p.mtms)append(ws,[m,p.project,m+'S',ctoPn(m),'V',null],6);return p.mtms.length}
   function addNameSpec(wb,p){const ws=getSheet(wb,'自動加入品名規格');for(const m of p.mtms){const row=append(ws,[m,productName.value.trim(),productSpec.value.trim(),modelCode.value.trim(),marketClass.value.trim(),today(),p.project,'V',p.family],9);row.getCell(6).numFmt='yy/m/d'}return p.mtms.length}
   function addProjectRule(wb,p){if(!p.labelNeeded)return 0;const ws=getSheet(wb,'根據專案加入');for(const m of p.mtms){const row=append(ws,[m,labelPn.value.trim(),Number(labelUsage.value),1,today(),p.family],6);row.getCell(5).numFmt='yy/m/d'}return p.mtms.length}
@@ -179,18 +189,20 @@
   function verify(wb,p,counts){for(const name of TARGETS)getSheet(wb,name);if(counts.mapping!==p.mtms.length||counts.nameSpec!==p.mtms.length||counts.projectRule!==(p.labelNeeded?p.mtms.length:0)||counts.pallet!==p.mtms.length*p.rulesPerMtm)throw new Error('產出筆數與預期不符');return true}
   function download(buffer,name){const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 
-  window.CtoEdiPallet={parsePalletRules};
+  window.CtoEdiPallet={parsePalletRules,planMtms};
 
   generateBtn.addEventListener('click',async()=>{
     generateBtn.disabled=true;generateStatus.textContent='正在讀取來源並產生候選 Excel…';
     try{
       if(!window.ExcelJS)throw new Error('Excel 元件未載入，請確認網路後重新整理');
       const p=requiredProject(),baseSource=await baseFile.files[0].arrayBuffer(),base=await loadWorkbook(baseSource),rd=await loadWorkbook(rdFile.files[0]);
+      const plan=planMtms(base,p);p.mtms=plan.todo;
       const rules=parsePalletRules(rd,p);p.rulesPerMtm=rules.length;
       const counts={mapping:addMapping(base,p),nameSpec:addNameSpec(base,p),projectRule:addProjectRule(base,p),pallet:addPallet(base,p,rules)};
       removeEmptyConditionalFormatting(base);verify(base,p,counts);
       const buffer=await graftGeneratedRows(await base.xlsx.writeBuffer(),baseSource),name=`LBM_EDICTO_${safeName(p.project)}_候選_${dayTag()}.xlsx`;
-      download(buffer,name);generateStatus.textContent=`已產生候選檔 ${name}｜Mapping ${counts.mapping}、品名規格 ${counts.nameSpec}、根據專案加入 ${counts.projectRule}、棧板設定 ${counts.pallet}。請人工確認後再發布。`;
+      const skippedNote=plan.skipped.length?`｜已略過既有 MTM ${plan.skipped.length} 個（${plan.skipped.join('、')}）`:'';
+      download(buffer,name);generateStatus.textContent=`已產生候選檔 ${name}｜Mapping ${counts.mapping}、品名規格 ${counts.nameSpec}、根據專案加入 ${counts.projectRule}、棧板設定 ${counts.pallet}${skippedNote}。請人工確認後再發布。`;
       addBtn.click();
     }catch(e){generateStatus.textContent='產生失敗：'+e.message;alert(generateStatus.textContent)}finally{generateBtn.disabled=false}
   });
