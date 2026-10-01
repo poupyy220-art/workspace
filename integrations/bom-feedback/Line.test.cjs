@@ -10,7 +10,9 @@ const pngBytes = Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC
 function createWorld() {
   const properties = {
     SPREADSHEET_ID: 'sheet', NOTIFY_EMAIL: 'owner@example.com', FEEDBACK_IMAGE_FOLDER_ID: 'folder',
-    LINE_CHANNEL_ACCESS_TOKEN: 'token', LINE_WEBHOOK_KEY: KEY, LINE_GROUP_IDS: GROUP
+    LINE_CHANNEL_ACCESS_TOKEN: 'token', LINE_WEBHOOK_KEY: KEY, LINE_GROUP_IDS: GROUP,
+    // formatDate 假資料固定回 20260923：預設當天總表已發過，避免干擾其他測試的推播次數
+    LINE_SUMMARY_LAST_DATE: '20260923'
   };
   const cache = {};
   const ttls = {};
@@ -88,7 +90,7 @@ function createWorld() {
   vm.createContext(context);
   const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
   const line = fs.readFileSync(path.join(__dirname, 'Line.gs'), 'utf8');
-  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_};`, context, { filename: 'Line.gs' });
+  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined};`, context, { filename: 'Line.gs' });
 
   let tokenSeq = 0;
   const post = (events, key = KEY) => context.api.doPost({
@@ -102,7 +104,7 @@ function createWorld() {
   const row = (n) => rows[n] || [];
   const dataRow = (n) => (sheets['Data Requests'] ? sheets['Data Requests'].data[n] || [] : []);
 
-  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCommits: (c) => { commits = c; }, quota, setCell, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
+  return { ttls, api: context.api, post, text, image, file, calls, rows, row, dataRow, sheets, properties, lastReply, setPulls: (p) => { pulls = p; }, setCommits: (c) => { commits = c; }, quota, setCell, context, clearCache: () => Object.keys(cache).forEach((k) => delete cache[k]) };
 }
 
 const tests = [];
@@ -568,6 +570,54 @@ test('line-reply extraction and tool ordering', () => {
   assert(w.api.extractLineReply_('a<!-- line-reply --> 已修好 <!-- /line-reply -->b') === '已修好', 'Extraction failed');
   assert(w.api.detectLineTool_('PIM 合併 BOM 少一列') === 'PIM 合併', 'PIM must win over BOM');
   assert(w.api.detectLineTool_('今天天氣很好') === '', 'Unrelated text must not match');
+});
+
+test('daily summary: after 18:00 Taipei pushes open items once per day per group', () => {
+  const w = createWorld();
+  assert(typeof w.api.sendDailySummary_ === 'function', 'sendDailySummary_ missing');
+  w.properties.LINE_GROUP_IDS = GROUP + ',' + OTHER_GROUP;
+  let clock = { date: '2026-10-01', hour: '17' };
+  w.context.Utilities.formatDate = (_d, _tz, fmt) => (fmt === 'H' ? clock.hour : fmt === 'MM/dd' ? '10/01' : clock.date);
+  const fb = w.sheets['BOM Feedback'];
+  const put = (sheet, r, values) => values.forEach((v, i) => sheet.setCell(r, i + 1, v));
+  put(fb, 5, ['範例（啟用前刪除）', '', '', '', '範例', '僅示範', '新回饋']);
+  put(fb, 6, ['F001', '', '', 'LINE 回報', '工具：PIM 合併', '少一列', '新回饋', '', '', '', 'LINE', '', 0, GROUP]);
+  put(fb, 7, ['F002', '', '', 'LINE 回報', '工具：BOM 轉檔與安檢', '品名亂碼', '新回饋', '', '', '', 'LINE', '', 0, GROUP, '想確認一下', '已發送']);
+  put(fb, 8, ['F003', '', '', 'LINE 回報', '工具：CTO EDI 新專案維護', '接續', '處理中', '', '', '', 'LINE', '', 0, GROUP, '已修好', '修好已通知']);
+  put(fb, 9, ['F004', '', '', 'LINE 回報', '工具：PN 工具', '已好', '已解決', '', '', '', 'LINE', '', 0, GROUP]);
+  put(fb, 10, ['F005', '', '', 'LINE 回報', '工具：PN 工具', '別群組', '新回饋', '', '', '', 'LINE', '', 0, OTHER_GROUP]);
+  put(fb, 11, ['F006', '', '', 'LINE 回報', '工具：PN 工具', '未授權群組', '新回饋', '', '', '', 'LINE', '', 0, 'Cunknown']);
+  w.sheets['Data Requests'] = (function () { const s = w.context.SpreadsheetApp.openById().insertSheet('Data Requests'); return s; })();
+  put(w.sheets['Data Requests'], 5, ['U001', '', 'PN_Project_Map', 'x', '', 1, '預覽完成', GROUP]);
+  put(w.sheets['Data Requests'], 6, ['U002', '', 'PN_Project_Map', 'x', '', 1, '已完成', GROUP]);
+
+  w.api.sendDailySummary_(new Date());
+  assert(w.calls.pushes.length === 0, 'Must not push before 18:00');
+
+  clock.hour = '18';
+  w.api.sendDailySummary_(new Date());
+  const toWork = w.calls.pushes.filter((p) => p.to === GROUP);
+  const toOther = w.calls.pushes.filter((p) => p.to === OTHER_GROUP);
+  assert(toWork.length === 1 && toOther.length === 1 && w.calls.pushes.length === 2, 'One push per group with open items: ' + JSON.stringify(w.calls.pushes.map((p) => p.to)));
+  const text = toWork[0].messages[0].text;
+  assert(text.includes('10/01') && text.includes('F001') && text.includes('F002') && text.includes('F003') && text.includes('U001'), 'Open items missing: ' + text);
+  assert(!text.includes('F004') && !text.includes('U002') && !text.includes('F005') && !text.includes('範例'), 'Closed, other-group or sample rows leaked: ' + text);
+  assert(text.includes('PIM 合併') && text.includes('F003 OK') && text.includes('待維護者確認'), 'Status wording wrong: ' + text);
+  assert(!toOther[0].messages[0].text.includes('F001') && toOther[0].messages[0].text.includes('F005'), 'Groups must only see their own items');
+
+  w.api.sendDailySummary_(new Date());
+  assert(w.calls.pushes.length === 2, 'Must send only once per day');
+  clock = { date: '2026-10-02', hour: '19' };
+  w.api.sendDailySummary_(new Date());
+  assert(w.calls.pushes.length === 4, 'Next day should send again');
+});
+
+test('daily summary: nothing open means no push', () => {
+  const w = createWorld();
+  w.context.Utilities.formatDate = (_d, _tz, fmt) => (fmt === 'H' ? '18' : fmt === 'MM/dd' ? '10/01' : '2026-10-01');
+  w.sheets['BOM Feedback'].setCell(5, 1, 'F001'); w.sheets['BOM Feedback'].setCell(5, 7, '已解決'); w.sheets['BOM Feedback'].setCell(5, 14, GROUP);
+  w.api.sendDailySummary_(new Date());
+  assert(w.calls.pushes.length === 0, 'No open items must stay silent');
 });
 
 let passed = 0;
