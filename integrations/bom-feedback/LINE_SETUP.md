@@ -14,7 +14,7 @@
 
 - 網站發布通知：processLineOutbox 每 10 分鐘看 main 上 index.html 的 commit，標題含版本號（vX.Y.Z）且已過 5 分鐘部署時間 → 推「🆕 料號管理中心已更新到 vX.Y.Z」＋更新摘要＋網址到所有白名單群組；第一次執行只記錄目前版本，不補發舊版。注意：LINE 推播依「群組人數」計入每月訊息額度。
 - 推播額度：維護者打「#額度」→ 回本月已用／上限／剩餘則數（LINE quota API；reply 不計入，只算 push）。processLineOutbox 每次順便檢查，用量達 80% 時每月寄一次「[LINE 額度]」提醒信。
-- 每日總表：processLineOutbox 在台北時間 18:00 後第一次執行時（每 10 分鐘一次，約 18:00～18:10），把各群組自己的未結案回報（F：新回饋／處理中）與更新需求（U：新需求／預覽完成）推到該群組，每天一次；沒有未結案就不發。只發白名單群組（LINE_GROUP_IDS），發過的日期記在 LINE_SUMMARY_LAST_DATE。每天 1 則 push，依群組人數計入每月額度。
+- 每日總表：processLineOutbox 在台北時間 18:00 後第一次執行時（每 10 分鐘一次，約 18:00～18:10），把各群組自己的未結案回報（F：新回饋／處理中）與更新需求（U：新需求／預覽完成）推到該群組，每天一次；沒有未結案就不發。只發白名單群組（LINE_GROUP_IDS），發過的日期記在 LINE_SUMMARY_LAST_DATE。每天 1 則 push，依群組人數計入每月額度。要提前發：在 Apps Script 編輯器選 `sendDailySummaryNow` 按「執行」，當天 18:00 就不會再發。
 - GitHub 查詢：執行紀錄出現 `GitHub API failed: 403` 是匿名額度被用完；在指令碼屬性加 `GITHUB_TOKEN`（只讀 token，做法見 README）後就會帶上 token 查詢。
 - 維護者待辦：LINE_ADMIN_USER_IDS 內的人打「#待辦 內容」→ 記到「To Do」分頁（T001 起，第一次自動建立）；「#待辦清單」回未完成卡片；「T001 完成／進行中／取消」改狀態。其他人打這些指令只會收到婉拒提示。查自己的使用者 ID：暫時開 LINE_SETUP_MODE=true，在群組打「#我的ID」，填好後刪除設定模式。
 - 改處理狀態：LINE_ADMIN_USER_IDS 內的人打「F006 已解決」「F015 處理中」「U004 已完成」→ 只改該列處理狀態（G 欄），機器人回「F006 處理狀態：新回饋 → 已解決」；F 可用 新回饋／處理中／已解決／不處理，U 可用 新需求／預覽完成／已完成／不處理。其他人打一樣的字照舊記為同事補充。Claude 也可經 claudeStatus（同一把 CLAUDE_REPLY_KEY）改狀態，不發 LINE。

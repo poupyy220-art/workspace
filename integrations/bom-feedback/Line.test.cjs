@@ -91,7 +91,7 @@ function createWorld() {
   vm.createContext(context);
   const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
   const line = fs.readFileSync(path.join(__dirname, 'Line.gs'), 'utf8');
-  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined};`, context, { filename: 'Line.gs' });
+  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined,sendDailySummaryNow:typeof sendDailySummaryNow==='function'?sendDailySummaryNow:undefined};`, context, { filename: 'Line.gs' });
 
   let tokenSeq = 0;
   const post = (events, key = KEY) => context.api.doPost({
@@ -629,6 +629,19 @@ test('GitHub calls send the token only when GITHUB_TOKEN is set', () => {
   w.api.processLineOutbox();
   const withToken = w.calls.github.slice(2);
   assert(withToken.length === 2 && withToken.every((h) => h.Authorization === 'Bearer ghp-test' && h.Accept === 'application/vnd.github+json'), 'Token must be sent to both GitHub calls: ' + JSON.stringify(withToken));
+});
+test('sendDailySummaryNow sends before 18:00 and the 18:00 run does not repeat it', () => {
+  const w = createWorld();
+  assert(typeof w.api.sendDailySummaryNow === 'function', 'sendDailySummaryNow missing');
+  let hour = '10';
+  w.context.Utilities.formatDate = (_d, _tz, fmt) => (fmt === 'H' ? hour : fmt === 'MM/dd' ? '10/01' : '2026-10-01');
+  const fb = w.sheets['BOM Feedback'];
+  ['F001', '', '', 'LINE 回報', '工具：PIM 合併', 'x', '新回饋', '', '', '', 'LINE', '', 0, GROUP].forEach((v, i) => fb.setCell(5, i + 1, v));
+  w.api.sendDailySummaryNow();
+  assert(w.calls.pushes.length === 1 && w.calls.pushes[0].messages[0].text.includes('F001'), 'Manual send must push now');
+  hour = '18';
+  w.api.sendDailySummary_(new Date());
+  assert(w.calls.pushes.length === 1, 'Scheduled run must not repeat after manual send');
 });
 let passed = 0;
 for (const item of tests) {
