@@ -837,7 +837,49 @@ function processLineOutbox() {
   try { collectMergedPullRequests_(); } catch (error) { console.error(error); }
   try { notifySiteUpdates_(); } catch (error) { console.error(error); }
   try { checkLineQuota_(); } catch (error) { console.error(error); }
+  try { sendDailySummary_(new Date()); } catch (error) { console.error(error); }
   sendApprovedLineReplies_();
+}
+
+// 每日總表：台北時間 18:00 後第一次執行時，把各群組自己的未結案回報（F）與更新需求（U）推到該群組，每天一次；沒有未結案就不發。
+const DAILY_SUMMARY_HOUR = 18;
+const DAILY_SUMMARY_MAX_ITEMS = 20;
+function sendDailySummary_(now) {
+  const props = PropertiesService.getScriptProperties();
+  const hour = Number(Utilities.formatDate(now, 'Asia/Taipei', 'H'));
+  const today = Utilities.formatDate(now, 'Asia/Taipei', 'yyyy-MM-dd');
+  if (!(hour >= DAILY_SUMMARY_HOUR) || props.getProperty('LINE_SUMMARY_LAST_DATE') === today) return;
+  props.setProperty('LINE_SUMMARY_LAST_DATE', today);
+
+  const allowed = String(props.getProperty('LINE_GROUP_IDS') || '').split(',').map(function (id) { return id.trim(); }).filter(Boolean);
+  const byGroup = {};
+  const add = function (groupId, item) { if (allowed.indexOf(groupId) < 0) return; (byGroup[groupId] = byGroup[groupId] || []).push(item); };
+  const readRows = function (sheet, width) { return sheet && sheet.getLastRow() >= 5 ? sheet.getRange(5, 1, sheet.getLastRow() - 4, width).getValues() : []; };
+
+  readRows(getSheet_(FEEDBACK_SHEET), LINE_COLUMNS.replyStatus).forEach(function (row) {
+    const id = String(row[0]), status = String(row[LINE_COLUMNS.status - 1]), replyStatus = String(row[LINE_COLUMNS.replyStatus - 1]);
+    if (!/^F\d{3,}$/.test(id) || (status !== '新回饋' && status !== '處理中')) return;
+    const tool = String(row[4] || '').replace(/^工具：/, '') || '待確認';
+    const state = replyStatus.indexOf('修好') === 0 ? `已修好，請試用後回「${id} OK」`
+      : replyStatus === '已發送' ? `已回覆，等你回覆或補充（打「${id} 補充內容」）` : '維護者處理中';
+    add(String(row[LINE_COLUMNS.group - 1]), `🔸 ${id}｜${tool}\n　${state}`);
+  });
+  const dataSheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET);
+  readRows(dataSheet, DATA_COLUMNS.group).forEach(function (row) {
+    const id = String(row[0]), status = String(row[DATA_COLUMNS.status - 1]);
+    if (!/^U\d{3,}$/.test(id) || (status !== '新需求' && status !== '預覽完成')) return;
+    const state = status === '預覽完成' ? '比對完成，待維護者確認寫入' : '待維護者處理';
+    add(String(row[DATA_COLUMNS.group - 1]), `🔸 ${id}｜更新 ${row[DATA_COLUMNS.type - 1] || '待確認'}\n　${state}`);
+  });
+
+  Object.keys(byGroup).forEach(function (groupId) {
+    const items = byGroup[groupId];
+    const shown = items.slice(0, DAILY_SUMMARY_MAX_ITEMS);
+    const more = items.length > shown.length ? [`…其餘 ${items.length - shown.length} 筆略`] : [];
+    const text = [`📋 回報處理進度（${Utilities.formatDate(now, 'Asia/Taipei', 'MM/dd')}）未結案 ${items.length} 筆`, '━━━━━━━━━━━━']
+      .concat(shown, more, ['━━━━━━━━━━━━', '有問題打「#回報 問題描述」']).join('\n');
+    linePush_(groupId, text);
+  });
 }
 
 // 網站有新版本（main 上 index.html 的 commit 標題含 vX.Y.Z）→ 部署 5 分鐘後推到所有白名單群組。
