@@ -14,6 +14,7 @@
  *   LINE_SITE_LAST_SHA         （自動寫入）最後一次已通知的網站 commit，刪除後下次只重新記錄、不補發
  *   LINE_ADMIN_USER_IDS        可使用 #待辦 的 LINE 使用者 ID（逗號分隔）；設定模式下在群組打「#我的ID」可查
  *   CLAUDE_REPLY_KEY          Claude 代發已核准回覆的暗號（本機 feedback.local.json 存同一值，不得寫進 Repository）
+ *   LINE_QUICK_LINKS          「#網站」常用網站，每行（或分號隔開）一筆「名稱|https://網址」，最多 8 筆；未設定時只列料號管理中心
  *
  * Apps Script 讀不到 X-Line-Signature header，因此以「網址暗號＋群組白名單」代替簽章驗證。
  */
@@ -55,6 +56,13 @@ const LINE_MY_ID_PATTERN = /^[#＃]\s*我的\s*ID\s*$/i;
 // 「#額度」查本月 LINE 推播用量（只有維護者）；用量達 80% 時每月寄一次提醒信
 const LINE_QUOTA_PATTERN = /^[#＃]\s*額度\s*$/;
 const LINE_QUOTA_WARN_RATIO = 0.8;
+// 「#小幫手」選單卡片（所有人可用）＋卡片按鈕送出的「#狀況」「#說明」「#網站」
+const LINE_MENU_PATTERN = /^[#＃]\s*(小幫手|選單|menu)\s*$/i;
+const LINE_STATUS_LIST_PATTERN = /^[#＃]\s*(狀況|進度|問題狀況)\s*$/;
+const LINE_HELP_PATTERN = /^[#＃]\s*((使用)?說明|help)\s*$/i;
+const LINE_LINKS_PATTERN = /^[#＃]\s*(常用)?網站\s*$/;
+const LINE_QUICK_LINKS_MAX = 8;
+const LINE_STATUS_LIST_MAX = 10;
 const TODO_SHEET = 'To Do';
 const TODO_HEADERS = ['待辦編號', '建立時間', '內容', '狀態', '完成時間', 'LINE 群組', '備註'];
 const TODO_COLUMNS = { content: 3, status: 4, doneTime: 5, group: 6, note: 7 };
@@ -113,7 +121,7 @@ function handleLineEvent_(event) {
   }
 
   if (event.type === 'join') {
-    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題或想調整：打「#回報」從選單選擇，或直接打「#回報 問題描述」，可以接著貼截圖。\n・要更新資料：打「#更新」，從選單選擇資料類型後傳 Excel 檔。\n一般聊天我不會回、也不會記錄。');
+    lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題或想調整：打「#回報」從選單選擇，或直接打「#回報 問題描述」，可以接著貼截圖。\n・要更新資料：打「#更新」，從選單選擇資料類型後傳 Excel 檔。\n・查進度、看說明、常用網站：打「#小幫手」。\n一般聊天我不會回、也不會記錄。');
     return;
   }
   if (event.type !== 'message' || !event.message) return;
@@ -140,6 +148,24 @@ function handleLineText_(event, groupId, userId, rawText) {
   // 設定模式下查自己的 LINE 使用者 ID（填 LINE_ADMIN_USER_IDS 用）
   if (LINE_MY_ID_PATTERN.test(text)) {
     if (PropertiesService.getScriptProperties().getProperty('LINE_SETUP_MODE') === 'true') lineReply_(event.replyToken, `你的 LINE 使用者 ID：\n${userId}\n請填入 Apps Script 的 LINE_ADMIN_USER_IDS。`);
+    return;
+  }
+
+  if (LINE_MENU_PATTERN.test(text)) {
+    const open = (collectOpenItems_()[groupId] || []).length;
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: 'Debug 小幫手選單', contents: buildHelperMenuCard_(open, isLineAdmin_(userId)) }]);
+    return;
+  }
+  if (LINE_STATUS_LIST_PATTERN.test(text)) {
+    showOpenItems_(event, groupId);
+    return;
+  }
+  if (LINE_HELP_PATTERN.test(text)) {
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: 'Debug 小幫手使用說明', contents: buildHelpCard_() }]);
+    return;
+  }
+  if (LINE_LINKS_PATTERN.test(text)) {
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: '常用網站', contents: buildQuickLinksCard_(readQuickLinks_()) }]);
     return;
   }
 
@@ -901,6 +927,23 @@ function sendDailySummary_(now, force) {
   if (!force && (!(hour >= DAILY_SUMMARY_HOUR) || props.getProperty('LINE_SUMMARY_LAST_DATE') === today)) return;
   props.setProperty('LINE_SUMMARY_LAST_DATE', today);
 
+  const byGroup = collectOpenItems_();
+  Object.keys(byGroup).forEach(function (groupId) {
+    const items = byGroup[groupId];
+    const shown = items.slice(0, DAILY_SUMMARY_MAX_ITEMS).map(function (item) { return item.line; });
+    const more = items.length > shown.length ? [`…其餘 ${items.length - shown.length} 筆略`] : [];
+    const text = [`📋 回報處理進度（${Utilities.formatDate(now, 'Asia/Taipei', 'MM/dd')}）未結案 ${items.length} 筆`, '━━━━━━━━━━━━']
+      .concat(shown, more, ['━━━━━━━━━━━━', '有問題打「#回報 問題描述」']).join('\n');
+    linePush_(groupId, text);
+  });
+}
+
+/**
+ * 各白名單群組的未結案項目（F：新回饋／處理中；U：新需求／預覽完成），每日總表與「#狀況」共用。
+ * 只放編號、工具、問題摘要與狀態，不放同事原文。
+ */
+function collectOpenItems_() {
+  const props = PropertiesService.getScriptProperties();
   const allowed = String(props.getProperty('LINE_GROUP_IDS') || '').split(',').map(function (id) { return id.trim(); }).filter(Boolean);
   const byGroup = {};
   const add = function (groupId, item) { if (allowed.indexOf(groupId) < 0) return; (byGroup[groupId] = byGroup[groupId] || []).push(item); };
@@ -910,10 +953,14 @@ function sendDailySummary_(now, force) {
     const id = String(row[0]), status = String(row[LINE_COLUMNS.status - 1]), replyStatus = String(row[LINE_COLUMNS.replyStatus - 1]);
     if (!/^F\d{3,}$/.test(id) || (status !== '新回饋' && status !== '處理中')) return;
     const tool = String(row[4] || '').replace(/^工具：/, '') || '待確認';
-    const state = replyStatus.indexOf('修好') === 0 ? `已修好，請試用後回「${id} OK」`
-      : replyStatus === '已發送' ? `已回覆，等你回覆或補充（打「${id} 補充內容」）` : '維護者處理中';
+    const fixed = replyStatus.indexOf('修好') === 0, replied = replyStatus === '已發送';
+    const state = fixed ? `已修好，請試用後回「${id} OK」`
+      : replied ? `已回覆，等你回覆或補充（打「${id} 補充內容」）` : '維護者處理中';
     const summary = String(row[FEEDBACK_EXTRA_COLUMNS.summary - 1] || '').trim();
-    add(String(row[LINE_COLUMNS.group - 1]), `🔸 ${id}｜${tool}${summary ? `\n　${summary}` : ''}\n　${state}`);
+    add(String(row[LINE_COLUMNS.group - 1]), {
+      id: id, title: tool, summary: summary, tag: fixed ? '修好待 OK' : replied ? '等你回覆' : '處理中',
+      line: `🔸 ${id}｜${tool}${summary ? `\n　${summary}` : ''}\n　${state}`
+    });
   });
   const dataSheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET);
   readRows(dataSheet, DATA_COLUMNS.project).forEach(function (row) {
@@ -922,17 +969,12 @@ function sendDailySummary_(now, force) {
     const state = status === '預覽完成' ? '比對完成，待維護者確認寫入' : '待維護者處理';
     const project = String(row[DATA_COLUMNS.project - 1] || '').trim();
     const label = project ? `${project}（更新 ${row[DATA_COLUMNS.type - 1] || '待確認'}）` : `更新 ${row[DATA_COLUMNS.type - 1] || '待確認'}`;
-    add(String(row[DATA_COLUMNS.group - 1]), `🔸 ${id}｜${label}\n　${state}`);
+    add(String(row[DATA_COLUMNS.group - 1]), {
+      id: id, title: label, summary: '', tag: status === '預覽完成' ? '待確認寫入' : '處理中',
+      line: `🔸 ${id}｜${label}\n　${state}`
+    });
   });
-
-  Object.keys(byGroup).forEach(function (groupId) {
-    const items = byGroup[groupId];
-    const shown = items.slice(0, DAILY_SUMMARY_MAX_ITEMS);
-    const more = items.length > shown.length ? [`…其餘 ${items.length - shown.length} 筆略`] : [];
-    const text = [`📋 回報處理進度（${Utilities.formatDate(now, 'Asia/Taipei', 'MM/dd')}）未結案 ${items.length} 筆`, '━━━━━━━━━━━━']
-      .concat(shown, more, ['━━━━━━━━━━━━', '有問題打「#回報 問題描述」']).join('\n');
-    linePush_(groupId, text);
-  });
+  return byGroup;
 }
 
 // 修好提醒：修好通知發出後滿 3 個工作天（週一～週五，不含國定假日）同事還沒回 OK → 在原群組提醒一次，交代前因後果。
@@ -1254,6 +1296,152 @@ function buildUpdateMenuCard_() {
     footer: {
       type: 'box', layout: 'vertical',
       contents: [{ type: 'text', text: '🔒 AI 會先比對預覽，維護人員確認後才更新', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+    }
+  };
+}
+
+// ---------- 「#小幫手」選單 ----------
+
+function helperButton_(style, color, label, text) {
+  const item = { type: 'button', style: style, height: 'sm', action: { type: 'message', label: label, text: text } };
+  if (color) item.color = color;
+  return item;
+}
+
+/** 「#小幫手」主選單：所有人可用；待辦清單、推播額度只顯示給 LINE_ADMIN_USER_IDS。 */
+function buildHelperMenuCard_(openCount, isAdmin) {
+  const buttons = [
+    helperButton_('primary', '#1A73E8', `📋 目前問題狀況（未結案 ${openCount}）`, '#狀況'),
+    helperButton_('secondary', '', '🐞 回報問題／提需求', '#回報'),
+    helperButton_('secondary', '', '🗂️ 更新資料（傳 Excel）', '#更新'),
+    helperButton_('secondary', '', '📖 使用說明', '#說明'),
+    helperButton_('secondary', '', '🔗 常用網站', '#網站')
+  ];
+  if (isAdmin) {
+    buttons.push({ type: 'separator', margin: 'md' });
+    buttons.push({ type: 'text', text: '只有維護者看得到', size: 'xxs', color: '#9AA0A6', margin: 'sm' });
+    buttons.push({ type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
+      helperButton_('secondary', '', '📝 待辦清單', '#待辦清單'),
+      helperButton_('secondary', '', '📊 推播額度', '#額度')
+    ] });
+  }
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#E8F0FE', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: '🤖 Debug 小幫手', size: 'lg', weight: 'bold', color: '#1A56B8' },
+        { type: 'text', text: '要做什麼？點下面的按鈕', size: 'xs', color: '#3C6FD1' }
+      ]
+    },
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: buttons },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '隨時打「#小幫手」叫出這個選單', size: 'xxs', color: '#9AA0A6', align: 'center' }]
+    }
+  };
+}
+
+function showOpenItems_(event, groupId) {
+  const items = collectOpenItems_()[groupId] || [];
+  if (!items.length) {
+    lineReply_(event.replyToken, '目前沒有未結案的回報或更新需求 🎉\n有問題打「#回報」');
+    return;
+  }
+  lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: `目前問題狀況：未結案 ${items.length} 筆`, contents: buildOpenItemsCard_(items, new Date()) }]);
+}
+
+function buildOpenItemsCard_(items, now) {
+  const tagColors = { '修好待 OK': ['#E6F4EA', '#1E7E34'], '等你回覆': ['#FEF3E2', '#A15C00'], '待確認寫入': ['#FEF3E2', '#A15C00'], '處理中': ['#E8F0FE', '#1A56B8'] };
+  const shown = items.slice(0, LINE_STATUS_LIST_MAX);
+  const rows = shown.map(function (item) {
+    const colors = tagColors[item.tag] || tagColors['處理中'];
+    return {
+      type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center',
+      contents: [
+        { type: 'text', text: item.id, size: 'sm', weight: 'bold', color: '#1A73E8', flex: 2 },
+        { type: 'text', text: String(item.summary || item.title).slice(0, 40), size: 'sm', wrap: true, flex: 6 },
+        { type: 'box', layout: 'vertical', backgroundColor: colors[0], cornerRadius: '4px', paddingAll: '3px', flex: 3,
+          contents: [{ type: 'text', text: item.tag, size: 'xxs', color: colors[1], align: 'center' }] }
+      ]
+    };
+  });
+  if (items.length > shown.length) rows.push({ type: 'text', text: `…另有 ${items.length - shown.length} 筆，請看回饋 Sheet`, size: 'xs', color: '#9AA0A6', wrap: true });
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#FFF4E5', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: `📋 目前問題狀況（未結案 ${items.length}）`, size: 'lg', weight: 'bold', color: '#B06000', wrap: true },
+        { type: 'text', text: `只列本群組 · ${Utilities.formatDate(now, 'Asia/Taipei', 'MM/dd HH:mm')}`, size: 'xs', color: '#C77700' }
+      ]
+    },
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: rows },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '修好了回「F0XX OK」，還有狀況回「F0XX＋說明」', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+    }
+  };
+}
+
+function buildHelpCard_() {
+  const line = function (title, body) {
+    return { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
+      { type: 'text', text: title, size: 'sm', weight: 'bold', flex: 3 },
+      { type: 'text', text: body, size: 'sm', wrap: true, flex: 7 }
+    ] };
+  };
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#E8F0FE', paddingAll: '14px',
+      contents: [{ type: 'text', text: '📖 怎麼用 Debug 小幫手', size: 'lg', weight: 'bold', color: '#1A56B8' }]
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'md',
+      contents: [
+        line('回報問題', '#回報 問題描述，接著貼截圖（最多 3 張）'),
+        line('補充說明', 'F022 ＋ 你要補的話'),
+        line('修好確認', 'F022 OK'),
+        line('更新資料', '#更新 → 選類型 → 傳 Excel'),
+        line('查進度', '#狀況'),
+        line('叫出選單', '#小幫手')
+      ]
+    },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '一般聊天不會回、也不會記錄', size: 'xxs', color: '#9AA0A6', align: 'center' }]
+    }
+  };
+}
+
+/** LINE_QUICK_LINKS：每行或分號隔開一筆「名稱|https://網址」；只收 https，最多 8 筆。網址放指令碼屬性，不寫進公開程式。 */
+function readQuickLinks_() {
+  const raw = String(PropertiesService.getScriptProperties().getProperty('LINE_QUICK_LINKS') || '');
+  const links = raw.split(/[\n;；]/).map(function (entry) {
+    const parts = entry.split('|');
+    const name = String(parts[0] || '').trim(), url = parts.slice(1).join('|').trim();
+    return name && /^https:\/\/\S+$/i.test(url) ? { name: name.slice(0, 40), url: url } : null;
+  }).filter(Boolean).slice(0, LINE_QUICK_LINKS_MAX);
+  return links.length ? links : [{ name: '料號管理中心', url: LINE_SITE_URL }];
+}
+
+function buildQuickLinksCard_(links) {
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#E6F4EA', paddingAll: '14px',
+      contents: [{ type: 'text', text: '🔗 常用網站', size: 'lg', weight: 'bold', color: '#1E7E34' }]
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: links.map(function (link) {
+        return { type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: link.name, uri: link.url } };
+      })
+    },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '點按鈕直接開啟網頁', size: 'xxs', color: '#9AA0A6', align: 'center' }]
     }
   };
 }
