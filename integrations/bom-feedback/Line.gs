@@ -844,11 +844,16 @@ function processLineOutbox() {
 // 每日總表：台北時間 18:00 後第一次執行時，把各群組自己的未結案回報（F）與更新需求（U）推到該群組，每天一次；沒有未結案就不發。
 const DAILY_SUMMARY_HOUR = 18;
 const DAILY_SUMMARY_MAX_ITEMS = 20;
-function sendDailySummary_(now) {
+// 手動提前發總表：在 Apps Script 編輯器選這個函式按「執行」；當天 18:00 的自動發送不會再重複。
+function sendDailySummaryNow() {
+  sendDailySummary_(new Date(), true);
+}
+
+function sendDailySummary_(now, force) {
   const props = PropertiesService.getScriptProperties();
   const hour = Number(Utilities.formatDate(now, 'Asia/Taipei', 'H'));
   const today = Utilities.formatDate(now, 'Asia/Taipei', 'yyyy-MM-dd');
-  if (!(hour >= DAILY_SUMMARY_HOUR) || props.getProperty('LINE_SUMMARY_LAST_DATE') === today) return;
+  if (!force && (!(hour >= DAILY_SUMMARY_HOUR) || props.getProperty('LINE_SUMMARY_LAST_DATE') === today)) return;
   props.setProperty('LINE_SUMMARY_LAST_DATE', today);
 
   const allowed = String(props.getProperty('LINE_GROUP_IDS') || '').split(',').map(function (id) { return id.trim(); }).filter(Boolean);
