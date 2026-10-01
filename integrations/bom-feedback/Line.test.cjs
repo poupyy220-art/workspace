@@ -751,6 +751,90 @@ test('Claude status entry writes 問題摘要 for F rows only, and the daily sum
   assert(text.includes('F001｜PN 工具\n　快速搜尋看不出幾筆 結果區太小\n　維護者處理中'), `Summary must show 問題摘要: ${text}`);
 });
 
+function seedOpenItems(w) {
+  const fb = w.sheets['BOM Feedback'];
+  const put = (sheet, r, values) => values.forEach((v, i) => sheet.setCell(r, i + 1, v));
+  put(fb, 5, ['F001', '', '', 'LINE 回報', '工具：PIM 合併', '少一列', '新回饋', '', '', '', 'LINE', '', 0, GROUP]);
+  put(fb, 6, ['F002', '', '', 'LINE 回報', '工具：PN 工具', 'x', '處理中', '', '', '', 'LINE', '', 0, GROUP, '已修好', '修好已通知']);
+  put(fb, 7, ['F003', '', '', 'LINE 回報', '工具：PN 工具', 'x', '新回饋', '', '', '', 'LINE', '', 0, GROUP, '想確認', '已發送']);
+  put(fb, 8, ['F004', '', '', 'LINE 回報', '工具：PN 工具', 'x', '已解決', '', '', '', 'LINE', '', 0, GROUP]);
+  put(fb, 9, ['F005', '', '', 'LINE 回報', '工具：PN 工具', 'x', '新回饋', '', '', '', 'LINE', '', 0, OTHER_GROUP]);
+  fb.setCell(5, 20, '快速搜尋看不出幾筆');
+  w.context.SpreadsheetApp.openById().insertSheet('Data Requests');
+  put(w.sheets['Data Requests'], 5, ['U001', '', 'PN_Project_Map', 'x', '', 1, '預覽完成', GROUP]);
+}
+const lastMessage = (w) => w.calls.replies.at(-1).messages[0];
+
+test('#小幫手 menu card: everyone can open it, admin-only buttons only for admins', () => {
+  const w = createWorld();
+  seedOpenItems(w);
+  w.properties.LINE_ADMIN_USER_IDS = 'Uadmin';
+  for (const cmd of ['#小幫手', '＃小幫手', '#選單', '#menu']) {
+    w.post([w.text(cmd, 'Ubob')]);
+    const card = lastMessage(w);
+    const json = JSON.stringify(card.contents);
+    assert(card.type === 'flex' && json.includes('#狀況') && json.includes('#說明') && json.includes('#網站') && json.includes('#回報') && json.includes('#更新'), cmd + ' menu missing buttons: ' + json);
+    assert(json.includes('未結案 4'), cmd + ' menu should show this group open count: ' + json);
+    assert(!json.includes('#待辦清單') && !json.includes('#額度'), 'Colleague must not see admin buttons');
+  }
+  w.post([w.text('#小幫手', 'Uadmin')]);
+  const adminJson = JSON.stringify(lastMessage(w).contents);
+  assert(adminJson.includes('#待辦清單') && adminJson.includes('#額度'), 'Admin should see admin buttons');
+  w.post([w.text('小幫手你好', 'Ubob')]);
+  assert(w.calls.replies.length === 5, 'Plain chat must stay silent');
+});
+
+test('#狀況 lists only this group open F／U items with state labels', () => {
+  const w = createWorld();
+  seedOpenItems(w);
+  w.post([w.text('#狀況', 'Ubob')]);
+  const card = lastMessage(w);
+  const json = JSON.stringify(card.contents);
+  assert(card.type === 'flex' && card.altText.includes('未結案 4'), 'altText wrong: ' + card.altText);
+  assert(json.includes('F001') && json.includes('F002') && json.includes('F003') && json.includes('U001'), 'Open items missing: ' + json);
+  assert(!json.includes('F004') && !json.includes('F005'), 'Closed or other-group items leaked: ' + json);
+  assert(json.includes('快速搜尋看不出幾筆') && json.includes('修好待 OK') && json.includes('等你回覆') && json.includes('處理中') && json.includes('待確認寫入'), 'State labels wrong: ' + json);
+  assert(!json.includes('少一列'), 'Must not show colleague original description');
+  w.post([w.text('#狀況', 'Ubob', OTHER_GROUP)]);
+  assert(w.calls.replies.length === 1, 'Other non-allowed group must stay silent');
+  w.properties.LINE_GROUP_IDS = GROUP + ',' + OTHER_GROUP;
+  w.post([w.text('#進度', 'Ubob', OTHER_GROUP)]);
+  const other = JSON.stringify(lastMessage(w).contents);
+  assert(other.includes('F005') && !other.includes('F001'), 'Groups must only see their own items: ' + other);
+});
+
+test('#狀況 with nothing open replies a short text', () => {
+  const w = createWorld();
+  w.post([w.text('#狀況')]);
+  assert(w.lastReply().includes('目前沒有未結案'), 'Empty status wrong: ' + w.lastReply());
+});
+
+test('#說明 shows the usage card', () => {
+  const w = createWorld();
+  w.post([w.text('#說明')]);
+  const json = JSON.stringify(lastMessage(w).contents);
+  assert(lastMessage(w).type === 'flex' && json.includes('#回報') && json.includes('OK') && json.includes('#更新') && json.includes('#小幫手'), 'Help card wrong: ' + json);
+  w.post([w.text('#使用說明')]);
+  assert(lastMessage(w).type === 'flex', '#使用說明 alias should work');
+});
+
+test('#網站 reads links from LINE_QUICK_LINKS, keeps https only, falls back to the site', () => {
+  const w = createWorld();
+  w.post([w.text('#網站')]);
+  let json = JSON.stringify(lastMessage(w).contents);
+  assert(json.includes('https://poupyy220-art.github.io/workspace/'), 'Default link missing: ' + json);
+  w.properties.LINE_QUICK_LINKS = '測試網站A|https://a.example.com/\n測試網站B | https://b.example.com/x?y=1 ; 壞連結|javascript:alert(1)\n沒網址';
+  w.post([w.text('#常用網站')]);
+  const card = lastMessage(w);
+  json = JSON.stringify(card.contents);
+  const uris = (json.match(/"uri":"[^"]+"/g) || []);
+  assert(uris.length === 2 && json.includes('https://a.example.com/') && json.includes('https://b.example.com/x?y=1') && json.includes('測試網站B'), 'Links wrong: ' + json);
+  assert(!json.includes('javascript'), 'Non-https link must be dropped');
+  w.properties.LINE_QUICK_LINKS = Array.from({ length: 12 }, (_, i) => '站' + i + '|https://s' + i + '.example.com/').join('\n');
+  w.post([w.text('#網站')]);
+  assert((JSON.stringify(lastMessage(w).contents).match(/"uri":/g) || []).length === 8, 'At most 8 links');
+});
+
 let passed = 0;
 for (const item of tests) {
   try {
