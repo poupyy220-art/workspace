@@ -643,6 +643,25 @@ test('sendDailySummaryNow sends before 18:00 and the 18:00 run does not repeat i
   w.api.sendDailySummary_(new Date());
   assert(w.calls.pushes.length === 1, 'Scheduled run must not repeat after manual send');
 });
+test('Claude status entry writes 判定專案 for U rows, and the daily summary shows it', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#更新 PN_Project_Map')]);
+  const call = (body) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeStatus: Object.assign({ key: 'claude-key' }, body) }) } }));
+  const r = call({ id: 'U001', status: '預覽完成', project: 'Demo Project X' });
+  assert(r.ok && r.project === 'Demo Project X', `Result wrong: ${JSON.stringify(r)}`);
+  const sheet = w.sheets['Data Requests'];
+  assert(w.dataRow(5)[6] === '預覽完成' && w.dataRow(5)[13] === 'Demo Project X', `Project not written: ${JSON.stringify(w.dataRow(5))}`);
+  assert(sheet.data[4][13] === '判定專案', 'Header 判定專案 missing');
+  const f = call({ id: 'F001', status: '處理中', project: 'ignored' });
+  assert(!f.ok || f.project === undefined, 'F rows must not take a project');
+
+  w.context.Utilities.formatDate = (_d, _tz, fmt) => (fmt === 'H' ? '18' : fmt === 'MM/dd' ? '10/01' : '2026-10-01');
+  w.api.sendDailySummary_(new Date());
+  const text = w.calls.pushes.at(-1).messages[0].text;
+  assert(text.includes('U001｜Demo Project X') && text.includes('待維護者確認寫入'), `Summary must show project: ${text}`);
+});
+
 let passed = 0;
 for (const item of tests) {
   try {
