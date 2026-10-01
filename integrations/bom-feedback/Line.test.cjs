@@ -16,7 +16,7 @@ function createWorld() {
   };
   const cache = {};
   const ttls = {};
-  const calls = { replies: [], pushes: [], mails: [], files: [] };
+  const calls = { replies: [], pushes: [], mails: [], files: [], github: [] };
   let pulls = [];
   let commits = [];
   const quota = { limit: 200, used: 12 };
@@ -81,6 +81,7 @@ function createWorld() {
         if (url.includes('api-data.line.me')) return response(200, '', { getContentType: () => 'image/png', getBytes: () => pngBytes });
         if (url.endsWith('/message/quota')) return response(200, quota.limit === null ? { type: 'none' } : { type: 'limited', value: quota.limit });
         if (url.endsWith('/message/quota/consumption')) return response(200, { totalUsage: quota.used });
+        if (url.includes('api.github.com')) calls.github.push(options.headers || {});
         if (url.includes('api.github.com') && url.includes('/commits')) return response(200, commits);
         if (url.includes('api.github.com')) return response(200, pulls);
         throw new Error(`Unexpected fetch ${url}`);
@@ -620,6 +621,15 @@ test('daily summary: nothing open means no push', () => {
   assert(w.calls.pushes.length === 0, 'No open items must stay silent');
 });
 
+test('GitHub calls send the token only when GITHUB_TOKEN is set', () => {
+  const w = createWorld();
+  w.api.processLineOutbox();
+  assert(w.calls.github.length === 2 && w.calls.github.every((h) => !h.Authorization), 'No token: must not send Authorization');
+  w.properties.GITHUB_TOKEN = 'ghp-test';
+  w.api.processLineOutbox();
+  const withToken = w.calls.github.slice(2);
+  assert(withToken.length === 2 && withToken.every((h) => h.Authorization === 'Bearer ghp-test' && h.Accept === 'application/vnd.github+json'), 'Token must be sent to both GitHub calls: ' + JSON.stringify(withToken));
+});
 let passed = 0;
 for (const item of tests) {
   try {
