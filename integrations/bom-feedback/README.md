@@ -35,6 +35,7 @@ node integrations/bom-feedback/Line.test.cjs
 - `FEEDBACK_IMAGE_FOLDER_ID`：私人圖片資料夾 ID；只有附圖時才需要。
 - `FEEDBACK_DAILY_LIMIT`：選填，預設 30。
 - `FEEDBACK_DAILY_IMAGE_MB`：選填，預設 30。
+- `GITHUB_TOKEN`：選填，LINE 修好通知／網站更新通知查 GitHub 用。未設定時共用 Google IP 的匿名額度，常出現 `GitHub API failed: 403`。用 GitHub Fine-grained token，Repository access 只選 `poupyy220-art/workspace`、權限保持唯讀（Public repositories 讀取即可），設定到期日；不得寫進 Repository。
 
 不得把電子郵件或其他機密資料直接寫入 Repository。
 

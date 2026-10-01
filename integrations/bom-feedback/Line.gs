@@ -888,7 +888,7 @@ function notifySiteUpdates_() {
   const props = PropertiesService.getScriptProperties();
   const repo = props.getProperty('LINE_GITHUB_REPO') || 'poupyy220-art/workspace';
   const response = UrlFetchApp.fetch(`https://api.github.com/repos/${repo}/commits?sha=main&path=index.html&per_page=10`, {
-    headers: { Accept: 'application/vnd.github+json' },
+    headers: githubHeaders_(),
     muteHttpExceptions: true
   });
   if (response.getResponseCode() !== 200) throw new Error(`GitHub commits API failed: ${response.getResponseCode()}`);
@@ -922,10 +922,18 @@ function notifySiteUpdates_() {
     .forEach(function (groupId) { linePush_(groupId, text); });
 }
 
+// GitHub API 未帶 token 時共用 Google IP 的每小時 60 次額度，常被擋（403）；指令碼屬性 GITHUB_TOKEN（只讀公開 repo 即可）有設定就帶上。
+function githubHeaders_() {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 function collectMergedPullRequests_() {
   const repo = PropertiesService.getScriptProperties().getProperty('LINE_GITHUB_REPO') || 'poupyy220-art/workspace';
   const response = UrlFetchApp.fetch(`https://api.github.com/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=20`, {
-    headers: { Accept: 'application/vnd.github+json' },
+    headers: githubHeaders_(),
     muteHttpExceptions: true
   });
   if (response.getResponseCode() !== 200) throw new Error(`GitHub API failed: ${response.getResponseCode()}`);
