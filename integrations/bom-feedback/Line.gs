@@ -77,6 +77,7 @@ function handleLineWebhook_(e, payload) {
   if (payload.claudeReply) return json_(handleClaudeReply_(payload.claudeReply));
   // Claude 改處理狀態：同一把 CLAUDE_REPLY_KEY 驗證，只改 G 欄，不發 LINE
   if (payload.claudeStatus) return json_(handleClaudeStatus_(payload.claudeStatus));
+  if (payload.claudeLog) return json_(handleClaudeLog_(payload.claudeLog));
 
   // 暗號不對就當作沒看到，不透露任何資訊
   const key = e && e.parameter ? String(e.parameter.k || '') : '';
@@ -553,6 +554,34 @@ function handleClaudeReply_(request) {
     sheet.getRange(rowNumber, columns.replyStatus).setValue(sent ? (fixed ? '修好已通知' : '已發送') : '發送失敗');
     sheet.getRange(rowNumber, columns.replyTime).setValue(new Date());
     return { ok: sent, id: id, sent: sent };
+  });
+}
+
+// PN_Project_Map 更新紀錄（另一份 Sheet，指令碼屬性 UPDATE_LOG_SHEET_ID）：Claude 寫入 PN_Project_Map 後追加本次每一筆。
+// payload：{ events: [], claudeLog: { key, rows: [[需求編號, 更新日期, 類型, 料號, 這次加入的專案, 更新後專案清單], ...] } }
+// 同一「需求編號＋類型＋料號」已存在就略過，重跑不會重複；不發 LINE。
+const UPDATE_LOG_TYPES = ['新增', '補標籤', '移除標籤'];
+const UPDATE_LOG_MAX_ROWS = 2000;
+function handleClaudeLog_(request) {
+  const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
+  if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
+  const sheetId = PropertiesService.getScriptProperties().getProperty('UPDATE_LOG_SHEET_ID');
+  if (!sheetId) return { ok: false, error: 'UPDATE_LOG_SHEET_ID missing' };
+  const rows = Array.isArray(request.rows) ? request.rows : [];
+  const valid = rows.length > 0 && rows.length <= UPDATE_LOG_MAX_ROWS && rows.every(function (row) {
+    return Array.isArray(row) && row.length === 6 && /^U\d{3,}$/.test(String(row[0])) && UPDATE_LOG_TYPES.indexOf(String(row[2])) >= 0 && String(row[3]).trim();
+  });
+  if (!valid) return { ok: false, error: 'invalid rows' };
+  return withLock_(function () {
+    const sheet = SpreadsheetApp.openById(sheetId).getSheets()[0];
+    const last = sheet.getLastRow();
+    const keyOf = function (row) { return [row[0], row[2], row[3]].map(function (v) { return String(v).trim(); }).join('|'); };
+    const seen = {};
+    if (last >= 2) sheet.getRange(2, 1, last - 1, 6).getValues().forEach(function (row) { seen[keyOf(row)] = true; });
+    const fresh = [];
+    rows.forEach(function (row) { const key = keyOf(row); if (seen[key]) return; seen[key] = true; fresh.push(row.map(function (v) { return sheetText_(String(v)); })); });
+    if (fresh.length) sheet.getRange(last + 1, 1, fresh.length, 6).setValues(fresh);
+    return { ok: true, before: Math.max(last - 1, 0), appended: fresh.length, skipped: rows.length - fresh.length, after: Math.max(last - 1, 0) + fresh.length };
   });
 }
 

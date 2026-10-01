@@ -68,7 +68,7 @@ function createWorld() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => properties[k] ?? null, setProperty: (k, v) => { properties[k] = v; } }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v, ttl) => { cache[k] = v; ttls[k] = ttl; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    SpreadsheetApp: { openById: () => ({ getSheetByName: (name) => sheets[name] || null, insertSheet: (name) => (sheets[name] = makeSheet(0)) }) },
+    SpreadsheetApp: { openById: () => ({ getSheetByName: (name) => sheets[name] || null, insertSheet: (name) => (sheets[name] = makeSheet(0)), getSheets: () => (sheets.__log ? [sheets.__log] : []) }) },
     DriveApp: { getFolderById: () => ({ createFile(blob) { calls.files.push(blob.name); return { setDescription() {}, getUrl: () => `https://drive/${blob.name}`, setTrashed() {} }; } }) },
     MailApp: { sendEmail: (m) => calls.mails.push(m) },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
@@ -660,6 +660,27 @@ test('Claude status entry writes 判定專案 for U rows, and the daily summary 
   w.api.sendDailySummary_(new Date());
   const text = w.calls.pushes.at(-1).messages[0].text;
   assert(text.includes('U001｜Demo Project X') && text.includes('待維護者確認寫入'), `Summary must show project: ${text}`);
+});
+
+test('Claude update-log entry appends U rows once, rejects bad key/rows, and needs UPDATE_LOG_SHEET_ID', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  const call = (body) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeLog: Object.assign({ key: 'claude-key' }, body) }) } }));
+  const rows = [['U009', '2026-10-01', '新增', 'SBB0TEST01', 'Demo P', 'Demo P'], ['U009', '2026-10-01', '補標籤', 'SBB0TEST02', 'Demo P', 'Old,Demo P']];
+  assert(call({ rows }).error === 'UPDATE_LOG_SHEET_ID missing', 'Must require the log sheet property');
+  w.properties.UPDATE_LOG_SHEET_ID = 'log-sheet';
+  const log = w.sheets.__log = (function () { const s = w.context.SpreadsheetApp.openById().insertSheet('__log'); return s; })();
+  log.setCell(1, 1, '需求編號'); log.setCell(1, 2, '更新日期'); log.setCell(1, 3, '類型'); log.setCell(1, 4, '料號'); log.setCell(1, 5, '這次加入的專案'); log.setCell(1, 6, '更新後專案清單');
+  ['U001', '2026-09-24', '新增', 'SBB0OLD001', 'Old', 'Old'].forEach((v, i) => log.setCell(2, i + 1, v));
+  assert(call({ key: 'wrong', rows }).error === 'unauthorized', 'Wrong key must be rejected');
+  assert(call({ rows: [['X1', '2026-10-01', '新增', 'SBB0TEST01', 'P', 'P']] }).error === 'invalid rows', 'Non-U id must be rejected');
+  assert(call({ rows: [['U009', '2026-10-01', '刪除', 'SBB0TEST01', 'P', 'P']] }).error === 'invalid rows', 'Unknown type must be rejected');
+  const r = call({ rows });
+  assert(r.ok && r.before === 1 && r.appended === 2 && r.skipped === 0 && r.after === 3, `Append result wrong: ${JSON.stringify(r)}`);
+  assert(log.data[3][3] === 'SBB0TEST01' && log.data[4][5] === 'Old,Demo P' && log.data[2][3] === 'SBB0OLD001', 'Rows not appended after existing data');
+  const again = call({ rows });
+  assert(again.ok && again.appended === 0 && again.skipped === 2 && again.after === 3, `Re-run must not duplicate: ${JSON.stringify(again)}`);
+  assert(w.calls.pushes.length === 0, 'Log entry must not push to LINE');
 });
 
 let passed = 0;
