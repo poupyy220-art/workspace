@@ -38,7 +38,7 @@ const LINE_COLUMNS = { status: 7, source: 11, imageLinks: 12, imageCount: 13, gr
 // 「#更新」資料更新需求：另存「Data Requests」分頁（U001 起編號）；AI 只做比對預覽，寫入一律由維護者在 Claude 觸發
 const LINE_UPDATE_PREFIX = /^[#＃]\s*更新\s*/;
 const DATA_REQUEST_SHEET = 'Data Requests';
-const DATA_COLUMNS = { type: 3, description: 4, fileLinks: 5, fileCount: 6, status: 7, group: 8, reply: 9, replyStatus: 10, replyTime: 11 };
+const DATA_COLUMNS = { type: 3, description: 4, fileLinks: 5, fileCount: 6, status: 7, group: 8, reply: 9, replyStatus: 10, replyTime: 11, project: 14 };
 const DATA_HEADERS = ['需求編號', '送出時間', '更新類型', '說明', '檔案連結', '檔案數量', '處理狀態', 'LINE 群組', '給同事的回覆', '回覆狀態', '回覆時間'];
 const DATA_MAX_FILES = 3;
 const DATA_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -559,11 +559,11 @@ function handleClaudeReply_(request) {
 function handleClaudeStatus_(request) {
   const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
   if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
-  return setReportStatus_(request.id, request.status);
+  return setReportStatus_(request.id, request.status, request.project);
 }
 
-/** 改 BOM Feedback／Data Requests 的處理狀態（G 欄）；只接受該分頁下拉選單有的值，其他欄位不動。 */
-function setReportStatus_(rawId, rawStatus) {
+/** 改 BOM Feedback／Data Requests 的處理狀態（G 欄）；只接受該分頁下拉選單有的值。U 列可另帶 project 寫入「判定專案」欄（N 欄），其他欄位不動。 */
+function setReportStatus_(rawId, rawStatus, rawProject) {
   const id = String(rawId || '').trim().toUpperCase();
   if (!/^[FU]\d{3,}$/.test(id)) return { ok: false, error: 'invalid id' };
   const status = String(rawStatus || '').trim();
@@ -576,11 +576,17 @@ function setReportStatus_(rawId, rawStatus) {
     const rowNumber = sheet ? findFeedbackRow_(sheet, id) : 0;
     if (!rowNumber) return { ok: false, id: id, error: 'id not found' };
     if (REPORT_STATUSES[id.charAt(0)].indexOf(status) < 0) return { ok: false, id: id, error: 'invalid status' };
+    const project = isData ? String(rawProject || '').trim().slice(0, 100) : '';
+    if (project) {
+      if (!sheet.getRange(4, columns.project).getValue()) sheet.getRange(4, columns.project).setValue('判定專案');
+      sheet.getRange(rowNumber, columns.project).setValue(sheetText_(project));
+    }
+    const extra = project ? { project: project } : {};
     const cell = sheet.getRange(rowNumber, columns.status);
     const previous = String(cell.getValue() || '');
-    if (previous === status) return { ok: true, id: id, previous: previous, status: status, unchanged: true };
+    if (previous === status) return Object.assign({ ok: true, id: id, previous: previous, status: status, unchanged: true }, extra);
     cell.setValue(status);
-    return { ok: true, id: id, previous: previous, status: status };
+    return Object.assign({ ok: true, id: id, previous: previous, status: status }, extra);
   });
 }
 
@@ -870,11 +876,13 @@ function sendDailySummary_(now, force) {
     add(String(row[LINE_COLUMNS.group - 1]), `🔸 ${id}｜${tool}\n　${state}`);
   });
   const dataSheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET);
-  readRows(dataSheet, DATA_COLUMNS.group).forEach(function (row) {
+  readRows(dataSheet, DATA_COLUMNS.project).forEach(function (row) {
     const id = String(row[0]), status = String(row[DATA_COLUMNS.status - 1]);
     if (!/^U\d{3,}$/.test(id) || (status !== '新需求' && status !== '預覽完成')) return;
     const state = status === '預覽完成' ? '比對完成，待維護者確認寫入' : '待維護者處理';
-    add(String(row[DATA_COLUMNS.group - 1]), `🔸 ${id}｜更新 ${row[DATA_COLUMNS.type - 1] || '待確認'}\n　${state}`);
+    const project = String(row[DATA_COLUMNS.project - 1] || '').trim();
+    const label = project ? `${project}（更新 ${row[DATA_COLUMNS.type - 1] || '待確認'}）` : `更新 ${row[DATA_COLUMNS.type - 1] || '待確認'}`;
+    add(String(row[DATA_COLUMNS.group - 1]), `🔸 ${id}｜${label}\n　${state}`);
   });
 
   Object.keys(byGroup).forEach(function (groupId) {
