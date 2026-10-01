@@ -26,6 +26,10 @@ const REPORT_STATUSES = { F: ['新回饋', '處理中', '已解決', '不處理'
 const LINE_SUPPLEMENT_PATTERN = /^[#＃]?\s*([FU]\d{3,})\s*[:：,，]?\s*(\S[\s\S]*)$/i;
 // 同事補充記在每列最後兩欄：BOM Feedback R／S 欄、Data Requests L／M 欄
 const SUPPLEMENT_COLUMNS = { F: { text: 18, time: 19 }, U: { text: 12, time: 13 } };
+// 問題摘要（維護者／Claude 用自己的話寫一行，不放同事原文）與修好提醒時間：BOM Feedback T／U 欄
+const FEEDBACK_EXTRA_COLUMNS = { summary: 20, remindedAt: 21 };
+const FIXED_REMINDER_WORKDAYS = 3;
+const FIXED_REMINDER_HOURS = { from: 9, to: 18 };
 const LINE_SITE_URL = 'https://poupyy220-art.github.io/workspace/';
 const LINE_PENDING_SECONDS = 600;
 // 「#回報」選單按鈕送出的文字；按下後同一人的下一句就是描述
@@ -588,11 +592,11 @@ function handleClaudeLog_(request) {
 function handleClaudeStatus_(request) {
   const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
   if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
-  return setReportStatus_(request.id, request.status, request.project);
+  return setReportStatus_(request.id, request.status, request.project, request.summary);
 }
 
-/** 改 BOM Feedback／Data Requests 的處理狀態（G 欄）；只接受該分頁下拉選單有的值。U 列可另帶 project 寫入「判定專案」欄（N 欄），其他欄位不動。 */
-function setReportStatus_(rawId, rawStatus, rawProject) {
+/** 改 BOM Feedback／Data Requests 的處理狀態（G 欄）；只接受該分頁下拉選單有的值。U 列可另帶 project 寫入「判定專案」欄（N 欄），F 列可另帶 summary 寫入「問題摘要」欄（T 欄），其他欄位不動。 */
+function setReportStatus_(rawId, rawStatus, rawProject, rawSummary) {
   const id = String(rawId || '').trim().toUpperCase();
   if (!/^[FU]\d{3,}$/.test(id)) return { ok: false, error: 'invalid id' };
   const status = String(rawStatus || '').trim();
@@ -610,7 +614,12 @@ function setReportStatus_(rawId, rawStatus, rawProject) {
       if (!sheet.getRange(4, columns.project).getValue()) sheet.getRange(4, columns.project).setValue('判定專案');
       sheet.getRange(rowNumber, columns.project).setValue(sheetText_(project));
     }
-    const extra = project ? { project: project } : {};
+    const summary = isData ? '' : String(rawSummary || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (summary) {
+      if (!sheet.getRange(4, FEEDBACK_EXTRA_COLUMNS.summary).getValue()) sheet.getRange(4, FEEDBACK_EXTRA_COLUMNS.summary, 1, 2).setValues([['問題摘要', '修好提醒時間']]);
+      sheet.getRange(rowNumber, FEEDBACK_EXTRA_COLUMNS.summary).setValue(sheetText_(summary));
+    }
+    const extra = Object.assign(project ? { project: project } : {}, summary ? { summary: summary } : {});
     const cell = sheet.getRange(rowNumber, columns.status);
     const previous = String(cell.getValue() || '');
     if (previous === status) return Object.assign({ ok: true, id: id, previous: previous, status: status, unchanged: true }, extra);
@@ -873,6 +882,7 @@ function processLineOutbox() {
   try { notifySiteUpdates_(); } catch (error) { console.error(error); }
   try { checkLineQuota_(); } catch (error) { console.error(error); }
   try { sendDailySummary_(new Date()); } catch (error) { console.error(error); }
+  try { sendFixedReminders_(new Date()); } catch (error) { console.error(error); }
   sendApprovedLineReplies_();
 }
 
@@ -896,13 +906,14 @@ function sendDailySummary_(now, force) {
   const add = function (groupId, item) { if (allowed.indexOf(groupId) < 0) return; (byGroup[groupId] = byGroup[groupId] || []).push(item); };
   const readRows = function (sheet, width) { return sheet && sheet.getLastRow() >= 5 ? sheet.getRange(5, 1, sheet.getLastRow() - 4, width).getValues() : []; };
 
-  readRows(getSheet_(FEEDBACK_SHEET), LINE_COLUMNS.replyStatus).forEach(function (row) {
+  readRows(getSheet_(FEEDBACK_SHEET), FEEDBACK_EXTRA_COLUMNS.summary).forEach(function (row) {
     const id = String(row[0]), status = String(row[LINE_COLUMNS.status - 1]), replyStatus = String(row[LINE_COLUMNS.replyStatus - 1]);
     if (!/^F\d{3,}$/.test(id) || (status !== '新回饋' && status !== '處理中')) return;
     const tool = String(row[4] || '').replace(/^工具：/, '') || '待確認';
     const state = replyStatus.indexOf('修好') === 0 ? `已修好，請試用後回「${id} OK」`
       : replyStatus === '已發送' ? `已回覆，等你回覆或補充（打「${id} 補充內容」）` : '維護者處理中';
-    add(String(row[LINE_COLUMNS.group - 1]), `🔸 ${id}｜${tool}\n　${state}`);
+    const summary = String(row[FEEDBACK_EXTRA_COLUMNS.summary - 1] || '').trim();
+    add(String(row[LINE_COLUMNS.group - 1]), `🔸 ${id}｜${tool}${summary ? `\n　${summary}` : ''}\n　${state}`);
   });
   const dataSheet = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID')).getSheetByName(DATA_REQUEST_SHEET);
   readRows(dataSheet, DATA_COLUMNS.project).forEach(function (row) {
@@ -922,6 +933,67 @@ function sendDailySummary_(now, force) {
       .concat(shown, more, ['━━━━━━━━━━━━', '有問題打「#回報 問題描述」']).join('\n');
     linePush_(groupId, text);
   });
+}
+
+// 修好提醒：修好通知發出後滿 3 個工作天（週一～週五，不含國定假日）同事還沒回 OK → 在原群組提醒一次，交代前因後果。
+// 只在台北時間工作日 09:00～18:00 發；不自動結案，之後仍列在每日總表。
+function sendFixedReminders_(now) {
+  const taipei = taipeiParts_(now);
+  if (taipei.weekday === 0 || taipei.weekday === 6 || taipei.hour < FIXED_REMINDER_HOURS.from || taipei.hour >= FIXED_REMINDER_HOURS.to) return;
+  const allowed = String(PropertiesService.getScriptProperties().getProperty('LINE_GROUP_IDS') || '').split(',').map(function (id) { return id.trim(); }).filter(Boolean);
+  const sheet = getSheet_(FEEDBACK_SHEET);
+  if (sheet.getLastRow() < 5) return;
+  const rows = sheet.getRange(5, 1, sheet.getLastRow() - 4, FEEDBACK_EXTRA_COLUMNS.remindedAt).getValues();
+  rows.forEach(function (row, index) {
+    const id = String(row[0]);
+    const status = String(row[LINE_COLUMNS.status - 1]);
+    const groupId = String(row[LINE_COLUMNS.group - 1] || '');
+    const notifiedAt = row[LINE_COLUMNS.replyTime - 1];
+    if (!/^F\d{3,}$/.test(id) || (status !== '新回饋' && status !== '處理中')) return;
+    if (String(row[LINE_COLUMNS.replyStatus - 1]) !== '修好已通知' || row[FEEDBACK_EXTRA_COLUMNS.remindedAt - 1]) return;
+    if (allowed.indexOf(groupId) < 0 || !isSheetDate_(notifiedAt)) return;
+    if (fullWorkdaysBetween_(notifiedAt, now) < FIXED_REMINDER_WORKDAYS) return;
+    const reportedAt = isSheetDate_(row[1]) ? row[1] : null;
+    const text = buildFixedReminderText_(id, reportedAt, String(row[4] || ''), String(row[FEEDBACK_EXTRA_COLUMNS.summary - 1] || ''), notifiedAt, String(row[LINE_COLUMNS.reply - 1] || ''));
+    // 發送失敗不寫時間，下次（10 分鐘後）再試
+    if (linePush_(groupId, text)) withLock_(function () { sheet.getRange(index + 5, FEEDBACK_EXTRA_COLUMNS.remindedAt).setValue(new Date()); });
+  });
+}
+
+function buildFixedReminderText_(id, reportedAt, toolCell, summary, notifiedAt, reply) {
+  const tool = toolCell.replace(/^工具：/, '').trim();
+  const what = summary.trim() || (tool && tool !== '待確認' ? `${tool} 的問題` : '問題');
+  const fix = reply.replace(/\n?（PR #\d+）\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return [
+    `${id} 提醒 🔔`,
+    `・你 ${reportedAt ? taipeiParts_(reportedAt).mmdd + ' ' : ''}回報：${what}`,
+    `・${taipeiParts_(notifiedAt).mmdd} 已修好：${fix || '已更新網站'}`,
+    `・請重新整理網頁試用：沒問題回「${id} OK」結案；還有問題請回「${id} ＋狀況」`,
+    '・這是最後一次提醒，之後仍會列在每日總表'
+  ].join('\n');
+}
+
+// Sheet 讀出的日期格（不用 instanceof，跨執行環境也判斷得到）
+function isSheetDate_(value) {
+  return Boolean(value) && typeof value.getTime === 'function' && !isNaN(value.getTime());
+}
+
+// 台北時間（UTC+8，無夏令時間）的星期、小時、MM/dd 與日期序號；不依賴 Utilities.formatDate，方便測試
+function taipeiParts_(date) {
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const pad = function (n) { return String(n).padStart(2, '0'); };
+  return { weekday: shifted.getUTCDay(), hour: shifted.getUTCHours(), mmdd: pad(shifted.getUTCMonth() + 1) + '/' + pad(shifted.getUTCDate()), day: Math.floor(shifted.getTime() / 86400000) };
+}
+
+// from 與 to 之間（兩端當天都不算）完整經過的工作天數：週三通知 → 週四、週五、週一滿 3 天 → 週二才提醒
+function fullWorkdaysBetween_(from, to) {
+  const start = taipeiParts_(from).day, end = taipeiParts_(to).day;
+  let count = 0;
+  for (let day = start + 1; day < end; day += 1) {
+    const weekday = (day + 4) % 7; // 1970-01-01 是週四
+    if (weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
 }
 
 // 網站有新版本（main 上 index.html 的 commit 標題含 vX.Y.Z）→ 部署 5 分鐘後推到所有白名單群組。

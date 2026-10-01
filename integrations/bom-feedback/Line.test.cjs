@@ -91,7 +91,7 @@ function createWorld() {
   vm.createContext(context);
   const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
   const line = fs.readFileSync(path.join(__dirname, 'Line.gs'), 'utf8');
-  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined,sendDailySummaryNow:typeof sendDailySummaryNow==='function'?sendDailySummaryNow:undefined};`, context, { filename: 'Line.gs' });
+  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined,sendDailySummaryNow:typeof sendDailySummaryNow==='function'?sendDailySummaryNow:undefined,sendFixedReminders_:typeof sendFixedReminders_==='function'?sendFixedReminders_:undefined};`, context, { filename: 'Line.gs' });
 
   let tokenSeq = 0;
   const post = (events, key = KEY) => context.api.doPost({
@@ -681,6 +681,74 @@ test('Claude update-log entry appends U rows once, rejects bad key/rows, and nee
   const again = call({ rows });
   assert(again.ok && again.appended === 0 && again.skipped === 2 && again.after === 3, `Re-run must not duplicate: ${JSON.stringify(again)}`);
   assert(w.calls.pushes.length === 0, 'Log entry must not push to LINE');
+});
+
+test('fixed reminder: after 3 full workdays without OK, reminds once in working hours with context', () => {
+  const w = createWorld();
+  assert(typeof w.api.sendFixedReminders_ === 'function', 'sendFixedReminders_ missing');
+  const fb = w.sheets['BOM Feedback'];
+  const put = (r, values) => values.forEach((v, i) => fb.setCell(r, i + 1, v));
+  const taipei = (iso) => new Date(`${iso}+08:00`);
+  // 週二回報、週三 13:00 修好通知 → 週四、週五、週一滿 3 個工作天 → 週二 09:00 後才提醒
+  put(5, ['F001', taipei('2026-09-30T10:00:00'), '', 'LINE 回報', '工具：PN 工具', '同事原文不可出現', '處理中', '', '', '', 'LINE', '', 0, GROUP,
+    '已加上搜尋筆數顯示，網站已更新到 v2.16.17。\n（PR #39）', '修好已通知', taipei('2026-10-01T13:00:00'), '', '', '快速搜尋看不出幾筆、結果區太小']);
+  put(6, ['F002', taipei('2026-09-20T10:00:00'), '', 'LINE 回報', '工具：BOM 轉檔與安檢', '原文', '已解決', '', '', '', 'LINE', '', 0, GROUP, '修好', '同事已確認', taipei('2026-09-21T10:00:00')]);
+  put(7, ['F003', taipei('2026-09-20T10:00:00'), '', 'LINE 回報', '工具：PN 工具', '原文', '處理中', '', '', '', 'LINE', '', 0, 'Cunknown', '修好', '修好已通知', taipei('2026-09-21T10:00:00')]);
+  put(8, ['F004', taipei('2026-09-20T10:00:00'), '', 'LINE 回報', '工具：PN 工具', '原文', '處理中', '', '', '', 'LINE', '', 0, GROUP, '想確認一下', '已發送', taipei('2026-09-21T10:00:00')]);
+
+  w.api.sendFixedReminders_(taipei('2026-10-06T10:00:00'));
+  assert(w.calls.pushes.length === 0, 'Monday is only 2 full workdays: must wait');
+  w.api.sendFixedReminders_(taipei('2026-10-04T10:00:00'));
+  assert(w.calls.pushes.length === 0, 'Weekend: must not push');
+  w.api.sendFixedReminders_(taipei('2026-10-07T08:30:00'));
+  assert(w.calls.pushes.length === 0, 'Before 09:00: must not push');
+
+  w.api.sendFixedReminders_(taipei('2026-10-07T09:10:00'));
+  assert(w.calls.pushes.length === 1 && w.calls.pushes[0].to === GROUP, 'Exactly one reminder to the report group: ' + JSON.stringify(w.calls.pushes.map((p) => p.to)));
+  const text = w.calls.pushes[0].messages[0].text;
+  assert(text.includes('F001 提醒') && text.includes('09/30 回報：快速搜尋看不出幾筆、結果區太小'), 'Must say what was reported and when: ' + text);
+  assert(text.includes('10/01 已修好：已加上搜尋筆數顯示') && !text.includes('PR #39'), 'Must say what was fixed, without PR number: ' + text);
+  assert(text.includes('「F001 OK」') && text.includes('最後一次提醒') && !text.includes('同事原文'), 'Must ask for OK, mark last reminder, never quote original: ' + text);
+  assert(w.row(5)[20] && typeof w.row(5)[20].getTime === 'function' && w.row(5)[6] === '處理中', 'Reminder time recorded; status unchanged');
+
+  w.api.sendFixedReminders_(taipei('2026-10-08T10:00:00'));
+  assert(w.calls.pushes.length === 1, 'Only one reminder ever');
+  w.post([w.text('F001 OK')]);
+  assert(w.row(5)[6] === '已解決' && w.lastReply().includes('已結案'), 'OK after reminder still closes');
+});
+
+test('fixed reminder: without a summary falls back to the tool name; failed push retries later', () => {
+  const w = createWorld();
+  const fb = w.sheets['BOM Feedback'];
+  const taipei = (iso) => new Date(`${iso}+08:00`);
+  ['F001', taipei('2026-09-28T10:00:00'), '', 'LINE 回報', '工具：CTO EDI 新專案維護', '原文', '處理中', '', '', '', 'LINE', '', 0, GROUP, '已修好。', '修好已通知', taipei('2026-09-29T10:00:00')]
+    .forEach((v, i) => fb.setCell(5, i + 1, v));
+  const fetch = w.context.UrlFetchApp.fetch;
+  w.context.UrlFetchApp.fetch = (url, options) => { if (url.includes('/message/push')) throw new Error('LINE down'); return fetch(url, options); };
+  try { w.api.sendFixedReminders_(taipei('2026-10-05T10:00:00')); } catch (e) { /* linePush_ 失敗 */ }
+  assert(!w.row(5)[20], 'Failed push must not record reminder time');
+  w.context.UrlFetchApp.fetch = fetch;
+  w.api.sendFixedReminders_(taipei('2026-10-05T10:20:00'));
+  const text = (w.calls.pushes.at(-1) || { messages: [{ text: '' }] }).messages[0].text;
+  assert(text.includes('09/28 回報：CTO EDI 新專案維護 的問題') && text.includes('09/29 已修好：已修好。'), 'Fallback wording wrong: ' + text);
+});
+
+test('Claude status entry writes 問題摘要 for F rows only, and the daily summary shows it', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#回報 PN 工具搜尋看不出筆數')]);
+  w.post([w.text('#更新 PN_Project_Map')]);
+  const call = (body) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudeStatus: Object.assign({ key: 'claude-key' }, body) }) } }));
+  const r = call({ id: 'F001', status: '處理中', summary: '  快速搜尋看不出幾筆\n結果區太小 ' });
+  assert(r.ok && r.summary === '快速搜尋看不出幾筆 結果區太小', `Result wrong: ${JSON.stringify(r)}`);
+  assert(w.row(5)[19] === '快速搜尋看不出幾筆 結果區太小' && w.rows[4][19] === '問題摘要' && w.rows[4][20] === '修好提醒時間', 'Summary or headers not written');
+  const u = call({ id: 'U001', status: '預覽完成', summary: 'ignored' });
+  assert(u.ok && u.summary === undefined && !w.dataRow(5)[19], 'U rows must not take a summary');
+
+  w.context.Utilities.formatDate = (_d, _tz, fmt) => (fmt === 'H' ? '18' : fmt === 'MM/dd' ? '10/01' : '2026-10-01');
+  w.api.sendDailySummary_(new Date());
+  const text = w.calls.pushes.at(-1).messages[0].text;
+  assert(text.includes('F001｜PN 工具\n　快速搜尋看不出幾筆 結果區太小\n　維護者處理中'), `Summary must show 問題摘要: ${text}`);
 });
 
 let passed = 0;
