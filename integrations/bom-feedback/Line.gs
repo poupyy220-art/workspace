@@ -18,6 +18,7 @@
  *   LINE_CALENDAR_ID          「#行程」使用的 Google 行事曆 ID；在編輯器執行 setupLineCalendar 自動填入（預設找名為「工作」的行事曆）
  *   LINE_CALENDAR_NAME        setupLineCalendar 要找的行事曆名稱，未設定時用「工作」
  *   LINE_CAL_SEQ              （自動寫入）行程編號 C001 起的流水號
+ *   LINE_ICON_BASE_URL        卡片積木圖示的公開資料夾網址（https），底下放 report.png、calendar.png 等；未設定時卡片不放圖、選單改用符號
  *
  * Apps Script 讀不到 X-Line-Signature header，因此以「網址暗號＋群組白名單」代替簽章驗證。
  */
@@ -67,6 +68,7 @@ const LINE_LINKS_PATTERN = /^[#＃]\s*(常用)?網站\s*$/;
 const LINE_QUICK_LINKS_MAX = 8;
 const LINE_STATUS_LIST_MAX = 10;
 // 「#行程」Google「工作」行事曆：所有人可查、可新增；改／刪只限建立者與維護者。只用回覆（reply），不吃推播額度
+const LINE_CAL_MENU_PATTERN = /^[#＃]\s*(行事曆|行程選單)\s*$/;
 const LINE_CAL_LIST_PATTERN = /^[#＃]\s*(行程|行事曆)(?:\s+(\S[\s\S]*))?$/;
 const LINE_CAL_ADD_PREFIX = /^[#＃]\s*(新增行程|加行程)\s*/;
 const LINE_CAL_EDIT_PATTERN = /^[#＃]\s*改行程\s*(C\d{3,})?\s*([\s\S]*)$/i;
@@ -137,6 +139,11 @@ function handleLineEvent_(event) {
     lineReply_(event.replyToken, '大家好，我是 Debug 小幫手 🤖\n・網站有問題或想調整：打「#回報」從選單選擇，或直接打「#回報 問題描述」，可以接著貼截圖。\n・要更新資料：打「#更新」，從選單選擇資料類型後傳 Excel 檔。\n・查進度、看說明、常用網站：打「#小幫手」。\n一般聊天我不會回、也不會記錄。');
     return;
   }
+  // 卡片上的日期時間轉盤（datetimepicker）選完後送回 postback，不是文字訊息
+  if (event.type === 'postback' && event.postback) {
+    handleLinePostback_(event, groupId, source.userId || 'unknown');
+    return;
+  }
   if (event.type !== 'message' || !event.message) return;
 
   const userId = source.userId || 'unknown';
@@ -147,6 +154,15 @@ function handleLineEvent_(event) {
 
 function handleLineText_(event, groupId, userId, rawText) {
   const text = String(rawText).trim();
+  const current = getLinePending_(groupId, userId);
+  if (current && (current.kind === 'calAdd' || current.kind === 'calRange') &&
+      (LINE_MENU_PATTERN.test(text) || LINE_CAL_MENU_PATTERN.test(text) || LINE_CAL_ADD_PREFIX.test(text) || LINE_REPORT_PREFIX.test(text) || LINE_UPDATE_PREFIX.test(text) || /^[#＃]\s*取消\s*$/.test(text))) {
+    CacheService.getScriptCache().remove(`LINE_PENDING_${groupId}_${userId}`);
+    if (/^[#＃]\s*取消\s*$/.test(text)) {
+      lineReply_(event.replyToken, '已取消這次行程新增。');
+      return;
+    }
+  }
 
   if (LINE_REPORT_PREFIX.test(text)) {
     createLineReport_(event, groupId, userId, text.replace(LINE_REPORT_PREFIX, ''));
@@ -201,6 +217,10 @@ function handleLineText_(event, groupId, userId, rawText) {
     return;
   }
 
+  if (LINE_CAL_MENU_PATTERN.test(text)) {
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: '工作行事曆：查詢或新增行程', contents: buildCalendarMenuCard_() }]);
+    return;
+  }
   const calListMatch = text.match(LINE_CAL_LIST_PATTERN);
   if (calListMatch) {
     showCalendarEvents_(event, calListMatch[2] || '');
@@ -247,6 +267,16 @@ function handleLineText_(event, groupId, userId, rawText) {
   // 「F005 ②」「U003 還少一個檔」：同事對既有編號的補充，記錄後自動回覆
   const supplementMatch = text.match(LINE_SUPPLEMENT_PATTERN);
   if (supplementMatch && addLineSupplement_(event, groupId, supplementMatch[1].toUpperCase(), supplementMatch[2])) return;
+
+  // 用轉盤選好日期／時間後，下一句就是行程名稱
+  const calPending = getLinePending_(groupId, userId);
+  if (calPending && calPending.kind === 'calAdd') {
+    if (/^[#＃]/.test(text)) return;
+    if (addCalendarEventFromPicker_(event, userId, calPending, text)) {
+      CacheService.getScriptCache().remove(`LINE_PENDING_${groupId}_${userId}`);
+    }
+    return;
+  }
 
   // 剛回報、機器人追問「哪一個工具」時，下一句當作回答
   const pending = getLinePending_(groupId, userId);
@@ -711,9 +741,8 @@ function buildDataUpdateCard_(id, card) {
     header: {
       type: 'box', layout: 'vertical', backgroundColor: '#E6F4EA', paddingAll: '14px',
       contents: [
-        { type: 'text', text: `#️⃣ ${id} · PN_Project_Map`, size: 'xs', color: '#1E7E34' },
-        { type: 'text', text: `${String(card.project || '資料')} 更新完成 ✅`, size: 'lg', weight: 'bold', color: '#1E7E34', wrap: true },
-        { type: 'text', text: `${String(card.date || '')} · 維護人員已確認`.replace(/^ · /, ''), size: 'xs', color: '#3C8D50' }
+        { type: 'text', text: `${String(card.project || '資料')} 更新完成`, weight: 'bold', wrap: true },
+        { type: 'text', text: `${id} · PN_Project_Map${card.date ? ' · ' + String(card.date) : ''}`, size: 'xs' }
       ]
     },
     body: {
@@ -733,11 +762,11 @@ function buildDataUpdateCard_(id, card) {
       contents: [
         card.link ? { type: 'button', style: 'primary', color: '#1E7E34', height: 'sm', action: { type: 'uri', label: '📋 查看完整清單', uri: String(card.link) } } : null,
         { type: 'text', text: '💬 有問題請直接在群組告訴維護人員', size: 'xs', color: '#80868B', align: 'center' },
-        { type: 'text', text: footerText, size: 'xxs', color: '#9AA0A6', align: 'center' }
+        { type: 'text', text: footerText, size: 'xxs', color: '#5F6368', align: 'center' }
       ].filter(Boolean)
     }
   };
-  return bubble;
+  return toyCard_(bubble, { tone: 'g', icon: 'done', source: '維護人員已確認', state: { kind: 'done', text: '已完成更新' } });
 }
 
 // ---------- 同事補充（F／U 編號後面接文字） ----------
@@ -842,26 +871,26 @@ function buildTodoListCard_(todos) {
       contents: [
         { type: 'text', text: todo.id, size: 'sm', weight: 'bold', color: '#1A73E8', flex: 2 },
         { type: 'text', text: todo.content.slice(0, 60), size: 'sm', wrap: true, flex: 7 },
-        { type: 'text', text: todo.status === '進行中' ? '🔄' : '⬜', size: 'sm', align: 'end', flex: 1 }
+        { type: 'text', text: todo.status === '進行中' ? '🔄 進行中' : '⬜ 待辦', size: 'xs', weight: 'bold', align: 'end', flex: 3 }
       ]
     };
   });
-  if (todos.length > shown.length) rows.push({ type: 'text', text: `…另有 ${todos.length - shown.length} 項，請看 Sheet「${TODO_SHEET}」分頁`, size: 'xs', color: '#9AA0A6', wrap: true });
-  return {
+  if (todos.length > shown.length) rows.push({ type: 'text', text: `…另有 ${todos.length - shown.length} 項，請看 Sheet「${TODO_SHEET}」分頁`, size: 'xs', color: '#5F6368', wrap: true });
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#FFF4E5', paddingAll: '14px',
+      type: 'box', layout: 'vertical',
       contents: [
-        { type: 'text', text: `📝 待辦清單（${todos.length} 項未完成）`, size: 'lg', weight: 'bold', color: '#B06000' },
-        { type: 'text', text: '⬜ 待辦　🔄 進行中', size: 'xs', color: '#C77700' }
+        { type: 'text', text: `📝 待辦清單（${todos.length} 項未完成）`, weight: 'bold' },
+        { type: 'text', text: '只有維護者看得到', size: 'xs' }
       ]
     },
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents: rows },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '完成打「T001 完成」，也可以打「T001 進行中」「T001 取消」', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+      contents: [{ type: 'text', text: '完成打「T001 完成」，也可以打「T001 進行中」「T001 取消」', size: 'xxs', color: '#5F6368', align: 'center', wrap: true }]
     }
-  };
+  }, { tone: 'n', icon: 'todo', source: `${TODO_SHEET} 分頁`, state: { kind: 'work', text: `未完成 ${todos.length} 項` } });
 }
 
 function updateTodoStatus_(event, todoId, status) {
@@ -1166,28 +1195,34 @@ function buildCalendarListCard_(views, range, label) {
     rows.push({
       type: 'box', layout: 'horizontal', spacing: 'sm',
       contents: [
-        { type: 'text', text: view.id || '🔁', size: 'xs', weight: 'bold', color: '#1A73E8', flex: 2 },
+        { type: 'text', text: view.id || '🔁 重複', size: 'xs', weight: 'bold', color: '#1449A3', flex: 2 },
         { type: 'text', text: formatCalendarTime_(view), size: 'xs', color: '#5F6368', wrap: true, flex: 3 },
         { type: 'text', text: view.title.slice(0, 60), size: 'sm', wrap: true, flex: 6 }
       ]
     });
   });
-  if (views.length > shown.length) rows.push({ type: 'text', text: `…另有 ${views.length - shown.length} 筆，請縮小日期範圍或看 Google 日曆`, size: 'xs', color: '#9AA0A6', wrap: true, margin: 'lg' });
-  return {
+  if (views.length > shown.length) rows.push({ type: 'text', text: `…另有 ${views.length - shown.length} 筆，請縮小日期範圍或看 Google 日曆`, size: 'xs', color: '#5F6368', wrap: true, margin: 'lg' });
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#E8F0FE', paddingAll: '14px',
+      type: 'box', layout: 'vertical',
       contents: [
-        { type: 'text', text: `📅 工作行程（${views.length} 筆）`, size: 'lg', weight: 'bold', color: '#1A56B8' },
-        { type: 'text', text: label, size: 'xs', color: '#3C6FD1', wrap: true }
+        { type: 'text', text: `📅 工作行程（${views.length} 筆）`, weight: 'bold' },
+        { type: 'text', text: label, size: 'xs', wrap: true }
       ]
     },
     body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: rows },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '新增：#新增行程 10/15 14:00 會議名稱\n改：#改行程 C001 10/16　刪：#刪行程 C001\n🔁 重複行程請到 Google 日曆修改', size: 'xxs', color: '#9AA0A6', wrap: true }]
+      contents: [
+        { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
+          helperButton_('secondary', '', '下週', '#行程 下週'),
+          helperButton_('primary', '', '＋ 新增', '#行事曆')
+        ] },
+        { type: 'text', text: '改：#改行程 C001 10/16　刪：#刪行程 C001\n🔁 重複行程請到 Google 日曆修改', size: 'xxs', color: '#5F6368', wrap: true, align: 'center' }
+      ]
     }
-  };
+  }, { tone: 'b', icon: 'calendar', source: 'Google「工作」行事曆', state: { kind: 'info', text: `${views.length} 筆` } });
 }
 
 function createCalendarEvent_(event, userId, rawText) {
@@ -1201,11 +1236,27 @@ function createCalendarEvent_(event, userId, rawText) {
     lineReply_(event.replyToken, `${spec.error}，請再送一次。`);
     return;
   }
+  insertCalendarEvent_(event, userId, spec, spec.title);
+}
+
+/** 轉盤選好日期後回的名稱：日期、時間已在 pending，這句只當名稱。 */
+function addCalendarEventFromPicker_(event, userId, pending, rawTitle) {
+  const today = taipeiParts_(calendarNow_()).day;
+  if (!isInCalendarWindow_(pending.range.start, pending.range.end, today)) {
+    lineReply_(event.replyToken, '日期已超出可新增範圍，請打「#行事曆」重新選擇。');
+    return false;
+  }
+  return insertCalendarEvent_(event, userId, { range: pending.range, time: pending.time }, rawTitle);
+}
+
+/** 打字與轉盤共用：檢查名稱 → 同一把鎖內查重複並建立 → 回完成卡片。 */
+function insertCalendarEvent_(event, userId, spec, rawTitle) {
   let title;
   try {
-    title = safeText_(spec.title, 100, true);
+    title = safeText_(rawTitle, 100, true);
+    if (!title.trim()) throw new Error('Empty title');
   } catch (lengthError) {
-    lineReply_(event.replyToken, '行程名稱最多 100 字，請精簡後再送一次。');
+    lineReply_(event.replyToken, '行程名稱不可空白、最多 100 字，請調整後再送一次。');
     return;
   }
   const calendar = getLineCalendar_(event);
@@ -1238,10 +1289,11 @@ function createCalendarEvent_(event, userId, rawText) {
   cacheCalendarIds_([result.calEvent]);
   if (result.duplicate) {
     lineReply_(event.replyToken, `已經有一樣的行程，沒有重複新增：\n${describeCalendarEvent_(calendarEventView_(result.calEvent))}`);
-    return;
+    return true;
   }
   const view = calendarEventView_(result.calEvent);
-  lineReply_(event.replyToken, `已新增到工作行事曆 📅\n${describeCalendarEvent_(view)}\n要改打「#改行程 ${view.id} 10/16 15:00」，刪除打「#刪行程 ${view.id}」`);
+  lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: `已新增到工作行事曆：${describeCalendarEvent_(view)}`.slice(0, 390), contents: buildCalendarDoneCard_(view) }]);
+  return true;
 }
 
 /** 找出可以改／刪的行程：找不到、私人、重複行程或不是自己建的，都直接回覆原因並回 null。 */
@@ -1329,11 +1381,14 @@ function deleteCalendarEvent_(event, userId, rawId, confirmed) {
 }
 
 function buildCalendarDeleteCard_(view) {
-  return {
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#FCE8E6', paddingAll: '14px',
-      contents: [{ type: 'text', text: '🗑️ 確定要刪除這筆行程？', size: 'lg', weight: 'bold', color: '#C5221F' }]
+      type: 'box', layout: 'vertical',
+      contents: [
+        { type: 'text', text: '🗑️ 確定要刪除這筆行程？', weight: 'bold' },
+        { type: 'text', text: '按「確認刪除」才會刪', size: 'xs' }
+      ]
     },
     body: {
       type: 'box', layout: 'vertical', spacing: 'sm',
@@ -1345,11 +1400,11 @@ function buildCalendarDeleteCard_(view) {
     footer: {
       type: 'box', layout: 'vertical', spacing: 'sm',
       contents: [
-        helperButton_('primary', '#D93025', `確認刪除 ${view.id}`, `#確認刪行程 ${view.id}`),
-        { type: 'text', text: '不刪就不用理它', size: 'xxs', color: '#9AA0A6', align: 'center' }
+        helperButton_('primary', '', `確認刪除 ${view.id}`, `#確認刪行程 ${view.id}`),
+        { type: 'text', text: '不刪就不用理它；刪錯可在 Google 日曆垃圾桶 30 天內還原', size: 'xxs', color: '#5F6368', align: 'center' }
       ]
     }
-  };
+  }, { tone: 'c', icon: 'trash', source: '工作行事曆', state: { kind: 'ask', text: '等你確認' } });
 }
 
 /** 在編輯器執行一次：找名為「工作」（或 LINE_CALENDAR_NAME）的行事曆，ID 存進 LINE_CALENDAR_ID；第一次執行會要求日曆授權。 */
@@ -1363,6 +1418,310 @@ function setupLineCalendar() {
   properties.setProperty('LINE_CALENDAR_ID', calendars[0].getId());
   const zone = Session.getScriptTimeZone();
   return logSetupResult_(`已連結行事曆「${name}」；指令碼時區 ${zone}${zone === 'Asia/Taipei' ? '' : '（建議到「專案設定」改成 Asia/Taipei）'}`);
+}
+
+// ---------- 行事曆轉盤（datetimepicker → postback） ----------
+
+function taipeiDateString_(day) {
+  const ymd = taipeiDayToYmd_(day);
+  return `${ymd.y}-${String(ymd.m).padStart(2, '0')}-${String(ymd.d).padStart(2, '0')}`;
+}
+
+function calendarPicker_(style, label, data, mode, initialDay, minDay, maxDay) {
+  const tail = mode === 'datetime' ? 'T09:00' : '';
+  const action = { type: 'datetimepicker', label: label, data: data, mode: mode, initial: taipeiDateString_(initialDay) + tail, min: taipeiDateString_(minDay) + (mode === 'datetime' ? 'T00:00' : ''), max: taipeiDateString_(maxDay) + (mode === 'datetime' ? 'T23:59' : '') };
+  // LINE 要求 min < max；只剩一天時省略 min，回傳仍由伺服端檢查。
+  if (action.min === action.max) delete action.min;
+  const button = { type: 'button', style: style, height: 'sm', action: action };
+  return button;
+}
+
+function parsePostbackData_(raw) {
+  const out = Object.create(null);
+  try {
+    String(raw || '').split('&').forEach(function (pair) {
+      const index = pair.indexOf('=');
+      if (index <= 0) throw new Error('Invalid pair');
+      const key = decodeURIComponent(pair.slice(0, index));
+      if (Object.prototype.hasOwnProperty.call(out, key)) throw new Error('Duplicate key');
+      out[key] = decodeURIComponent(pair.slice(index + 1));
+    });
+  } catch (error) {
+    return Object.create(null);
+  }
+  return out;
+}
+
+/** 轉盤回傳 date「2026-10-15」或 datetime「2026-10-15T14:00」→ { day, minutes }；minutes 只有選時間時才有。 */
+function parsePickerValue_(params) {
+  if (!params || (typeof params.date === 'string') === (typeof params.datetime === 'string')) return null;
+  const timed = typeof params.datetime === 'string';
+  const match = String(timed ? params.datetime : params.date).match(/^(\d{4})-(\d{2})-(\d{2})(?:[Tt](\d{2}):(\d{2}))?$/);
+  if (!match) return null;
+  if (timed !== (match[4] !== undefined) || Number(match[1]) < 1900 || Number(match[1]) > 2100 || Number(match[4]) > 23 || Number(match[5]) > 59) return null;
+  const day = ymdToTaipeiDay_(Number(match[1]), Number(match[2]), Number(match[3]));
+  if (day === null) return null;
+  return { day: day, minutes: match[4] === undefined ? null : Number(match[4]) * 60 + Number(match[5]) };
+}
+
+function handleLinePostback_(event, groupId, userId) {
+  const data = parsePostbackData_(event.postback.data);
+  if (data.cal) handleCalendarPostback_(event, groupId, userId, data, event.postback.params || {});
+}
+
+function handleCalendarPostback_(event, groupId, userId, data, params) {
+  if (['list', 'edit', 'add'].indexOf(data.cal) < 0) return;
+  if (data.cal === 'add' && ['allday', 'timed', 'range1', 'range2'].indexOf(data.mode) < 0) return;
+  if (data.cal === 'add' && (!userId || userId === 'unknown')) {
+    lineReply_(event.replyToken, '無法識別使用者，請用「#新增行程 日期 名稱」一次輸入。');
+    return;
+  }
+  const today = taipeiParts_(calendarNow_()).day;
+  const picked = parsePickerValue_(params);
+  if (!picked || (data.cal === 'list' && picked.minutes !== null) ||
+      (data.cal === 'add' && (data.mode === 'timed') !== (picked.minutes !== null))) {
+    lineReply_(event.replyToken, '沒有收到日期，請再按一次按鈕選日期。');
+    return;
+  }
+  const outside = `日期只能在今天前 ${LINE_CAL_PAST_DAYS} 天到後 ${LINE_CAL_FUTURE_DAYS} 天內，請再選一次。`;
+  if (data.cal === 'list') {
+    const ymd = taipeiDayToYmd_(picked.day);
+    showCalendarEvents_(event, `${ymd.y}/${ymd.m}/${ymd.d}`);
+    return;
+  }
+  if (data.cal === 'edit') {
+    const id = String(data.id || '').toUpperCase();
+    if (!/^C\d{3,}$/.test(id)) return;
+    const ymd = taipeiDayToYmd_(picked.day);
+    const rest = `${ymd.y}/${ymd.m}/${ymd.d}${picked.minutes === null ? '' : ' ' + formatCalendarClock_(picked.minutes)}`;
+    editCalendarEvent_(event, userId, id, rest);
+    return;
+  }
+  if (data.cal !== 'add') return;
+  if (data.mode === 'range1') {
+    if (!isInCalendarWindow_(picked.day, picked.day, today)) {
+      lineReply_(event.replyToken, outside);
+      return;
+    }
+    const token = Utilities.getUuid();
+    putLinePending_(groupId, userId, { kind: 'calRange', start: picked.day, token: token });
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: `開始日 ${formatCalendarDay_(picked.day)}，請選結束日`, contents: buildCalendarRangeEndCard_(picked.day, today, token) }]);
+    return;
+  }
+  let range, time = null;
+  if (data.mode === 'allday') {
+    range = { start: picked.day, end: picked.day };
+  } else if (data.mode === 'timed' && picked.minutes !== null) {
+    range = { start: picked.day, end: picked.day };
+    time = { start: picked.minutes, end: null };
+  } else if (data.mode === 'range2') {
+    const start = Number(data.start);
+    const pending = getLinePending_(groupId, userId);
+    if (!/^\d+$/.test(String(data.start || '')) || !Number.isSafeInteger(start) || !pending || pending.kind !== 'calRange' || pending.start !== start || !pending.token || data.token !== pending.token) {
+      lineReply_(event.replyToken, '請由同一人在 10 分鐘內選結束日；請打「#行事曆」重新選開始日。');
+      return;
+    }
+    if (picked.day < start) {
+      lineReply_(event.replyToken, '結束日要在開始日之後，請再選一次。');
+      return;
+    }
+    if (picked.day - start + 1 > LINE_CAL_RANGE_MAX_DAYS) {
+      lineReply_(event.replyToken, `一筆行程最多 ${LINE_CAL_RANGE_MAX_DAYS} 天，請再選一次。`);
+      return;
+    }
+    range = { start: start, end: picked.day };
+  } else {
+    return;
+  }
+  if (!isInCalendarWindow_(range.start, range.end, today)) {
+    lineReply_(event.replyToken, outside);
+    return;
+  }
+  putLinePending_(groupId, userId, { kind: 'calAdd', range: range, time: time });
+  lineReply_(event.replyToken, `${formatCalendarPick_(range, time)}\n要記什麼行程？直接回名稱（10 分鐘內有效）\n不新增請打「#取消」或「#小幫手」`);
+}
+
+function formatCalendarPick_(range, time) {
+  if (time) return `${formatCalendarDay_(range.start)} ${formatCalendarClock_(time.start)} 起（1 小時）`;
+  return range.end > range.start ? `${formatCalendarDay_(range.start)}～${formatCalendarDay_(range.end)} 全天` : `${formatCalendarDay_(range.start)} 全天`;
+}
+
+// ---------- 積木 UI：統一外框（圖示、來源、狀態、返回選單）；只改呈現，不改指令與權限 ----------
+
+const LINE_TOY_TONES = {
+  c: { bg: '#FDEBE8', ink: '#A8322A', btn: '#C9443A' },
+  y: { bg: '#FEF6D8', ink: '#7A5A00', btn: '#8A6500' },
+  g: { bg: '#E8F5EC', ink: '#17602E', btn: '#1E7A3A' },
+  b: { bg: '#E5F0FD', ink: '#1449A3', btn: '#1C5BC4' },
+  n: { bg: '#F4F1EA', ink: '#5A5246', btn: '#5A5246' }
+};
+// 狀態一律「符號＋文字」，不只靠顏色
+const LINE_TOY_STATES = {
+  wait: ['#E5F0FD', '#1449A3', '✏️'],
+  work: ['#E5F0FD', '#1449A3', '⏳'],
+  ask: ['#FEF6D8', '#7A5A00', '⏳'],
+  done: ['#E8F5EC', '#17602E', '✓'],
+  info: ['#F1F3F4', '#3C4043', 'ℹ️']
+};
+// 沒設定 LINE_ICON_BASE_URL 時，積木格改用這些符號
+const LINE_TOY_FALLBACK = { report: '🐞', progress: '📋', data: '🗂️', calendar: '📅', calPlus: '📅', calRange: '📅', more: '🤖', link: '🔗', help: '📖', todo: '📝', quota: '📊', trash: '🗑️', done: '✅' };
+
+/** LINE_ICON_BASE_URL（https，結尾可省略 /）＋圖示名稱.png；未設定就回空字串，卡片不放圖。 */
+function lineIconUrl_(name) {
+  const base = String(PropertiesService.getScriptProperties().getProperty('LINE_ICON_BASE_URL') || '').trim();
+  if (!/^https:\/\/\S+$/i.test(base)) return '';
+  return `${base.replace(/\/?$/, '/')}${name}.png`;
+}
+
+function toyStatePill_(state) {
+  const colors = LINE_TOY_STATES[state.kind] || LINE_TOY_STATES.info;
+  return {
+    type: 'box', layout: 'vertical', flex: 0, backgroundColor: colors[0], cornerRadius: '12px',
+    paddingStart: '8px', paddingEnd: '8px', paddingTop: '2px', paddingBottom: '2px',
+    contents: [{ type: 'text', text: `${colors[2]} ${state.text}`, size: 'xs', weight: 'bold', color: colors[1] }]
+  };
+}
+
+/** 把既有卡片套上積木外框：標題左邊放圖示、內容最上方放「來源／狀態」、底部放「返回功能選單」。 */
+function toyCard_(bubble, options) {
+  const tone = LINE_TOY_TONES[options.tone] || LINE_TOY_TONES.n;
+  const icon = options.icon ? lineIconUrl_(options.icon) : '';
+  const polish = function (node) {
+    if (!node) return;
+    if (node.type === 'text') {
+      if (node.size === 'xxs') node.size = 'xs';
+      node.wrap = true;
+    }
+    if (node.type === 'button') {
+      if (node.height === 'sm') node.height = 'md';
+      if (node.style === 'primary') node.color = tone.btn;
+    }
+    (node.contents || []).forEach(polish);
+  };
+  const titles = (bubble.header && bubble.header.contents) || [];
+  titles.forEach(polish);
+  if (titles[0] && titles[0].type === 'text') {
+    titles[0].color = tone.ink;
+    titles[0].size = 'lg';
+    // 有圖示時，標題前面的表情符號就不重複放
+    if (icon) titles[0].text = titles[0].text.replace(/^[^\p{L}\p{N}#＃]+\s*/u, '') || titles[0].text;
+  }
+  titles.slice(1).forEach(function (node) { if (node.type === 'text') node.color = '#49534F'; });
+  bubble.header = {
+    type: 'box', layout: 'horizontal', spacing: 'md', alignItems: 'center', backgroundColor: tone.bg, paddingAll: '16px',
+    contents: (icon ? [{ type: 'image', url: icon, size: '64px', aspectRatio: '1:1', aspectMode: 'fit', flex: 0 }] : [])
+      .concat([{ type: 'box', layout: 'vertical', spacing: 'xs', flex: 1, contents: titles }])
+  };
+  bubble.body = bubble.body || { type: 'box', layout: 'vertical', contents: [] };
+  polish(bubble.body);
+  const meta = [];
+  if (options.source) meta.push({ type: 'text', text: `來源：${options.source}`, size: 'xs', color: '#5F6368', wrap: true, flex: 1, gravity: 'center' });
+  if (options.state) meta.push(toyStatePill_(options.state));
+  if (meta.length) bubble.body.contents.unshift({ type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', contents: meta });
+  bubble.footer = bubble.footer || { type: 'box', layout: 'vertical', contents: [] };
+  polish(bubble.footer);
+  bubble.footer.spacing = bubble.footer.spacing || 'sm';
+  if (options.back !== false) bubble.footer.contents.push({ type: 'button', style: 'link', height: 'sm', action: { type: 'message', label: '↩ 返回功能選單', text: '#小幫手' } });
+  return bubble;
+}
+
+/** 選單上的一顆積木：圖示（或符號）＋大字＋小註記，整格可點。 */
+function toyTile_(icon, tone, label, note, text) {
+  const url = lineIconUrl_(icon);
+  const contents = [url
+    ? { type: 'image', url: url, size: '52px', aspectRatio: '1:1', aspectMode: 'fit' }
+    : { type: 'text', text: LINE_TOY_FALLBACK[icon] || '🧩', size: 'xl', align: 'center' }];
+  contents.push({ type: 'text', text: label, size: 'sm', weight: 'bold', color: '#2B2B2B', align: 'center', wrap: true });
+  if (note) contents.push({ type: 'text', text: note, size: 'xs', color: '#5F6368', align: 'center', wrap: true });
+  return {
+    type: 'box', layout: 'vertical', flex: 1, spacing: 'xs', paddingAll: '8px', cornerRadius: '12px',
+    backgroundColor: (LINE_TOY_TONES[tone] || LINE_TOY_TONES.n).bg, justifyContent: 'center',
+    action: { type: 'message', label: label.slice(0, 20), text: text }, contents: contents
+  };
+}
+
+function toyRow_(tiles) {
+  const filled = tiles.slice();
+  while (filled.length < 3) filled.push({ type: 'box', layout: 'vertical', flex: 1, contents: [{ type: 'filler' }] });
+  return { type: 'box', layout: 'horizontal', spacing: 'sm', contents: filled };
+}
+
+function buildCalendarMenuCard_() {
+  const today = taipeiParts_(calendarNow_()).day;
+  const minDay = today - LINE_CAL_PAST_DAYS, maxDay = today + LINE_CAL_FUTURE_DAYS - 1;
+  const row = function (items) { return { type: 'box', layout: 'horizontal', spacing: 'sm', contents: items }; };
+  return toyCard_({
+    type: 'bubble',
+    header: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: '工作行事曆', weight: 'bold' },
+      { type: 'text', text: '查行程或新增，按鈕會跳出日期轉盤', size: 'xs' }
+    ] },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [
+        row([helperButton_('secondary', '', '今天', '#行程 今天'), helperButton_('secondary', '', '明天', '#行程 明天')]),
+        row([helperButton_('secondary', '', '本週', '#行程 本週'), helperButton_('secondary', '', '下週', '#行程 下週')]),
+        calendarPicker_('secondary', '📅 選日期查', 'cal=list', 'date', today, minDay, maxDay),
+        { type: 'separator', margin: 'md' },
+        { type: 'text', text: '新增行程', size: 'sm', weight: 'bold', color: '#1449A3', margin: 'md' },
+        row([
+          calendarPicker_('primary', '全天', 'cal=add&mode=allday', 'date', today, minDay, maxDay),
+          calendarPicker_('primary', '指定時間', 'cal=add&mode=timed', 'datetime', today, minDay, maxDay),
+          calendarPicker_('primary', '跨天', 'cal=add&mode=range1', 'date', today, minDay, maxDay)
+        ])
+      ]
+    },
+    footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: '全天：選日期｜指定時間：選日期＋時間｜跨天：先選開始日、再選結束日；選完回一句名稱', size: 'xxs', color: '#5F6368', align: 'center' }
+    ] }
+  }, { tone: 'b', icon: 'calendar', source: 'Google「工作」行事曆' });
+}
+
+function buildCalendarRangeEndCard_(startDay, today, token) {
+  const maxDay = Math.min(startDay + LINE_CAL_RANGE_MAX_DAYS - 1, today + LINE_CAL_FUTURE_DAYS - 1);
+  return toyCard_({
+    type: 'bubble',
+    header: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: `開始日 ${formatCalendarDay_(startDay)}`, weight: 'bold' },
+      { type: 'text', text: '第 2 步／共 3 步：選結束日', size: 'xs' }
+    ] },
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
+      calendarPicker_('primary', '📅 選結束日', `cal=add&mode=range2&start=${startDay}&token=${encodeURIComponent(token)}`, 'date', startDay, startDay, maxDay),
+      calendarPicker_('secondary', '改開始日', 'cal=add&mode=range1', 'date', startDay, today - LINE_CAL_PAST_DAYS, today + LINE_CAL_FUTURE_DAYS - 1)
+    ] },
+    footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: `結束日要在開始日之後，最多 ${LINE_CAL_RANGE_MAX_DAYS} 天；選完回一句名稱`, size: 'xxs', color: '#5F6368', align: 'center' }
+    ] }
+  }, { tone: 'b', icon: 'calRange', source: '工作行事曆', state: { kind: 'wait', text: '等你選結束日' }, back: false });
+}
+
+function buildCalendarDoneCard_(view) {
+  const today = taipeiParts_(calendarNow_()).day;
+  const kv = function (label, value) {
+    return { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
+      { type: 'text', text: label, size: 'sm', color: '#5F6368', flex: 2 },
+      { type: 'text', text: value, size: 'sm', wrap: true, flex: 7 }
+    ] };
+  };
+  const timeLabel = view.allDay ? formatCalendarTime_(view) : `${formatCalendarTime_(view)}`;
+  const editButton = calendarPicker_('secondary', '🕒 改時間', `cal=edit&id=${view.id}`, view.allDay ? 'date' : 'datetime', view.startDay, today - LINE_CAL_PAST_DAYS, today + LINE_CAL_FUTURE_DAYS - 1);
+  if (!view.allDay) editButton.action.initial = taipeiDateString_(view.startDay) + 'T' + formatCalendarClock_(view.startMinutes);
+  return toyCard_({
+    type: 'bubble',
+    header: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: `已新增 ${view.id}`, weight: 'bold' },
+      { type: 'text', text: '已寫入 Google「工作」行事曆', size: 'xs' }
+    ] },
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
+      { type: 'text', text: view.title, size: 'md', weight: 'bold', wrap: true },
+      kv('時間', `${formatCalendarDay_(view.startDay)} ${timeLabel}`),
+      kv('編號', view.id)
+    ] },
+    footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [editButton, helperButton_('secondary', '', '🗑️ 刪除', `#刪行程 ${view.id}`)] },
+      { type: 'text', text: `只有建立的人和維護者能改；也可以打「#改行程 ${view.id} 10/16 15:00」`, size: 'xxs', color: '#5F6368', align: 'center' }
+    ] }
+  }, { tone: 'g', icon: 'done', source: '由 LINE 新增', state: { kind: 'done', text: '已建立' } });
 }
 
 // ---------- 結案 ----------
@@ -1769,15 +2128,15 @@ function lineReplyMessages_(replyToken, messages) {
 /** 「#更新」選單：每個可自動處理的資料類型一顆按鈕，最後一顆給其他資料（人工處理）。 */
 function buildUpdateMenuCard_() {
   const typeButtons = DATA_TYPES.map(function (item) {
-    return { type: 'button', style: 'primary', color: '#1E7E34', height: 'sm', action: { type: 'message', label: `🗂️ ${item.name}`.slice(0, 20), text: `#更新 ${item.name}` } };
+    return { type: 'button', style: 'primary', height: 'sm', action: { type: 'message', label: `🗂️ ${item.name}`.slice(0, 20), text: `#更新 ${item.name}` } };
   });
-  return {
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#E6F4EA', paddingAll: '14px',
+      type: 'box', layout: 'vertical',
       contents: [
-        { type: 'text', text: '🗂️ 要更新哪一種資料？', size: 'lg', weight: 'bold', color: '#1E7E34' },
-        { type: 'text', text: '點選後請在 30 分鐘內傳 Excel 檔', size: 'xs', color: '#3C8D50' }
+        { type: 'text', text: '🗂️ 要更新哪一種資料？', weight: 'bold' },
+        { type: 'text', text: '點選後請在 30 分鐘內傳 Excel 檔', size: 'xs' }
       ]
     },
     body: {
@@ -1788,9 +2147,9 @@ function buildUpdateMenuCard_() {
     },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '🔒 AI 會先比對預覽，維護人員確認後才更新', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+      contents: [{ type: 'text', text: '🔒 AI 會先比對預覽，維護人員確認後才更新', size: 'xxs', color: '#5F6368', align: 'center', wrap: true }]
     }
-  };
+  }, { tone: 'g', icon: 'data', source: 'Debug 小幫手・資料更新', state: { kind: 'wait', text: '等你選擇' } });
 }
 
 // ---------- 「#小幫手」選單 ----------
@@ -1801,39 +2160,43 @@ function helperButton_(style, color, label, text) {
   return item;
 }
 
-/** 「#小幫手」主選單：所有人可用；待辦清單、推播額度只顯示給 LINE_ADMIN_USER_IDS。 */
+/** 「#小幫手」主選單：積木格，整格可點；待辦清單、推播額度只顯示給 LINE_ADMIN_USER_IDS。 */
 function buildHelperMenuCard_(openCount, isAdmin) {
-  const buttons = [
-    helperButton_('primary', '#1A73E8', `📋 目前問題狀況（未結案 ${openCount}）`, '#狀況'),
-    helperButton_('secondary', '', '🐞 回報問題／提需求', '#回報'),
-    helperButton_('secondary', '', '🗂️ 更新資料（傳 Excel）', '#更新'),
-    helperButton_('secondary', '', '📅 工作行程（7 天內）', '#行程'),
-    helperButton_('secondary', '', '📖 使用說明', '#說明'),
-    helperButton_('secondary', '', '🔗 常用網站', '#網站')
+  const rows = [
+    toyRow_([
+      toyTile_('report', 'c', '回報問題', '', '#回報'),
+      toyTile_('progress', 'y', '問題進度', `未結案 ${openCount}`, '#狀況'),
+      toyTile_('data', 'g', '更新資料', '', '#更新')
+    ]),
+    toyRow_([
+      toyTile_('calendar', 'b', '工作行程', '查詢・新增', '#行事曆'),
+      toyTile_('help', 'y', '使用說明', '', '#說明'),
+      toyTile_('link', 'g', '常用網站', '', '#網站')
+    ])
   ];
   if (isAdmin) {
-    buttons.push({ type: 'separator', margin: 'md' });
-    buttons.push({ type: 'text', text: '只有維護者看得到', size: 'xxs', color: '#9AA0A6', margin: 'sm' });
-    buttons.push({ type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
-      helperButton_('secondary', '', '📝 待辦清單', '#待辦清單'),
-      helperButton_('secondary', '', '📊 推播額度', '#額度')
-    ] });
+    rows.push({ type: 'separator', margin: 'md' });
+    rows.push({ type: 'text', text: '🔒 只有維護者看得到', size: 'xs', color: '#5F6368', margin: 'sm' });
+    rows.push(toyRow_([
+      toyTile_('todo', 'n', '待辦清單', '', '#待辦清單'),
+      toyTile_('quota', 'n', '推播額度', '', '#額度')
+    ]));
   }
-  return {
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#E8F0FE', paddingAll: '14px',
+      type: 'box', layout: 'vertical',
       contents: [
-        { type: 'text', text: '🤖 Debug 小幫手', size: 'lg', weight: 'bold', color: '#1A56B8' },
-        { type: 'text', text: '要做什麼？點下面的按鈕', size: 'xs', color: '#3C6FD1' }
+        { type: 'text', text: '🤖 Debug 小幫手', weight: 'bold' },
+        { type: 'text', text: '點積木就能用，不用記指令', size: 'xs' }
       ]
     },
-    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: buttons },
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: rows },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '隨時打「#小幫手」叫出這個選單', size: 'xxs', color: '#9AA0A6', align: 'center' }]
+      contents: [{ type: 'text', text: '隨時打「#小幫手」叫出這個選單', size: 'xxs', color: '#5F6368', align: 'center' }]
     }
-  };
+  }, { tone: 'n', icon: 'more', source: '本群組', back: false });
 }
 
 function showOpenItems_(event, groupId) {
@@ -1846,36 +2209,44 @@ function showOpenItems_(event, groupId) {
 }
 
 function buildOpenItemsCard_(items, now) {
-  const tagColors = { '修好待 OK': ['#E6F4EA', '#1E7E34'], '等你回覆': ['#FEF3E2', '#A15C00'], '待確認寫入': ['#FEF3E2', '#A15C00'], '處理中': ['#E8F0FE', '#1A56B8'] };
+  // 狀態標籤：顏色＋符號＋文字，不只靠顏色
+  const tagStyles = { '修好待 OK': ['#E8F5EC', '#17602E', '✓'], '等你回覆': ['#FEF6D8', '#7A5A00', '💬'], '待確認寫入': ['#FEF6D8', '#7A5A00', '🔍'], '處理中': ['#E5F0FD', '#1449A3', '⏳'] };
   const shown = items.slice(0, LINE_STATUS_LIST_MAX);
   const rows = shown.map(function (item) {
-    const colors = tagColors[item.tag] || tagColors['處理中'];
+    const style = tagStyles[item.tag] || tagStyles['處理中'];
+    const source = /^U/.test(item.id) ? '資料更新' : 'LINE 回報';
     return {
-      type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center',
+      type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', cornerRadius: '12px', borderWidth: '1px', borderColor: '#E3E6EA',
       contents: [
-        { type: 'text', text: item.id, size: 'sm', weight: 'bold', color: '#1A73E8', flex: 2 },
-        { type: 'text', text: String(item.summary || item.title).slice(0, 40), size: 'sm', wrap: true, flex: 6 },
-        { type: 'box', layout: 'vertical', backgroundColor: colors[0], cornerRadius: '4px', paddingAll: '3px', flex: 3,
-          contents: [{ type: 'text', text: item.tag, size: 'xxs', color: colors[1], align: 'center' }] }
+        { type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center', contents: [
+          { type: 'text', text: item.id, size: 'sm', weight: 'bold', color: '#1449A3', flex: 2 },
+          { type: 'box', layout: 'vertical', backgroundColor: style[0], cornerRadius: '10px', paddingAll: '3px', flex: 4,
+            contents: [{ type: 'text', text: `${style[2]} ${item.tag}`, size: 'xs', weight: 'bold', color: style[1], align: 'center' }] }
+        ] },
+        { type: 'text', text: String(item.summary || item.title).slice(0, 40), size: 'sm', wrap: true },
+        { type: 'text', text: `來源：${source}`, size: 'xs', color: '#5F6368' }
       ]
     };
   });
-  if (items.length > shown.length) rows.push({ type: 'text', text: `…另有 ${items.length - shown.length} 筆，請看回饋 Sheet`, size: 'xs', color: '#9AA0A6', wrap: true });
-  return {
+  if (items.length > shown.length) rows.push({ type: 'text', text: `…另有 ${items.length - shown.length} 筆，請看回饋 Sheet`, size: 'xs', color: '#5F6368', wrap: true });
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#FFF4E5', paddingAll: '14px',
+      type: 'box', layout: 'vertical',
       contents: [
-        { type: 'text', text: `📋 目前問題狀況（未結案 ${items.length}）`, size: 'lg', weight: 'bold', color: '#B06000', wrap: true },
-        { type: 'text', text: `只列本群組 · ${Utilities.formatDate(now, 'Asia/Taipei', 'MM/dd HH:mm')}`, size: 'xs', color: '#C77700' }
+        { type: 'text', text: `📋 問題進度（未結案 ${items.length}）`, weight: 'bold', wrap: true },
+        { type: 'text', text: `只列本群組 · ${Utilities.formatDate(now, 'Asia/Taipei', 'MM/dd HH:mm')}`, size: 'xs' }
       ]
     },
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents: rows },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '修好了回「F0XX OK」，還有狀況回「F0XX＋說明」', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+      contents: [
+        helperButton_('primary', '', '＋ 我也要回報', '#回報'),
+        { type: 'text', text: '修好了回「F0XX OK」，還有狀況回「F0XX＋說明」', size: 'xxs', color: '#5F6368', align: 'center', wrap: true }
+      ]
     }
-  };
+  }, { tone: 'y', icon: 'progress', source: '回饋 Sheet', state: { kind: 'work', text: `未結案 ${items.length}` } });
 }
 
 function buildHelpCard_() {
@@ -1885,11 +2256,11 @@ function buildHelpCard_() {
       { type: 'text', text: body, size: 'sm', wrap: true, flex: 7 }
     ] };
   };
-  return {
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#E8F0FE', paddingAll: '14px',
-      contents: [{ type: 'text', text: '📖 怎麼用 Debug 小幫手', size: 'lg', weight: 'bold', color: '#1A56B8' }]
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '📖 怎麼用 Debug 小幫手', weight: 'bold' }]
     },
     body: {
       type: 'box', layout: 'vertical', spacing: 'md',
@@ -1899,6 +2270,7 @@ function buildHelpCard_() {
         line('修好確認', 'F022 OK'),
         line('更新資料', '#更新 → 選類型 → 傳 Excel'),
         line('查進度', '#狀況'),
+        line('行事曆選單', '#行事曆（按鈕查詢、轉盤新增）'),
         line('查行程', '#行程（今天起 7 天）、#行程 明天／下週／10/15'),
         line('新增行程', '#新增行程 10/15 14:00-15:00 會議名稱（不寫時間＝全天）'),
         line('改／刪行程', '#改行程 C001 10/16 15:00、#刪行程 C001（只限建立的人）'),
@@ -1907,9 +2279,9 @@ function buildHelpCard_() {
     },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '一般聊天不會回、也不會記錄', size: 'xxs', color: '#9AA0A6', align: 'center' }]
+      contents: [{ type: 'text', text: '一般聊天不會回、也不會記錄', size: 'xxs', color: '#5F6368', align: 'center' }]
     }
-  };
+  }, { tone: 'y', icon: 'help', source: 'Debug 小幫手' });
 }
 
 /** LINE_QUICK_LINKS：每行或分號隔開一筆「名稱|https://網址」；只收 https，最多 8 筆。網址放指令碼屬性，不寫進公開程式。 */
@@ -1924,11 +2296,11 @@ function readQuickLinks_() {
 }
 
 function buildQuickLinksCard_(links) {
-  return {
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#E6F4EA', paddingAll: '14px',
-      contents: [{ type: 'text', text: '🔗 常用網站', size: 'lg', weight: 'bold', color: '#1E7E34' }]
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '🔗 常用網站', weight: 'bold' }]
     },
     body: {
       type: 'box', layout: 'vertical', spacing: 'sm',
@@ -1938,39 +2310,34 @@ function buildQuickLinksCard_(links) {
     },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '點按鈕直接開啟網頁', size: 'xxs', color: '#9AA0A6', align: 'center' }]
+      contents: [{ type: 'text', text: '點按鈕直接開啟網頁', size: 'xxs', color: '#5F6368', align: 'center' }]
     }
-  };
+  }, { tone: 'g', icon: 'link', source: '維護者設定的常用網站' });
 }
 
 function buildReportMenuCard_() {
-  function button(style, color, label, text) {
-    const item = { type: 'button', style: style, height: 'sm', action: { type: 'message', label: label, text: text } };
-    if (color) item.color = color;
-    return item;
-  }
-  return {
+  return toyCard_({
     type: 'bubble',
     header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#FDECEA', paddingAll: '14px',
+      type: 'box', layout: 'vertical',
       contents: [
-        { type: 'text', text: '🛠️ 要回報什麼？', size: 'lg', weight: 'bold', color: '#B3261E' },
-        { type: 'text', text: '點選後直接打文字說明，可接著貼截圖', size: 'xs', color: '#C5534A', wrap: true }
+        { type: 'text', text: '🛠️ 要回報什麼？', weight: 'bold' },
+        { type: 'text', text: '點選後直接打文字說明，可接著貼截圖', size: 'xs', wrap: true }
       ]
     },
     body: {
       type: 'box', layout: 'vertical', spacing: 'sm',
       contents: [
-        button('primary', '#B3261E', '🐞 回報問題', '#回報 選擇:問題'),
-        button('primary', '#1A73E8', '💡 提出需求／格式調整', '#回報 選擇:需求'),
-        button('secondary', '', '🗂️ 更新資料', '#更新')
+        helperButton_('primary', '', '🐞 回報問題', '#回報 選擇:問題'),
+        helperButton_('primary', '', '💡 提出需求／格式調整', '#回報 選擇:需求'),
+        helperButton_('secondary', '', '🗂️ 更新資料', '#更新')
       ]
     },
     footer: {
       type: 'box', layout: 'vertical',
-      contents: [{ type: 'text', text: '也可以直接打「#回報 問題描述」一次送出', size: 'xxs', color: '#9AA0A6', align: 'center', wrap: true }]
+      contents: [{ type: 'text', text: '也可以直接打「#回報 問題描述」一次送出', size: 'xxs', color: '#5F6368', align: 'center', wrap: true }]
     }
-  };
+  }, { tone: 'c', icon: 'report', source: 'Debug 小幫手・問題回報', state: { kind: 'wait', text: '等你選擇' } });
 }
 
 function linePush_(to, text) {

@@ -101,7 +101,8 @@ function createWorld() {
   const text = (value, user = 'Ualice', group = GROUP) => ({ type: 'message', replyToken: `r${++tokenSeq}`, source: { type: 'group', groupId: group, userId: user }, message: { type: 'text', id: `m${tokenSeq}`, text: value } });
   const image = (user = 'Ualice', group = GROUP) => ({ type: 'message', replyToken: `r${++tokenSeq}`, source: { type: 'group', groupId: group, userId: user }, message: { type: 'image', id: `img${tokenSeq}` } });
   const file = (fileName, { user = 'Ualice', kind = 'file', size = 2048 } = {}) => ({ type: 'message', replyToken: `r${++tokenSeq}`, source: { type: 'group', groupId: GROUP, userId: user }, message: { type: 'file', id: `${kind}${tokenSeq}`, fileName, fileSize: size } });
-  const lastReply = () => (calls.replies.at(-1) || { messages: [{ text: '' }] }).messages[0].text;
+  // 卡片回覆沒有 text，改看 altText（摘要文字）
+  const lastReply = () => { const m = (calls.replies.at(-1) || { messages: [{ text: '' }] }).messages[0]; return m.text ?? m.altText; };
   const row = (n) => rows[n] || [];
   const dataRow = (n) => (sheets['Data Requests'] ? sheets['Data Requests'].data[n] || [] : []);
 
@@ -1014,7 +1015,7 @@ test('#刪行程 asks for confirmation first, then deletes', () => {
 test('#小幫手 and #說明 mention the calendar commands', () => {
   const w = calendarWorld();
   w.post([w.text('#小幫手')]);
-  assert(JSON.stringify(lastMessage(w).contents).includes('"text":"#行程"'), 'Menu button missing');
+  assert(JSON.stringify(lastMessage(w).contents).includes('"text":"#行事曆"'), 'Menu button missing');
   w.post([w.text('#說明')]);
   const json = JSON.stringify(lastMessage(w).contents);
   assert(json.includes('#新增行程') && json.includes('#改行程') && json.includes('#刪行程'), 'Help lines missing');
@@ -1062,6 +1063,341 @@ test('duplicate check and create run inside one lock', () => {
   w.cal.calendar.createEvent = (...args) => { createdWhileLocked = held > 0; return create(...args); };
   w.post([w.text('#新增行程 10/15 14:00 會議')]);
   assert(createdWhileLocked === true && held === 0, 'createEvent must run while the lock is held');
+});
+
+// ---------- 積木 UI 與轉盤 ----------
+const postback = (w, data, params, user = 'Ualice') => ({ type: 'postback', replyToken: `pb${Math.random()}`, source: { type: 'group', groupId: GROUP, userId: user }, postback: { data, params } });
+const findActions = (node, out = []) => {
+  if (!node || typeof node !== 'object') return out;
+  if (node.action) out.push(node.action);
+  Object.values(node).forEach((v) => { if (v && typeof v === 'object') findActions(v, out); });
+  return out;
+};
+
+test('#行事曆 shows the calendar menu with today/week buttons and three date pickers', () => {
+  const w = calendarWorld();
+  w.post([w.text('#行事曆')]);
+  const card = lastMessage(w);
+  assert(card.type === 'flex', 'Menu should be flex');
+  const actions = findActions(card.contents);
+  const texts = actions.filter((a) => a.type === 'message').map((a) => a.text);
+  assert(['#行程 今天', '#行程 明天', '#行程 本週', '#行程 下週'].every((t) => texts.includes(t)), 'Quick buttons missing: ' + texts);
+  const pickers = actions.filter((a) => a.type === 'datetimepicker');
+  const byData = Object.fromEntries(pickers.map((a) => [a.data, a]));
+  assert(byData['cal=list'] && byData['cal=list'].mode === 'date', 'Pick-a-day query missing');
+  assert(byData['cal=add&mode=allday'].mode === 'date' && byData['cal=add&mode=timed'].mode === 'datetime' && byData['cal=add&mode=range1'].mode === 'date', 'Add pickers wrong: ' + JSON.stringify(pickers));
+  assert(byData['cal=add&mode=allday'].initial === '2026-10-02' && byData['cal=add&mode=timed'].initial === '2026-10-02T09:00', 'Initial date wrong');
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(byData['cal=list'].min) && /T23:59$/.test(byData['cal=add&mode=timed'].max), 'min/max format wrong');
+  w.post([w.text('#行事曆 明天')]);
+  assert(JSON.stringify(lastMessage(w)).includes('沒有行程') || lastMessage(w).type === 'flex', '#行事曆 with a range still lists events');
+});
+
+test('all-day picker: choose a date, reply the name, event is created with a done card', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  assert(w.lastReply().includes('10/15（四） 全天') && w.lastReply().includes('要記什麼行程'), 'Should ask for name: ' + w.lastReply());
+  w.post([w.text('#狀況')]);
+  assert(w.cal.events.length === 0, 'Commands during pending must not become the title');
+  w.post([w.text('示範專案A 出差')]);
+  const ev = w.cal.events[0];
+  assert(ev && ev.allDay && ev.title === '示範專案A 出差' && ev.start.getTime() === tpe('2026-10-15T00:00:00').getTime() && ev.tags.lineCreator === 'Ualice', 'All-day event wrong');
+  const card = lastMessage(w);
+  const actions = findActions(card.contents);
+  assert(card.type === 'flex' && card.altText.includes('C001'), 'Done card missing');
+  assert(actions.some((a) => a.type === 'datetimepicker' && a.data === 'cal=edit&id=C001' && a.mode === 'date'), 'All-day edit picker should be date mode');
+  assert(actions.some((a) => a.type === 'message' && a.text === '#刪行程 C001'), 'Delete button missing');
+  w.post([w.text('下一句一般聊天')]);
+  assert(w.cal.events.length === 1, 'Pending must be cleared after one name');
+});
+
+test('timed picker creates a one-hour event at the chosen time', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=timed', { datetime: '2026-10-15T14:30' })]);
+  assert(w.lastReply().includes('14:30 起'), 'Prompt wrong: ' + w.lastReply());
+  w.post([w.text('會議')]);
+  const ev = w.cal.events[0];
+  assert(!ev.allDay && ev.start.getTime() === tpe('2026-10-15T14:30:00').getTime() && ev.end.getTime() === tpe('2026-10-15T15:30:00').getTime(), 'Timed event wrong');
+  assert(findActions(lastMessage(w).contents).some((a) => a.data === 'cal=edit&id=C001' && a.mode === 'datetime'), 'Timed edit picker should be datetime');
+});
+
+test('range picker: start day card, then end day, then name', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-15' })]);
+  const card = lastMessage(w);
+  const end = findActions(card.contents).find((a) => a.type === 'datetimepicker' && a.data.startsWith('cal=add&mode=range2'));
+  assert(card.type === 'flex' && end && end.min === '2026-10-15' && end.initial === '2026-10-15', 'End picker wrong: ' + JSON.stringify(end));
+  w.post([postback(w, end.data, { date: '2026-10-14' })]);
+  assert(w.lastReply().includes('結束日要在開始日之後'), 'End before start must be refused');
+  w.post([postback(w, end.data, { date: '2026-10-17' })]);
+  assert(w.lastReply().includes('10/15（四）～10/17（六） 全天'), 'Range prompt wrong: ' + w.lastReply());
+  w.post([w.text('深圳出差')]);
+  const ev = w.cal.events[0];
+  assert(ev.allDay && ev.start.getTime() === tpe('2026-10-15T00:00:00').getTime() && ev.end.getTime() === tpe('2026-10-18T00:00:00').getTime(), 'Range event wrong');
+});
+
+test('pickers respect the date window and ignore malformed data', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2028-03-01' })]);
+  assert(w.lastReply().includes('400'), 'Far date must be refused');
+  w.post([postback(w, 'cal=add&mode=allday', {})]);
+  assert(w.lastReply().includes('沒有收到日期'), 'Missing params should explain');
+  const before = w.calls.replies.length;
+  w.post([postback(w, 'unknown=1', { date: '2026-10-15' })]);
+  assert(w.calls.replies.length === before, 'Unknown postback must stay silent');
+});
+
+test('edit picker moves the event, keeps duration, and still checks permission', () => {
+  const w = calendarWorld();
+  w.post([w.text('#新增行程 10/15 14:00-15:30 會議')]);
+  w.post([postback(w, 'cal=edit&id=C001', { datetime: '2026-10-16T10:00' }, 'Ubob')]);
+  assert(w.lastReply().includes('只有建立的人'), 'Other user must not edit by picker');
+  w.post([postback(w, 'cal=edit&id=C001', { datetime: '2026-10-16T10:00' })]);
+  const ev = w.cal.events[0];
+  assert(ev.start.getTime() === tpe('2026-10-16T10:00:00').getTime() && ev.end.getTime() === tpe('2026-10-16T11:30:00').getTime(), 'Picker edit wrong');
+});
+
+test('pick-a-day query lists that day', () => {
+  const w = calendarWorld();
+  w.cal.add('那天的會', tpe('2026-11-20T10:00:00'), tpe('2026-11-20T11:00:00'), false);
+  w.post([postback(w, 'cal=list', { date: '2026-11-20' })]);
+  assert(JSON.stringify(lastMessage(w).contents).includes('那天的會'), 'Picked-day list wrong');
+});
+
+test('block frame: icons only with LINE_ICON_BASE_URL, source/state row, back button', () => {
+  const w = calendarWorld();
+  w.post([w.text('#回報')]);
+  let json = JSON.stringify(lastMessage(w).contents);
+  assert(!json.includes('"type":"image"'), 'No icon images without LINE_ICON_BASE_URL');
+  assert(json.includes('來源：') && json.includes('等你選擇') && json.includes('"text":"#小幫手"'), 'Frame parts missing: ' + json);
+  w.properties.LINE_ICON_BASE_URL = 'https://icons.example.com/line';
+  w.post([w.text('#回報')]);
+  json = JSON.stringify(lastMessage(w).contents);
+  assert(json.includes('https://icons.example.com/line/report.png'), 'Header icon missing: ' + json);
+  assert(json.includes('"text":"要回報什麼？"'), 'Leading emoji should be dropped when an icon is shown');
+  w.post([w.text('#小幫手')]);
+  json = JSON.stringify(lastMessage(w).contents);
+  assert(['report', 'progress', 'data', 'calendar', 'help', 'link'].every((n) => json.includes(`/line/${n}.png`)), 'Menu tile icons missing');
+  assert(!json.includes('↩ 返回功能選單'), 'Main menu must not have a back button');
+  w.properties.LINE_ICON_BASE_URL = 'http://insecure.example.com/';
+  w.post([w.text('#說明')]);
+  assert(!JSON.stringify(lastMessage(w).contents).includes('"type":"image"'), 'Non-https icon base must be ignored');
+});
+
+test('all toy builders emit nonempty boxes and valid image sizes with and without icons', () => {
+  const w = calendarWorld();
+  const check = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'box') assert(Array.isArray(node.contents) && node.contents.length > 0, 'Empty box: ' + JSON.stringify(node));
+    if (node.type === 'image') assert(/^(xxs|xs|sm|md|lg|xl|xxl|3xl|4xl|5xl|full|\d+(\.\d+)?(px|%))$/.test(node.size), 'Invalid image size');
+    Object.values(node).forEach(check);
+  };
+  for (const base of ['', 'https://icons.example.com/line']) {
+    w.properties.LINE_ICON_BASE_URL = base;
+    const c = w.context;
+    [c.buildHelperMenuCard_(2, false), c.buildHelperMenuCard_(2, true), c.buildReportMenuCard_(),
+      c.buildUpdateMenuCard_(), c.buildHelpCard_(), c.buildQuickLinksCard_([]), c.buildTodoListCard_([]),
+      c.buildOpenItemsCard_([], new Date()), c.buildDataUpdateCard_('U001', {}),
+      c.buildCalendarMenuCard_(), c.buildCalendarListCard_([], {}, '今天')].forEach(check);
+    w.post([w.text('#新增行程 10/15 14:30 會議')]);
+    check(lastMessage(w));
+    w.post([w.text('#刪行程 C001')]);
+    check(lastMessage(w));
+    w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-15' })]);
+    check(lastMessage(w));
+  }
+});
+
+test('pickers have correctly formatted ordered bounds including the final selectable day', () => {
+  const w = calendarWorld();
+  w.post([w.text('#行事曆')]);
+  const menu = findActions(lastMessage(w)).filter(a => a.type === 'datetimepicker');
+  const finalDay = menu.find(a => a.data === 'cal=add&mode=range1').max;
+  w.post([postback(w, 'cal=add&mode=range1', { date: finalDay })]);
+  const range = findActions(lastMessage(w)).filter(a => a.type === 'datetimepicker');
+  for (const a of [...menu, ...range]) {
+    const pattern = a.mode === 'date' ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+    for (const key of ['initial', 'min', 'max']) if (a[key]) assert(pattern.test(a[key]), key + ' has wrong format');
+    assert(!a.min || !a.max || a.min < a.max, 'LINE requires min < max');
+    assert((!a.min || a.initial >= a.min) && (!a.max || a.initial <= a.max), 'initial out of bounds');
+  }
+  const end = range.find(a => a.data.includes('range2'));
+  w.post([postback(w, end.data, { date: '2026-10-15' })]);
+  assert(w.lastReply().includes('結束日要'), 'Server must enforce omitted minimum');
+  w.post([postback(w, end.data, { date: finalDay })]);
+  w.post([w.text('最後一天')]);
+  assert(w.cal.events.length === 1, 'Last allowed day should still work');
+});
+
+test('done datetime picker starts at the actual event time', () => {
+  const w = calendarWorld();
+  w.post([w.text('#新增行程 10/15 14:30 會議')]);
+  assert(findActions(lastMessage(w)).find(a => a.data === 'cal=edit&id=C001').initial === '2026-10-15T14:30', 'Edit must not reset to 09:00');
+});
+
+test('picker parsing rejects invalid clocks, dates, conflicting params and mode mismatches', () => {
+  for (const params of [{ datetime: '2026-10-15T24:00' }, { datetime: '2026-10-15T12:60' },
+    { datetime: '2026-02-30T12:00' }, { datetime: '2026-10-15' }, { date: '2026-10-15T12:00' },
+    { datetime: '2026-10-15T12:00', date: '2026-10-15' }, { date: '2026-10-15' }]) {
+    const w = calendarWorld();
+    w.post([postback(w, 'cal=add&mode=timed', params)]);
+    w.post([w.text('不得新增')]);
+    assert(w.cal.events.length === 0 && w.lastReply().includes('沒有收到日期'), 'Invalid params accepted: ' + JSON.stringify(params));
+  }
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { datetime: '2026-10-15T12:00' })]);
+  w.post([w.text('不得新增')]);
+  assert(w.cal.events.length === 0, 'All-day picker must reject datetime params');
+  assert(w.context.parsePickerValue_({ datetime: '2026-10-15t23:59' }).minutes === 1439, 'Lowercase t is valid');
+});
+
+test('malformed percent escapes and duplicate postback keys are ignored without generic errors', () => {
+  const w = calendarWorld();
+  for (const data of ['cal=add&mode=%ZZ', 'cal=add&cal=edit&mode=allday', 'cal=%E0%A4', '__proto__=x', 'cal=unknown', 'cal=add&mode=unknown']) {
+    w.post([postback(w, data, { date: '2026-10-15' })]);
+  }
+  assert(w.calls.replies.length === 0 && w.cal.events.length === 0, 'Malformed payload should do nothing');
+  assert(w.context.parsePostbackData_('cal=%61dd&mode=allday').cal === 'add', 'Valid URI encoding should parse');
+});
+
+test('invalid names retain the selected date for retry; success and duplicates clear it', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  for (const title of ['長'.repeat(101), ' ', '<>']) {
+    w.post([w.text(title)]);
+    assert(w.cal.events.length === 0 && w.lastReply().includes('名稱'), 'Invalid title must be rejected');
+  }
+  w.post([w.text('重試成功')]);
+  assert(w.cal.events.length === 1 && w.cal.events[0].title === '重試成功', 'Pending date lost on validation failure');
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  w.post([w.text('重試成功')]);
+  assert(w.lastReply().includes('沒有重複新增'), 'Duplicate check missing');
+  w.post([w.text('一般聊天')]);
+  assert(w.cal.events.length === 1, 'Duplicate completion must clear pending');
+});
+
+test('calendar setup and transient create failures allow a name retry', () => {
+  const w = calendarWorld({ configured: false });
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  w.post([w.text('會議')]);
+  assert(w.cal.events.length === 0, 'Unconfigured calendar must not create');
+  w.properties.LINE_CALENDAR_ID = 'work-cal';
+  const create = w.cal.calendar.createAllDayEvent;
+  w.cal.calendar.createAllDayEvent = () => { throw new Error('Synthetic failure'); };
+  w.post([w.text('會議')]);
+  assert(w.lastReply().includes('暫時無法'), 'Failure should be visible');
+  w.cal.calendar.createAllDayEvent = create;
+  w.post([w.text('會議')]);
+  assert(w.cal.events.length === 1, 'Retry lost pending state');
+});
+
+test('unknown hash commands never become event names', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  w.post([w.text('#未知指令'), w.text('＃未知指令')]);
+  assert(w.cal.events.length === 0, 'Unknown commands became titles');
+  w.post([w.text('真正名稱')]);
+  assert(w.cal.events.length === 1, 'Unknown command should preserve pending');
+});
+
+test('cancel and navigation leave no calendar name capture behind', () => {
+  for (const command of ['#取消', '＃取消', '#小幫手', '#行事曆', '#回報', '#更新']) {
+    const w = calendarWorld();
+    w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+    w.post([w.text(command), w.text('一般聊天')]);
+    assert(w.cal.events.length === 0, command + ' must cancel calendar pending');
+  }
+});
+
+test('range start replaces previous name capture and end belongs to same user and start', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-10' })]);
+  w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-15' })]);
+  const oldEnd = findActions(lastMessage(w)).find(a => a.data && a.data.includes('range2')).data;
+  w.post([w.text('尚未選結束日')]);
+  assert(w.cal.events.length === 0, 'Old name capture survived range start');
+  w.post([postback(w, oldEnd, { date: '2026-10-17' }, 'Ubob'), w.text('不得新增', 'Ubob')]);
+  assert(w.cal.events.length === 0, 'Another user consumed range');
+  w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-16' })]);
+  const end = findActions(lastMessage(w)).find(a => a.data && a.data.includes('range2')).data;
+  w.post([postback(w, oldEnd, { date: '2026-10-17' }), w.text('不得新增')]);
+  assert(w.cal.events.length === 0, 'Old start accepted');
+  w.post([postback(w, end, { date: '2026-10-17' }), w.text('正確跨天')]);
+  assert(w.cal.events.length === 1 && w.cal.events[0].start.getTime() === tpe('2026-10-16T00:00:00').getTime(), 'Valid range failed');
+  w.post([postback(w, end, { date: '2026-10-17' }), w.text('不可重用')]);
+  assert(w.cal.events.length === 1, 'Completed range can be reused');
+});
+
+test('range start data must be an integer and an active nonexpired selection', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-15' })]);
+  const end = findActions(lastMessage(w)).find(a => a.data && a.data.includes('range2')).data;
+  for (const data of [end.replace(/start=(\d+)/, 'start=$1.5'), end.replace(/start=\d+/, 'start='), end.replace(/start=\d+/, 'start=NaN')]) {
+    w.post([postback(w, data, { date: '2026-10-17' }), w.text('不得新增')]);
+  }
+  assert(w.cal.events.length === 0, 'Invalid start accepted');
+  w.clearCache();
+  w.post([postback(w, end, { date: '2026-10-17' }), w.text('過期')]);
+  assert(w.cal.events.length === 0, 'Expired range accepted');
+});
+
+test('pending picker names stay within user/group and expire after ten minutes', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  assert(w.ttls['LINE_PENDING_' + GROUP + '_Ualice'] === 600, 'Pending TTL must be ten minutes');
+  w.post([w.text('別人的聊天', 'Ubob')]);
+  const other = w.text('別群聊天'); other.source.groupId = OTHER_GROUP;
+  w.properties.LINE_GROUP_IDS = GROUP + ',' + OTHER_GROUP;
+  w.post([other]);
+  assert(w.cal.events.length === 0, 'Pending leaked across users or groups');
+  w.clearCache();
+  w.post([w.text('已過期')]);
+  assert(w.cal.events.length === 0, 'Expired pending accepted');
+});
+
+test('anonymous and unapproved group postbacks cannot start a shared name capture', () => {
+  const w = calendarWorld();
+  const anonymous = postback(w, 'cal=add&mode=allday', { date: '2026-10-15' });
+  delete anonymous.source.userId;
+  w.post([anonymous]);
+  assert(w.lastReply().includes('無法識別'), 'Anonymous picker should explain text alternative');
+  const title = w.text('匿名聊天'); delete title.source.userId;
+  w.post([title]);
+  const blocked = postback(w, 'cal=add&mode=allday', { date: '2026-10-15' }); blocked.source.groupId = OTHER_GROUP;
+  const count = w.calls.replies.length;
+  w.post([blocked]);
+  assert(w.cal.events.length === 0 && w.calls.replies.length === count, 'Group allowlist bypassed');
+});
+
+test('name capture rechecks the rolling calendar window after midnight', () => {
+  const w = calendarWorld();
+  w.post([w.text('#行事曆')]);
+  const min = findActions(lastMessage(w)).find(a => a.data === 'cal=add&mode=allday').min;
+  w.post([postback(w, 'cal=add&mode=allday', { date: min })]);
+  w.context.calendarNow_ = () => tpe('2026-10-03T00:01:00');
+  w.post([w.text('過界行程')]);
+  assert(w.cal.events.length === 0 && w.lastReply().includes('超出'), 'Window must be checked at insertion');
+});
+
+test('restarting the same range date invalidates the old card token', () => {
+  const w = calendarWorld();
+  let seq = 0; w.context.Utilities.getUuid = () => 'range-' + ++seq;
+  w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-15' })]);
+  const oldEnd = findActions(lastMessage(w)).find(a => a.data && a.data.includes('range2')).data;
+  w.post([postback(w, 'cal=add&mode=range1', { date: '2026-10-15' })]);
+  const newEnd = findActions(lastMessage(w)).find(a => a.data && a.data.includes('range2')).data;
+  w.post([postback(w, oldEnd, { date: '2026-10-17' }), w.text('舊卡不得新增')]);
+  assert(w.cal.events.length === 0, 'Old token reused');
+  w.post([postback(w, newEnd, { date: '2026-11-15' })]);
+  assert(w.lastReply().includes('最多 31 天'), 'Range over 31 days accepted');
+  w.post([postback(w, newEnd, { date: '2026-11-14' }), w.text('完整 31 天')]);
+  assert(w.cal.events.length === 1 && (w.cal.events[0].end - w.cal.events[0].start) / 86400000 === 31, 'Inclusive 31-day limit failed');
+});
+
+test('text add replaces pending picker instead of leaving a second draft', () => {
+  const w = calendarWorld();
+  w.post([postback(w, 'cal=add&mode=allday', { date: '2026-10-15' })]);
+  w.post([w.text('#新增行程 10/16 文字新增'), w.text('一般聊天')]);
+  assert(w.cal.events.length === 1 && w.cal.events[0].title === '文字新增', 'Text add left stale pending');
 });
 
 let passed = 0;
