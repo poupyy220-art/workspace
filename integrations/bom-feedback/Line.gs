@@ -15,6 +15,9 @@
  *   LINE_ADMIN_USER_IDS        可使用 #待辦 的 LINE 使用者 ID（逗號分隔）；設定模式下在群組打「#我的ID」可查
  *   CLAUDE_REPLY_KEY          Claude 代發已核准回覆的暗號（本機 feedback.local.json 存同一值，不得寫進 Repository）
  *   LINE_QUICK_LINKS          「#網站」常用網站，每行（或分號隔開）一筆「名稱|https://網址」，最多 8 筆；未設定時只列料號管理中心
+ *   LINE_CALENDAR_ID          「#行程」使用的 Google 行事曆 ID；在編輯器執行 setupLineCalendar 自動填入（預設找名為「工作」的行事曆）
+ *   LINE_CALENDAR_NAME        setupLineCalendar 要找的行事曆名稱，未設定時用「工作」
+ *   LINE_CAL_SEQ              （自動寫入）行程編號 C001 起的流水號
  *
  * Apps Script 讀不到 X-Line-Signature header，因此以「網址暗號＋群組白名單」代替簽章驗證。
  */
@@ -63,6 +66,16 @@ const LINE_HELP_PATTERN = /^[#＃]\s*((使用)?說明|help)\s*$/i;
 const LINE_LINKS_PATTERN = /^[#＃]\s*(常用)?網站\s*$/;
 const LINE_QUICK_LINKS_MAX = 8;
 const LINE_STATUS_LIST_MAX = 10;
+// 「#行程」Google「工作」行事曆：所有人可查、可新增；改／刪只限建立者與維護者。只用回覆（reply），不吃推播額度
+const LINE_CAL_LIST_PATTERN = /^[#＃]\s*(行程|行事曆)(?:\s+(\S[\s\S]*))?$/;
+const LINE_CAL_ADD_PREFIX = /^[#＃]\s*(新增行程|加行程)\s*/;
+const LINE_CAL_EDIT_PATTERN = /^[#＃]\s*改行程\s*(C\d{3,})?\s*([\s\S]*)$/i;
+const LINE_CAL_DELETE_PATTERN = /^[#＃]\s*(確認)?刪行程\s*(C\d{3,})?\s*$/i;
+const LINE_CAL_LIST_MAX = 25;
+const LINE_CAL_RANGE_MAX_DAYS = 31;
+const LINE_CAL_PAST_DAYS = 90;
+const LINE_CAL_FUTURE_DAYS = 400;
+const LINE_CAL_WEEKDAYS = '日一二三四五六';
 const TODO_SHEET = 'To Do';
 const TODO_HEADERS = ['待辦編號', '建立時間', '內容', '狀態', '完成時間', 'LINE 群組', '備註'];
 const TODO_COLUMNS = { content: 3, status: 4, doneTime: 5, group: 6, note: 7 };
@@ -185,6 +198,26 @@ function handleLineText_(event, groupId, userId, rawText) {
   const todoStatusMatch = text.match(LINE_TODO_STATUS_PATTERN);
   if (todoStatusMatch) {
     if (requireLineAdmin_(event, userId)) updateTodoStatus_(event, todoStatusMatch[1].toUpperCase(), todoStatusMatch[2] === '完成' ? '已完成' : todoStatusMatch[2]);
+    return;
+  }
+
+  const calListMatch = text.match(LINE_CAL_LIST_PATTERN);
+  if (calListMatch) {
+    showCalendarEvents_(event, calListMatch[2] || '');
+    return;
+  }
+  if (LINE_CAL_ADD_PREFIX.test(text)) {
+    createCalendarEvent_(event, userId, text.replace(LINE_CAL_ADD_PREFIX, ''));
+    return;
+  }
+  const calEditMatch = text.match(LINE_CAL_EDIT_PATTERN);
+  if (calEditMatch) {
+    editCalendarEvent_(event, userId, calEditMatch[1], calEditMatch[2]);
+    return;
+  }
+  const calDeleteMatch = text.match(LINE_CAL_DELETE_PATTERN);
+  if (calDeleteMatch) {
+    deleteCalendarEvent_(event, userId, calDeleteMatch[2], Boolean(calDeleteMatch[1]));
     return;
   }
 
@@ -872,6 +905,466 @@ function applyTodoFormat_(sheet) {
   sheet.getRange(5, TODO_COLUMNS.status, dataRows, 1).setDataValidation(statusRule);
 }
 
+// ---------- 行事曆（Google「工作」行事曆，LINE_CALENDAR_ID） ----------
+// 日期以「台北日序號」計算（1970-01-01 起第幾天，UTC+8、無夏令時間），不依賴指令碼時區。
+// 每筆行程在 Google 日曆的私人標籤記 lineId（C001 起）與 lineCreator（建立者的 LINE 使用者 ID）；日曆畫面看不到標籤。
+// 跟群組的 LINE「活動」是兩套：LINE 沒有開放機器人讀寫「活動」，兩邊不會自動同步。
+
+function calendarNow_() {
+  return new Date();
+}
+
+function taipeiDayToYmd_(day) {
+  const date = new Date(day * 86400000);
+  return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate() };
+}
+
+function ymdToTaipeiDay_(y, m, d) {
+  const time = Date.UTC(y, m - 1, d);
+  const date = new Date(time);
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  return Math.floor(time / 86400000);
+}
+
+function taipeiInstant_(day, minutes) {
+  return new Date(day * 86400000 + minutes * 60000 - 8 * 3600000);
+}
+
+// 全天行程用台北中午：CalendarApp 只取日期部分，中午在任何時區都不會跑到前一天或後一天
+function taipeiNoon_(day) {
+  return taipeiInstant_(day, 12 * 60);
+}
+
+function taipeiMinutes_(date) {
+  const shifted = new Date(date.getTime() + 8 * 3600000);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}
+
+/** 今天／明天／後天、週五（今天起最近一個）、下週一、10/15、2027/1/5 → 台北日序號；看不懂回 null。 */
+function parseCalendarDay_(token, today) {
+  const text = String(token || '').trim();
+  const relative = { 今天: 0, 今日: 0, 明天: 1, 明日: 1, 後天: 2 };
+  if (Object.prototype.hasOwnProperty.call(relative, text)) return today + relative[text];
+  const week = text.match(/^(下)?(?:週|周|星期|禮拜)([一二三四五六日天])$/);
+  if (week) {
+    const target = (LINE_CAL_WEEKDAYS.indexOf(week[2] === '天' ? '日' : week[2]) + 6) % 7;
+    const current = (new Date(today * 86400000).getUTCDay() + 6) % 7;
+    return week[1] ? today - current + 7 + target : today + (target - current + 7) % 7;
+  }
+  const date = text.match(/^(?:(\d{4})[\/.])?(\d{1,2})[\/.](\d{1,2})$/);
+  if (!date) return null;
+  const thisYear = taipeiDayToYmd_(today).y;
+  let day = ymdToTaipeiDay_(date[1] ? Number(date[1]) : thisYear, Number(date[2]), Number(date[3]));
+  // 沒寫年份又早於 60 天前，當作明年（12 月排 1/5 的行程）
+  if (day !== null && !date[1] && day < today - 60) day = ymdToTaipeiDay_(thisYear + 1, Number(date[2]), Number(date[3]));
+  return day;
+}
+
+/** 「10/15」或「10/15-10/17」（也收 ~ ～ 到 至）→ { start, end }；日期本身不用「-」，才不會跟區間混淆。 */
+function parseCalendarDayRange_(token, today) {
+  const parts = String(token || '').split(/[~～到至-]/);
+  if (parts.length > 2) return null;
+  const start = parseCalendarDay_(parts[0], today);
+  if (start === null) return null;
+  if (parts.length === 1) return { start: start, end: start };
+  const end = parseCalendarDay_(parts[1], today);
+  return end === null ? null : { start: start, end: end };
+}
+
+/** 「14:00」「9:30-10:30」「14點半」「14:00-16」→ { start, end } 分鐘數；開始時間一定要有冒號或「點」，避免把「3 號產線」當時間。 */
+function parseCalendarTimeRange_(token) {
+  const parts = String(token || '').split(/[~～到至-]/);
+  if (parts.length > 2) return null;
+  const toMinutes = function (value, isEnd) {
+    const match = String(value).trim().match(isEnd ? /^(\d{1,2})(?:[:：](\d{2})|點(半)?)?$/ : /^(\d{1,2})(?:[:：](\d{2})|點(半)?)$/);
+    if (!match) return null;
+    const hour = Number(match[1]), minute = match[3] ? 30 : Number(match[2] || 0);
+    if (minute > 59 || hour > 24 || (hour === 24 && (!isEnd || minute))) return null;
+    return hour * 60 + minute;
+  };
+  const start = toMinutes(parts[0], false);
+  if (start === null) return null;
+  if (parts.length === 1) return { start: start, end: null };
+  const end = toMinutes(parts[1], true);
+  return end === null ? null : { start: start, end: end };
+}
+
+/** 新增／修改共用：［日期或日期區間］［時間］［名稱］，三段都可省略，由呼叫端判斷缺什麼。 */
+function parseCalendarSpec_(text, today) {
+  const tokens = String(text || '').trim().split(/\s+/).filter(Boolean);
+  const spec = { range: null, time: null, title: '', error: '' };
+  let index = 0;
+  if (index < tokens.length) {
+    spec.range = parseCalendarDayRange_(tokens[index], today);
+    if (spec.range) index += 1;
+  }
+  if (index < tokens.length) {
+    spec.time = parseCalendarTimeRange_(tokens[index]);
+    if (spec.time) index += 1;
+  }
+  spec.title = tokens.slice(index).join(' ');
+  if (spec.range && spec.range.end < spec.range.start) spec.error = '結束日期要晚於開始日期';
+  else if (spec.range && spec.range.end - spec.range.start + 1 > LINE_CAL_RANGE_MAX_DAYS) spec.error = `一筆行程最多 ${LINE_CAL_RANGE_MAX_DAYS} 天`;
+  else if (spec.range && !isInCalendarWindow_(spec.range.start, spec.range.end, today)) spec.error = `日期只能在今天前 ${LINE_CAL_PAST_DAYS} 天到後 ${LINE_CAL_FUTURE_DAYS} 天內`;
+  else if (spec.range && spec.time && spec.range.end !== spec.range.start) spec.error = '跨天行程請不要寫時間（會建成全天）';
+  else if (spec.time && spec.time.end !== null && spec.time.end <= spec.time.start) spec.error = '結束時間要晚於開始時間';
+  return spec;
+}
+
+/** 「#行程」後面的查詢範圍：空白＝今天起 7 天；本週／下週／本月；單日或日期區間（最多 31 天）。 */
+function parseCalendarListRange_(arg, today) {
+  const text = String(arg || '').trim();
+  const monday = today - (new Date(today * 86400000).getUTCDay() + 6) % 7;
+  if (!text) return { start: today, end: today + 6 };
+  if (/^(本|這)(週|周)$/.test(text)) return { start: today, end: monday + 6 };
+  if (/^下(週|周)$/.test(text)) return { start: monday + 7, end: monday + 13 };
+  if (/^(本月|這個月)$/.test(text)) {
+    const ymd = taipeiDayToYmd_(today);
+    return { start: today, end: ymdToTaipeiDay_(ymd.m === 12 ? ymd.y + 1 : ymd.y, ymd.m === 12 ? 1 : ymd.m + 1, 1) - 1 };
+  }
+  const range = parseCalendarDayRange_(text, today);
+  if (!range || range.end < range.start || range.end - range.start + 1 > LINE_CAL_RANGE_MAX_DAYS) return null;
+  return isInCalendarWindow_(range.start, range.end, today) ? range : null;
+}
+
+function getLineCalendar_(event) {
+  const id = PropertiesService.getScriptProperties().getProperty('LINE_CALENDAR_ID');
+  const calendar = id ? CalendarApp.getCalendarById(id) : null;
+  if (!calendar) lineReply_(event.replyToken, '行事曆還沒設定好，請維護人員在 Apps Script 執行 setupLineCalendar。');
+  return calendar;
+}
+
+// 在 Google 日曆設成「私人」的行程不給 LINE 看，也不能從 LINE 改
+function isHiddenCalendarEvent_(calEvent) {
+  const visibility = calEvent.getVisibility();
+  return visibility === CalendarApp.Visibility.PRIVATE || visibility === CalendarApp.Visibility.CONFIDENTIAL;
+}
+
+/** 沒有編號的行程（例如直接在 Google 日曆建的）補上 C 編號；重複行程不編號，只能在 Google 日曆改。 */
+function ensureCalendarIds_(calEvents) {
+  if (calEvents.some(function (calEvent) { return !calEvent.isRecurringEvent() && !calEvent.getTag('lineId'); })) {
+    withLock_(function () { assignCalendarIdsLocked_(calEvents); });
+  }
+  cacheCalendarIds_(calEvents);
+}
+
+/** 呼叫端必須已拿到 withLock_。 */
+function assignCalendarIdsLocked_(calEvents) {
+  const properties = PropertiesService.getScriptProperties();
+  let next = Number(properties.getProperty('LINE_CAL_SEQ') || 0);
+  const start = next;
+  calEvents.forEach(function (calEvent) {
+    if (calEvent.isRecurringEvent() || calEvent.getTag('lineId')) return;
+    next += 1;
+    calEvent.setTag('lineId', `C${String(next).padStart(3, '0')}`);
+  });
+  if (next !== start) properties.setProperty('LINE_CAL_SEQ', String(next));
+}
+
+function cacheCalendarIds_(calEvents) {
+  const cache = CacheService.getScriptCache();
+  calEvents.forEach(function (calEvent) {
+    const id = calEvent.getTag('lineId');
+    if (id) cache.put(`cal:${id}`, calEvent.getId(), 21600);
+  });
+}
+
+// 查詢、新增、修改都只限這段期間，編號過期後掃描找得回來
+function isInCalendarWindow_(startDay, endDay, today) {
+  return startDay >= today - LINE_CAL_PAST_DAYS && endDay < today + LINE_CAL_FUTURE_DAYS;
+}
+
+function findCalendarEvent_(calendar, id) {
+  const cached = CacheService.getScriptCache().get(`cal:${id}`);
+  if (cached) {
+    const hit = calendar.getEventById(cached);
+    if (hit && hit.getTag('lineId') === id) return hit;
+  }
+  const today = taipeiParts_(calendarNow_()).day;
+  return calendar.getEvents(taipeiInstant_(today - LINE_CAL_PAST_DAYS, 0), taipeiInstant_(today + LINE_CAL_FUTURE_DAYS, 0))
+    .filter(function (calEvent) { return calEvent.getTag('lineId') === id; })[0] || null;
+}
+
+function calendarEventView_(calEvent) {
+  const view = {
+    id: String(calEvent.getTag('lineId') || ''),
+    title: String(calEvent.getTitle() || '（無標題）'),
+    allDay: calEvent.isAllDayEvent()
+  };
+  if (view.allDay) {
+    // 全天行程的日期依指令碼時區給；Google 的結束日是「最後一天的隔天」
+    const zone = Session.getScriptTimeZone();
+    const toDay = function (date) {
+      const parts = Utilities.formatDate(date, zone, 'yyyy-MM-dd').split('-').map(Number);
+      return ymdToTaipeiDay_(parts[0], parts[1], parts[2]);
+    };
+    view.startDay = toDay(calEvent.getAllDayStartDate());
+    view.endDay = Math.max(view.startDay, toDay(calEvent.getAllDayEndDate()) - 1);
+  } else {
+    const start = calEvent.getStartTime(), end = calEvent.getEndTime();
+    view.startDay = taipeiParts_(start).day;
+    view.startMinutes = taipeiMinutes_(start);
+    view.endDay = taipeiParts_(end).day;
+    view.endMinutes = taipeiMinutes_(end);
+    view.durationMs = end.getTime() - start.getTime();
+  }
+  return view;
+}
+
+function formatCalendarDay_(day) {
+  const ymd = taipeiDayToYmd_(day);
+  const pad = function (n) { return String(n).padStart(2, '0'); };
+  return `${pad(ymd.m)}/${pad(ymd.d)}（${LINE_CAL_WEEKDAYS.charAt(new Date(day * 86400000).getUTCDay())}）`;
+}
+
+function formatCalendarClock_(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function formatCalendarTime_(view) {
+  if (view.allDay) return view.endDay > view.startDay ? `全天，到 ${formatCalendarDay_(view.endDay)}` : '全天';
+  const end = view.endDay > view.startDay ? `${formatCalendarDay_(view.endDay)} ${formatCalendarClock_(view.endMinutes)}` : formatCalendarClock_(view.endMinutes);
+  return `${formatCalendarClock_(view.startMinutes)}-${end}`;
+}
+
+function describeCalendarEvent_(view) {
+  return `${view.id ? view.id + ' ' : ''}${formatCalendarDay_(view.startDay)} ${formatCalendarTime_(view)} ${view.title}`;
+}
+
+function showCalendarEvents_(event, arg) {
+  const today = taipeiParts_(calendarNow_()).day;
+  const range = parseCalendarListRange_(arg, today);
+  if (!range) {
+    lineReply_(event.replyToken, `看不懂要查哪幾天，可以打：\n#行程（今天起 7 天）\n#行程 明天／本週／下週／本月\n#行程 10/15 或 #行程 10/15-10/20\n一次最多 ${LINE_CAL_RANGE_MAX_DAYS} 天，可查今天前 ${LINE_CAL_PAST_DAYS} 天到後 ${LINE_CAL_FUTURE_DAYS} 天內`);
+    return;
+  }
+  const calendar = getLineCalendar_(event);
+  if (!calendar) return;
+  const calEvents = calendar.getEvents(taipeiInstant_(range.start, 0), taipeiInstant_(range.end + 1, 0))
+    .filter(function (calEvent) { return !isHiddenCalendarEvent_(calEvent); });
+  ensureCalendarIds_(calEvents);
+  const views = calEvents.map(calendarEventView_);
+  const label = range.start === range.end ? formatCalendarDay_(range.start) : `${formatCalendarDay_(range.start)}～${formatCalendarDay_(range.end)}`;
+  if (!views.length) {
+    lineReply_(event.replyToken, `${label} 沒有行程 📅\n要新增打「#新增行程 10/15 14:00 會議名稱」`);
+    return;
+  }
+  lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: `行程 ${label}：${views.length} 筆`, contents: buildCalendarListCard_(views, range, label) }]);
+}
+
+function buildCalendarListCard_(views, range, label) {
+  const shown = views.slice(0, LINE_CAL_LIST_MAX);
+  const rows = [];
+  let lastDay = null;
+  shown.forEach(function (view) {
+    // 從查詢範圍之前就開始的跨天行程，列在第一天
+    const day = Math.max(view.startDay, range.start);
+    if (day !== lastDay) {
+      rows.push({ type: 'text', text: formatCalendarDay_(day), size: 'sm', weight: 'bold', color: '#1A56B8', margin: rows.length ? 'lg' : 'none' });
+      lastDay = day;
+    }
+    rows.push({
+      type: 'box', layout: 'horizontal', spacing: 'sm',
+      contents: [
+        { type: 'text', text: view.id || '🔁', size: 'xs', weight: 'bold', color: '#1A73E8', flex: 2 },
+        { type: 'text', text: formatCalendarTime_(view), size: 'xs', color: '#5F6368', wrap: true, flex: 3 },
+        { type: 'text', text: view.title.slice(0, 60), size: 'sm', wrap: true, flex: 6 }
+      ]
+    });
+  });
+  if (views.length > shown.length) rows.push({ type: 'text', text: `…另有 ${views.length - shown.length} 筆，請縮小日期範圍或看 Google 日曆`, size: 'xs', color: '#9AA0A6', wrap: true, margin: 'lg' });
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#E8F0FE', paddingAll: '14px',
+      contents: [
+        { type: 'text', text: `📅 工作行程（${views.length} 筆）`, size: 'lg', weight: 'bold', color: '#1A56B8' },
+        { type: 'text', text: label, size: 'xs', color: '#3C6FD1', wrap: true }
+      ]
+    },
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: rows },
+    footer: {
+      type: 'box', layout: 'vertical',
+      contents: [{ type: 'text', text: '新增：#新增行程 10/15 14:00 會議名稱\n改：#改行程 C001 10/16　刪：#刪行程 C001\n🔁 重複行程請到 Google 日曆修改', size: 'xxs', color: '#9AA0A6', wrap: true }]
+    }
+  };
+}
+
+function createCalendarEvent_(event, userId, rawText) {
+  const today = taipeiParts_(calendarNow_()).day;
+  const spec = parseCalendarSpec_(rawText, today);
+  if (!spec.range || !spec.title) {
+    lineReply_(event.replyToken, '請照這個格式：\n#新增行程 10/15 14:00-15:00 P3 BOM 會議\n・不寫時間＝全天：#新增行程 10/15 出差\n・日期可寫 今天／明天／週五／下週一\n・跨天：#新增行程 10/15-10/17 出差\n・只寫開始時間＝1 小時');
+    return;
+  }
+  if (spec.error) {
+    lineReply_(event.replyToken, `${spec.error}，請再送一次。`);
+    return;
+  }
+  let title;
+  try {
+    title = safeText_(spec.title, 100, true);
+  } catch (lengthError) {
+    lineReply_(event.replyToken, '行程名稱最多 100 字，請精簡後再送一次。');
+    return;
+  }
+  const calendar = getLineCalendar_(event);
+  if (!calendar) return;
+  let start = null, end = null;
+  if (spec.time) {
+    start = taipeiInstant_(spec.range.start, spec.time.start);
+    end = spec.time.end !== null ? taipeiInstant_(spec.range.start, spec.time.end) : new Date(start.getTime() + 3600000);
+  }
+  // 檢查重複到建立放在同一把鎖裡：兩人同時送出或 LINE 重送 webhook，也只會建一筆
+  const result = withLock_(function () {
+    // 同一天同名、同開始時間（或同為全天）視為重複，避免 LINE「活動」和這裡各記一次時又多一筆；私人行程不比對，免得在群組露出
+    const duplicate = calendar.getEvents(taipeiInstant_(spec.range.start, 0), taipeiInstant_(spec.range.start + 1, 0)).filter(function (calEvent) {
+      if (isHiddenCalendarEvent_(calEvent) || calEvent.getTitle() !== title) return false;
+      return start ? !calEvent.isAllDayEvent() && calEvent.getStartTime().getTime() === start.getTime() : calEvent.isAllDayEvent();
+    })[0];
+    if (duplicate) {
+      assignCalendarIdsLocked_([duplicate]);
+      return { calEvent: duplicate, duplicate: true };
+    }
+    const options = { description: '由 LINE Debug 小幫手新增' };
+    const created = start
+      ? calendar.createEvent(title, start, end, options)
+      : calendar.createAllDayEvent(title, taipeiNoon_(spec.range.start), taipeiNoon_(spec.range.end + 1), options);
+    // LINE 沒給使用者 ID 時不記建立者（大家都會是 unknown），這筆只有維護者能改
+    if (userId && userId !== 'unknown') created.setTag('lineCreator', userId);
+    assignCalendarIdsLocked_([created]);
+    return { calEvent: created, duplicate: false };
+  });
+  cacheCalendarIds_([result.calEvent]);
+  if (result.duplicate) {
+    lineReply_(event.replyToken, `已經有一樣的行程，沒有重複新增：\n${describeCalendarEvent_(calendarEventView_(result.calEvent))}`);
+    return;
+  }
+  const view = calendarEventView_(result.calEvent);
+  lineReply_(event.replyToken, `已新增到工作行事曆 📅\n${describeCalendarEvent_(view)}\n要改打「#改行程 ${view.id} 10/16 15:00」，刪除打「#刪行程 ${view.id}」`);
+}
+
+/** 找出可以改／刪的行程：找不到、私人、重複行程或不是自己建的，都直接回覆原因並回 null。 */
+function loadEditableCalendarEvent_(event, userId, id) {
+  const calendar = getLineCalendar_(event);
+  if (!calendar) return null;
+  const calEvent = findCalendarEvent_(calendar, id);
+  if (!calEvent || isHiddenCalendarEvent_(calEvent)) {
+    lineReply_(event.replyToken, `找不到 ${id}，請先打「#行程」看編號。`);
+    return null;
+  }
+  if (calEvent.isRecurringEvent()) {
+    lineReply_(event.replyToken, `${id} 是重複行程，請到 Google 日曆修改。`);
+    return null;
+  }
+  const creator = String(calEvent.getTag('lineCreator') || '');
+  if (!isLineAdmin_(userId) && (!creator || creator === 'unknown' || creator !== userId)) {
+    lineReply_(event.replyToken, `${id} 不是你在 LINE 新增的，只有建立的人或維護人員能改；需要調整請跟維護人員說 🙏`);
+    return null;
+  }
+  return calEvent;
+}
+
+function editCalendarEvent_(event, userId, rawId, rest) {
+  const usage = '改行程請寫編號和要改的內容，例如：\n#改行程 C001 10/16（改日期）\n#改行程 C001 15:00-16:00（改時間）\n#改行程 C001 10/16 15:00 新名稱（一起改）\n編號打「#行程」查';
+  const today = taipeiParts_(calendarNow_()).day;
+  const spec = parseCalendarSpec_(rest, today);
+  if (!rawId || (!spec.range && !spec.time && !spec.title)) {
+    lineReply_(event.replyToken, usage);
+    return;
+  }
+  if (spec.error) {
+    lineReply_(event.replyToken, `${spec.error}，請再送一次。`);
+    return;
+  }
+  let title = '';
+  try {
+    if (spec.title) title = safeText_(spec.title, 100, true);
+  } catch (lengthError) {
+    lineReply_(event.replyToken, '行程名稱最多 100 字，請精簡後再送一次。');
+    return;
+  }
+  const id = rawId.toUpperCase();
+  const calEvent = loadEditableCalendarEvent_(event, userId, id);
+  if (!calEvent) return;
+  const before = calendarEventView_(calEvent);
+  if (spec.time) {
+    // 只改時間：日期不變；沒寫結束時間就保留原本長度（全天改成有時間的預設 1 小時）
+    const day = spec.range ? spec.range.start : before.startDay;
+    const start = taipeiInstant_(day, spec.time.start);
+    const end = spec.time.end !== null ? taipeiInstant_(day, spec.time.end) : new Date(start.getTime() + (before.allDay ? 3600000 : before.durationMs));
+    calEvent.setTime(start, end);
+  } else if (spec.range) {
+    if (before.allDay || spec.range.end > spec.range.start) {
+      // 全天行程改日期保留原本天數；寫了日期區間就照區間
+      const length = spec.range.end > spec.range.start ? spec.range.end - spec.range.start : (before.allDay ? before.endDay - before.startDay : 0);
+      calEvent.setAllDayDates(taipeiNoon_(spec.range.start), taipeiNoon_(spec.range.start + length + 1));
+    } else {
+      // 有時間的行程只改日期：整段平移，時間不變
+      const shift = (spec.range.start - before.startDay) * 86400000;
+      calEvent.setTime(new Date(calEvent.getStartTime().getTime() + shift), new Date(calEvent.getEndTime().getTime() + shift));
+    }
+  }
+  if (title) calEvent.setTitle(title);
+  lineReply_(event.replyToken, `已更新 ✏️\n原本：${describeCalendarEvent_(before)}\n現在：${describeCalendarEvent_(calendarEventView_(calEvent))}`);
+}
+
+function deleteCalendarEvent_(event, userId, rawId, confirmed) {
+  if (!rawId) {
+    lineReply_(event.replyToken, '刪除請寫編號，例如「#刪行程 C001」；編號打「#行程」查。');
+    return;
+  }
+  const id = rawId.toUpperCase();
+  const calEvent = loadEditableCalendarEvent_(event, userId, id);
+  if (!calEvent) return;
+  const view = calendarEventView_(calEvent);
+  // 先回確認卡片，按了「確認刪除」才真的刪
+  if (!confirmed) {
+    lineReplyMessages_(event.replyToken, [{ type: 'flex', altText: `確定要刪除 ${id}？`, contents: buildCalendarDeleteCard_(view) }]);
+    return;
+  }
+  calEvent.deleteEvent();
+  CacheService.getScriptCache().remove(`cal:${id}`);
+  lineReply_(event.replyToken, `已刪除 🗑️\n${describeCalendarEvent_(view)}\n刪錯了可以到 Google 日曆的「垃圾桶」在 30 天內還原。`);
+}
+
+function buildCalendarDeleteCard_(view) {
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#FCE8E6', paddingAll: '14px',
+      contents: [{ type: 'text', text: '🗑️ 確定要刪除這筆行程？', size: 'lg', weight: 'bold', color: '#C5221F' }]
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [
+        { type: 'text', text: view.title, size: 'md', weight: 'bold', wrap: true },
+        { type: 'text', text: `${view.id}　${formatCalendarDay_(view.startDay)} ${formatCalendarTime_(view)}`, size: 'sm', color: '#5F6368', wrap: true }
+      ]
+    },
+    footer: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [
+        helperButton_('primary', '#D93025', `確認刪除 ${view.id}`, `#確認刪行程 ${view.id}`),
+        { type: 'text', text: '不刪就不用理它', size: 'xxs', color: '#9AA0A6', align: 'center' }
+      ]
+    }
+  };
+}
+
+/** 在編輯器執行一次：找名為「工作」（或 LINE_CALENDAR_NAME）的行事曆，ID 存進 LINE_CALENDAR_ID；第一次執行會要求日曆授權。 */
+function setupLineCalendar() {
+  const properties = PropertiesService.getScriptProperties();
+  const name = properties.getProperty('LINE_CALENDAR_NAME') || '工作';
+  const calendars = CalendarApp.getCalendarsByName(name);
+  if (calendars.length !== 1) {
+    return logSetupResult_(`找到 ${calendars.length} 本名為「${name}」的行事曆；請確認名稱，可在指令碼屬性 LINE_CALENDAR_NAME 填正確名稱後再執行一次`);
+  }
+  properties.setProperty('LINE_CALENDAR_ID', calendars[0].getId());
+  const zone = Session.getScriptTimeZone();
+  return logSetupResult_(`已連結行事曆「${name}」；指令碼時區 ${zone}${zone === 'Asia/Taipei' ? '' : '（建議到「專案設定」改成 Asia/Taipei）'}`);
+}
+
 // ---------- 結案 ----------
 
 function closeLineReport_(event, groupId, reportId) {
@@ -1314,6 +1807,7 @@ function buildHelperMenuCard_(openCount, isAdmin) {
     helperButton_('primary', '#1A73E8', `📋 目前問題狀況（未結案 ${openCount}）`, '#狀況'),
     helperButton_('secondary', '', '🐞 回報問題／提需求', '#回報'),
     helperButton_('secondary', '', '🗂️ 更新資料（傳 Excel）', '#更新'),
+    helperButton_('secondary', '', '📅 工作行程（7 天內）', '#行程'),
     helperButton_('secondary', '', '📖 使用說明', '#說明'),
     helperButton_('secondary', '', '🔗 常用網站', '#網站')
   ];
@@ -1405,6 +1899,9 @@ function buildHelpCard_() {
         line('修好確認', 'F022 OK'),
         line('更新資料', '#更新 → 選類型 → 傳 Excel'),
         line('查進度', '#狀況'),
+        line('查行程', '#行程（今天起 7 天）、#行程 明天／下週／10/15'),
+        line('新增行程', '#新增行程 10/15 14:00-15:00 會議名稱（不寫時間＝全天）'),
+        line('改／刪行程', '#改行程 C001 10/16 15:00、#刪行程 C001（只限建立的人）'),
         line('叫出選單', '#小幫手')
       ]
     },

@@ -66,7 +66,7 @@ function createWorld() {
       DigestAlgorithm: { SHA_256: 'SHA-256' }
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => properties[k] ?? null, setProperty: (k, v) => { properties[k] = v; } }) },
-    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v, ttl) => { cache[k] = v; ttls[k] = ttl; } }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache[k] ?? null, put: (k, v, ttl) => { cache[k] = v; ttls[k] = ttl; }, remove: (k) => { delete cache[k]; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     SpreadsheetApp: { openById: () => ({ getSheetByName: (name) => sheets[name] || null, insertSheet: (name) => (sheets[name] = makeSheet(0)), getSheets: () => (sheets.__log ? [sheets.__log] : []) }) },
     DriveApp: { getFolderById: () => ({ createFile(blob) { calls.files.push(blob.name); return { setDescription() {}, getUrl: () => `https://drive/${blob.name}`, setTrashed() {} }; } }) },
@@ -91,7 +91,7 @@ function createWorld() {
   vm.createContext(context);
   const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
   const line = fs.readFileSync(path.join(__dirname, 'Line.gs'), 'utf8');
-  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined,sendDailySummaryNow:typeof sendDailySummaryNow==='function'?sendDailySummaryNow:undefined,sendFixedReminders_:typeof sendFixedReminders_==='function'?sendFixedReminders_:undefined};`, context, { filename: 'Line.gs' });
+  vm.runInContext(`${code}\n${line}\nthis.api={doPost,processLineOutbox,detectLineTool_,extractLineReply_,sendDailySummary_:typeof sendDailySummary_==='function'?sendDailySummary_:undefined,sendDailySummaryNow:typeof sendDailySummaryNow==='function'?sendDailySummaryNow:undefined,sendFixedReminders_:typeof sendFixedReminders_==='function'?sendFixedReminders_:undefined,setupLineCalendar:typeof setupLineCalendar==='function'?setupLineCalendar:undefined,parseCalendarSpec_:typeof parseCalendarSpec_==='function'?parseCalendarSpec_:undefined};`, context, { filename: 'Line.gs' });
 
   let tokenSeq = 0;
   const post = (events, key = KEY) => context.api.doPost({
@@ -833,6 +833,235 @@ test('#網站 reads links from LINE_QUICK_LINKS, keeps https only, falls back to
   w.properties.LINE_QUICK_LINKS = Array.from({ length: 12 }, (_, i) => '站' + i + '|https://s' + i + '.example.com/').join('\n');
   w.post([w.text('#網站')]);
   assert((JSON.stringify(lastMessage(w).contents).match(/"uri":/g) || []).length === 8, 'At most 8 links');
+});
+
+// ---------- 行事曆 ----------
+const DAY_MS = 86400000;
+const TPE = 8 * 3600000;
+const tpe = (iso) => new Date(`${iso}+08:00`);
+// 全天行程：真實 API 回傳「指令碼時區的午夜」，這裡指令碼時區假設 Asia/Taipei
+const tpeMidnight = (date) => new Date(Math.floor((date.getTime() + TPE) / DAY_MS) * DAY_MS - TPE);
+
+function makeCalendar() {
+  const events = [];
+  let seq = 0;
+  function add(title, start, end, allDay, opts = {}) {
+    const tags = {};
+    const ev = { id: `ev${++seq}`, title, start, end, allDay, recurring: Boolean(opts.recurring), visibility: opts.visibility || 'DEFAULT', deleted: false, options: opts.options || {}, tags };
+    ev.api = {
+      getId: () => ev.id, getTitle: () => ev.title, setTitle: (t) => { ev.title = t; },
+      getStartTime: () => ev.start, getEndTime: () => ev.end, isAllDayEvent: () => ev.allDay,
+      getAllDayStartDate: () => ev.start, getAllDayEndDate: () => ev.end,
+      setTime: (s, e) => { ev.start = s; ev.end = e; ev.allDay = false; },
+      setAllDayDates: (s, e) => { ev.start = tpeMidnight(s); ev.end = tpeMidnight(e); ev.allDay = true; },
+      getTag: (k) => tags[k] ?? null, setTag: (k, v) => { tags[k] = v; },
+      deleteEvent: () => { ev.deleted = true; }, isRecurringEvent: () => ev.recurring, getVisibility: () => ev.visibility
+    };
+    events.push(ev);
+    return ev;
+  }
+  const calendar = {
+    getId: () => 'work-cal',
+    getEvents: (s, e) => events.filter((ev) => !ev.deleted && ev.start < e && ev.end > s).sort((a, b) => a.start - b.start).map((ev) => ev.api),
+    getEventById: (id) => { const ev = events.find((x) => x.id === id && !x.deleted); return ev ? ev.api : null; },
+    createEvent: (title, s, e, options) => add(title, s, e, false, { options }).api,
+    createAllDayEvent: (title, s, e, options) => add(title, tpeMidnight(s), tpeMidnight(e), true, { options }).api
+  };
+  return { events, calendar, add };
+}
+
+function calendarWorld({ configured = true } = {}) {
+  const w = createWorld();
+  const cal = makeCalendar();
+  w.context.CalendarApp = {
+    Visibility: { DEFAULT: 'DEFAULT', PUBLIC: 'PUBLIC', PRIVATE: 'PRIVATE', CONFIDENTIAL: 'CONFIDENTIAL' },
+    getCalendarById: (id) => (id === 'work-cal' ? cal.calendar : null),
+    getCalendarsByName: (name) => (name === '工作' ? [cal.calendar] : [])
+  };
+  w.context.Session = { getScriptTimeZone: () => 'Asia/Taipei' };
+  const fixed = w.context.Utilities.formatDate;
+  w.context.Utilities.formatDate = (date, zone, pattern) => (pattern === 'yyyy-MM-dd' ? new Date(date.getTime() + TPE).toISOString().slice(0, 10) : fixed(date, zone, pattern));
+  // 固定「現在」為 2026-10-02（五）09:00 台北時間
+  w.context.calendarNow_ = () => tpe('2026-10-02T09:00:00');
+  if (configured) w.properties.LINE_CALENDAR_ID = 'work-cal';
+  w.properties.LINE_ADMIN_USER_IDS = 'Uadmin';
+  return Object.assign(w, { cal });
+}
+
+test('#行程 before setup asks the maintainer to run setupLineCalendar', () => {
+  const w = calendarWorld({ configured: false });
+  w.post([w.text('#行程')]);
+  assert(w.lastReply().includes('setupLineCalendar'), 'Setup hint missing: ' + w.lastReply());
+});
+
+test('setupLineCalendar finds the 工作 calendar and stores its ID', () => {
+  const w = calendarWorld({ configured: false });
+  const result = w.api.setupLineCalendar();
+  assert(w.properties.LINE_CALENDAR_ID === 'work-cal' && result.includes('Asia/Taipei'), 'Setup wrong: ' + result);
+  w.properties.LINE_CALENDAR_NAME = '不存在';
+  assert(w.api.setupLineCalendar().includes('找到 0 本'), 'Missing calendar should be reported');
+});
+
+test('date and time parsing: relative days, weekdays, year rollover, 點半, numbers in titles', () => {
+  const w = calendarWorld();
+  const day = (iso) => Math.floor((tpe(`${iso}T00:00:00`).getTime() + TPE) / DAY_MS);
+  const today = day('2026-10-02');
+  const p = (s) => w.api.parseCalendarSpec_(s, today);
+  assert(p('明天 會議').range.start === day('2026-10-03'), '明天 wrong');
+  assert(p('週五 會議').range.start === day('2026-10-02'), '週五 should be today (Friday)');
+  assert(p('下週一 會議').range.start === day('2026-10-05'), '下週一 wrong');
+  assert(p('1/5 年初會議').range.start === day('2027-01-05'), 'Past date without year should roll to next year');
+  assert(p('10/15 14點半 會議').time.start === 14 * 60 + 30, '點半 wrong');
+  const numberTitle = p('10/15 3 號產線');
+  assert(numberTitle.time === null && numberTitle.title === '3 號產線', 'Bare number must stay in title');
+  assert(p('10/15 15:00-14:00 x').error.includes('結束時間'), 'End before start must error');
+  assert(p('10/15-10/17 14:00 x').error.includes('跨天'), 'Range with time must error');
+  assert(p('2/30 x').range === null, 'Invalid date must not parse');
+});
+
+test('#新增行程 creates a timed event with creator tag and C001, refuses duplicates', () => {
+  const w = calendarWorld();
+  w.post([w.text('#新增行程 明天 14:00-15:30 P3 BOM 會議')]);
+  const ev = w.cal.events[0];
+  assert(ev && ev.title === 'P3 BOM 會議' && !ev.allDay, 'Event not created');
+  assert(ev.start.getTime() === tpe('2026-10-03T14:00:00').getTime() && ev.end.getTime() === tpe('2026-10-03T15:30:00').getTime(), 'Times wrong');
+  assert(ev.tags.lineId === 'C001' && ev.tags.lineCreator === 'Ualice', 'Tags wrong: ' + JSON.stringify(ev.tags));
+  assert(ev.options.description.includes('LINE'), 'Description missing');
+  assert(w.lastReply().includes('C001') && w.lastReply().includes('10/03（六）') && w.lastReply().includes('14:00-15:30'), 'Reply wrong: ' + w.lastReply());
+  w.post([w.text('#新增行程 10/3 14:00 P3 BOM 會議', 'Ubob')]);
+  assert(w.cal.events.length === 1 && w.lastReply().includes('沒有重複新增'), 'Duplicate must be refused');
+  w.post([w.text('#新增行程 10/3 9:00 早會')]);
+  const second = w.cal.events[1];
+  assert(second.end - second.start === 3600000 && second.tags.lineId === 'C002', 'Default 1 hour / next ID wrong');
+});
+
+test('#新增行程 all-day range, and usage when the title is missing', () => {
+  const w = calendarWorld();
+  w.post([w.text('#新增行程 10/15-10/17 深圳出差')]);
+  const ev = w.cal.events[0];
+  assert(ev.allDay && ev.start.getTime() === tpe('2026-10-15T00:00:00').getTime() && ev.end.getTime() === tpe('2026-10-18T00:00:00').getTime(), 'All-day dates wrong');
+  assert(w.lastReply().includes('全天，到 10/17（六）'), 'All-day reply wrong: ' + w.lastReply());
+  w.post([w.text('#新增行程 10/15')]);
+  assert(w.lastReply().includes('請照這個格式') && w.cal.events.length === 1, 'Missing title must show usage');
+});
+
+test('#行程 lists 7 days, numbers Google-created events, hides private, marks recurring', () => {
+  const w = calendarWorld();
+  w.cal.add('EC 週會', tpe('2026-10-05T10:00:00'), tpe('2026-10-05T11:00:00'), false, { recurring: true });
+  w.cal.add('直接在 Google 建的', tpe('2026-10-02T13:00:00'), tpe('2026-10-02T14:00:00'), false);
+  w.cal.add('私人看診', tpe('2026-10-03T10:00:00'), tpe('2026-10-03T11:00:00'), false, { visibility: 'PRIVATE' });
+  w.cal.add('下個月的', tpe('2026-11-20T10:00:00'), tpe('2026-11-20T11:00:00'), false);
+  w.post([w.text('#行程', 'Ubob')]);
+  const card = lastMessage(w);
+  const json = JSON.stringify(card.contents);
+  assert(card.type === 'flex' && card.altText.includes('2 筆'), 'altText wrong: ' + card.altText);
+  assert(json.includes('直接在 Google 建的') && json.includes('C001') && json.includes('EC 週會') && json.includes('🔁'), 'List wrong: ' + json);
+  assert(!json.includes('私人看診') && !json.includes('下個月的'), 'Private or out-of-range leaked: ' + json);
+  assert(!w.cal.events[0].tags.lineId, 'Recurring events must not get an ID');
+  w.post([w.text('#行程 11/20')]);
+  assert(JSON.stringify(lastMessage(w).contents).includes('下個月的'), 'Single-day query wrong');
+  w.post([w.text('#行程 12/25')]);
+  assert(w.lastReply().includes('沒有行程'), 'Empty day wrong: ' + w.lastReply());
+  w.post([w.text('#行程 隨便')]);
+  assert(w.lastReply().includes('看不懂'), 'Bad range should explain');
+});
+
+test('#改行程: only creator or admin; time-only keeps date, date-only shifts, title changes', () => {
+  const w = calendarWorld();
+  w.post([w.text('#新增行程 10/15 14:00-15:00 P3 會議')]);
+  const ev = w.cal.events[0];
+  w.post([w.text('#改行程 C001 16:00', 'Ubob')]);
+  assert(w.lastReply().includes('只有建立的人') && ev.start.getTime() === tpe('2026-10-15T14:00:00').getTime(), 'Other user must not edit');
+  w.post([w.text('#改行程 C001 16:00')]);
+  assert(ev.start.getTime() === tpe('2026-10-15T16:00:00').getTime() && ev.end.getTime() === tpe('2026-10-15T17:00:00').getTime(), 'Time-only edit wrong');
+  assert(w.lastReply().includes('原本') && w.lastReply().includes('16:00-17:00'), 'Edit reply wrong: ' + w.lastReply());
+  w.post([w.text('#改行程 c001 10/16 P3 會議（改期）')]);
+  assert(ev.start.getTime() === tpe('2026-10-16T16:00:00').getTime() && ev.title === 'P3 會議（改期）', 'Date shift / title edit wrong');
+  w.post([w.text('#改行程 C001 10/20-10/21', 'Uadmin')]);
+  assert(ev.allDay && ev.start.getTime() === tpe('2026-10-20T00:00:00').getTime() && ev.end.getTime() === tpe('2026-10-22T00:00:00').getTime(), 'Admin range edit wrong');
+  w.post([w.text('#改行程 C009 16:00')]);
+  assert(w.lastReply().includes('找不到 C009'), 'Missing ID wrong');
+  w.post([w.text('#改行程 C001')]);
+  assert(w.lastReply().includes('改行程請寫編號'), 'Empty edit should show usage');
+});
+
+test('Google-created events: only admins can change them from LINE', () => {
+  const w = calendarWorld();
+  const ev = w.cal.add('主管會議', tpe('2026-10-02T15:00:00'), tpe('2026-10-02T16:00:00'), false);
+  w.post([w.text('#行程')]);
+  w.post([w.text('#改行程 C001 17:00')]);
+  assert(w.lastReply().includes('只有建立的人'), 'Non-admin must not edit untagged-creator event');
+  w.clearCache();
+  w.post([w.text('#改行程 C001 17:00', 'Uadmin')]);
+  assert(ev.start.getTime() === tpe('2026-10-02T17:00:00').getTime(), 'Admin edit (cache miss, scan) failed');
+});
+
+test('#刪行程 asks for confirmation first, then deletes', () => {
+  const w = calendarWorld();
+  w.post([w.text('#新增行程 10/15 出差')]);
+  const ev = w.cal.events[0];
+  w.post([w.text('#刪行程 C001', 'Ubob')]);
+  assert(w.lastReply().includes('只有建立的人') && !ev.deleted, 'Other user must not delete');
+  w.post([w.text('#刪行程 C001')]);
+  const card = lastMessage(w);
+  assert(card.type === 'flex' && JSON.stringify(card.contents).includes('#確認刪行程 C001') && !ev.deleted, 'Confirm card wrong');
+  w.post([w.text('#確認刪行程 C001')]);
+  assert(ev.deleted && w.lastReply().includes('垃圾桶'), 'Delete wrong: ' + w.lastReply());
+  w.post([w.text('#確認刪行程 C001')]);
+  assert(w.lastReply().includes('找不到 C001'), 'Deleted event must not be found again');
+});
+
+test('#小幫手 and #說明 mention the calendar commands', () => {
+  const w = calendarWorld();
+  w.post([w.text('#小幫手')]);
+  assert(JSON.stringify(lastMessage(w).contents).includes('"text":"#行程"'), 'Menu button missing');
+  w.post([w.text('#說明')]);
+  const json = JSON.stringify(lastMessage(w).contents);
+  assert(json.includes('#新增行程') && json.includes('#改行程') && json.includes('#刪行程'), 'Help lines missing');
+});
+
+test('events added without a LINE user ID have no creator, so other ID-less users cannot edit them', () => {
+  const w = calendarWorld();
+  const anonymous = (value) => { const e = w.text(value); delete e.source.userId; return e; };
+  w.post([anonymous('#新增行程 10/15 14:00 匿名會議')]);
+  const ev = w.cal.events[0];
+  assert(ev && ev.tags.lineId === 'C001' && !('lineCreator' in ev.tags), 'unknown must not be stored as creator: ' + JSON.stringify(ev && ev.tags));
+  w.post([anonymous('#改行程 C001 16:00')]);
+  assert(w.lastReply().includes('只有建立的人') && ev.start.getTime() === tpe('2026-10-15T14:00:00').getTime(), 'ID-less user must not edit');
+  ev.tags.lineCreator = 'unknown';
+  w.post([anonymous('#刪行程 C001')]);
+  assert(w.lastReply().includes('只有建立的人') && !ev.deleted, 'Legacy unknown creator must not match');
+});
+
+test('duplicate check ignores private events and never reveals them', () => {
+  const w = calendarWorld();
+  w.cal.add('看診', tpe('2026-10-15T00:00:00'), tpe('2026-10-16T00:00:00'), true, { visibility: 'PRIVATE' });
+  w.post([w.text('#新增行程 10/15 看診')]);
+  assert(w.cal.events.length === 2 && !w.lastReply().includes('沒有重複新增'), 'Private event must not count as duplicate');
+  assert(!w.cal.events[0].tags.lineId, 'Private event must not get an ID');
+  assert(w.lastReply().includes('C001') && w.cal.events[1].tags.lineId === 'C001', 'New event should be C001');
+});
+
+test('list, add and edit are limited to the window the ID lookup can scan', () => {
+  const w = calendarWorld();
+  w.post([w.text('#行程 2028/3/1')]);
+  assert(w.lastReply().includes('看不懂') && w.lastReply().includes('400'), 'Far-future list must be refused: ' + w.lastReply());
+  w.post([w.text('#新增行程 2028/3/1 遠期會議')]);
+  assert(w.cal.events.length === 0 && w.lastReply().includes('400'), 'Far-future add must be refused: ' + w.lastReply());
+  w.post([w.text('#新增行程 10/15 會議')]);
+  w.post([w.text('#改行程 C001 2028/3/1')]);
+  assert(w.lastReply().includes('400') && w.cal.events[0].start.getTime() === tpe('2026-10-15T00:00:00').getTime(), 'Far-future edit must be refused');
+});
+
+test('duplicate check and create run inside one lock', () => {
+  const w = calendarWorld();
+  let held = 0;
+  w.context.LockService = { getScriptLock: () => ({ waitLock() { held += 1; }, releaseLock() { held -= 1; } }) };
+  const create = w.cal.calendar.createEvent;
+  let createdWhileLocked = null;
+  w.cal.calendar.createEvent = (...args) => { createdWhileLocked = held > 0; return create(...args); };
+  w.post([w.text('#新增行程 10/15 14:00 會議')]);
+  assert(createdWhileLocked === true && held === 0, 'createEvent must run while the lock is held');
 });
 
 let passed = 0;
