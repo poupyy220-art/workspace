@@ -1400,6 +1400,26 @@ test('text add replaces pending picker instead of leaving a second draft', () =>
   assert(w.cal.events.length === 1 && w.cal.events[0].title === '文字新增', 'Text add left stale pending');
 });
 
+test('cards show the configured calendar name and every button label fits LINE (max 20 chars)', () => {
+  const w = calendarWorld();
+  w.properties.LINE_CALENDAR_NAME = 'Work';
+  w.post([w.text('#行事曆')]);
+  const menu = lastMessage(w);
+  let json = JSON.stringify(menu.contents);
+  assert(json.includes('Google「Work」行事曆') && !json.includes('「工作」行事曆'), 'Menu should show Work: ' + json);
+  const labels = findActions(menu.contents).map((a) => a.label).filter(Boolean);
+  assert(labels.every((l) => [...l].length <= 20), 'Label too long: ' + labels);
+  assert(labels.includes('指定時間') && labels.some((l) => l.startsWith('跨天')), 'Add buttons missing: ' + labels);
+  w.post([w.text('#新增行程 10/15 會議')]);
+  assert(JSON.stringify(lastMessage(w).contents).includes('已寫入 Google「Work」行事曆'), 'Done card should show Work');
+  w.post([w.text('#刪行程 C001')]);
+  assert(JSON.stringify(lastMessage(w).contents).includes('「Work」行事曆'), 'Delete card should show Work');
+  delete w.properties.LINE_CALENDAR_NAME;
+  w.post([w.text('#行程 10/15')]);
+  json = JSON.stringify(lastMessage(w).contents);
+  assert(json.includes('Google「工作」行事曆'), 'Default name should stay 工作');
+});
+
 let passed = 0;
 for (const item of tests) {
   try {
