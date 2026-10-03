@@ -1056,6 +1056,11 @@ function parseCalendarListRange_(arg, today) {
   return isInCalendarWindow_(range.start, range.end, today) ? range : null;
 }
 
+/** 卡片上顯示的行事曆名稱：跟 setupLineCalendar 找的名稱一致（LINE_CALENDAR_NAME，預設「工作」）。 */
+function calendarDisplayName_() {
+  return String(PropertiesService.getScriptProperties().getProperty('LINE_CALENDAR_NAME') || '工作').trim() || '工作';
+}
+
 function getLineCalendar_(event) {
   const id = PropertiesService.getScriptProperties().getProperty('LINE_CALENDAR_ID');
   const calendar = id ? CalendarApp.getCalendarById(id) : null;
@@ -1222,7 +1227,7 @@ function buildCalendarListCard_(views, range, label) {
         { type: 'text', text: '改：#改行程 C001 10/16　刪：#刪行程 C001\n🔁 重複行程請到 Google 日曆修改', size: 'xxs', color: '#5F6368', wrap: true, align: 'center' }
       ]
     }
-  }, { tone: 'b', icon: 'calendar', source: 'Google「工作」行事曆', state: { kind: 'info', text: `${views.length} 筆` } });
+  }, { tone: 'b', icon: 'calendar', source: `Google「${calendarDisplayName_()}」行事曆`, state: { kind: 'info', text: `${views.length} 筆` } });
 }
 
 function createCalendarEvent_(event, userId, rawText) {
@@ -1404,7 +1409,7 @@ function buildCalendarDeleteCard_(view) {
         { type: 'text', text: '不刪就不用理它；刪錯可在 Google 日曆垃圾桶 30 天內還原', size: 'xxs', color: '#5F6368', align: 'center' }
       ]
     }
-  }, { tone: 'c', icon: 'trash', source: '工作行事曆', state: { kind: 'ask', text: '等你確認' } });
+  }, { tone: 'c', icon: 'trash', source: `「${calendarDisplayName_()}」行事曆`, state: { kind: 'ask', text: '等你確認' } });
 }
 
 /** 在編輯器執行一次：找名為「工作」（或 LINE_CALENDAR_NAME）的行事曆，ID 存進 LINE_CALENDAR_ID；第一次執行會要求日曆授權。 */
@@ -1666,15 +1671,15 @@ function buildCalendarMenuCard_() {
         { type: 'text', text: '新增行程', size: 'sm', weight: 'bold', color: '#1449A3', margin: 'md' },
         row([
           calendarPicker_('primary', '全天', 'cal=add&mode=allday', 'date', today, minDay, maxDay),
-          calendarPicker_('primary', '指定時間', 'cal=add&mode=timed', 'datetime', today, minDay, maxDay),
-          calendarPicker_('primary', '跨天', 'cal=add&mode=range1', 'date', today, minDay, maxDay)
-        ])
+          calendarPicker_('primary', '指定時間', 'cal=add&mode=timed', 'datetime', today, minDay, maxDay)
+        ]),
+        calendarPicker_('primary', '跨天（先選開始日、再選結束日）', 'cal=add&mode=range1', 'date', today, minDay, maxDay)
       ]
     },
     footer: { type: 'box', layout: 'vertical', contents: [
       { type: 'text', text: '全天：選日期｜指定時間：選日期＋時間｜跨天：先選開始日、再選結束日；選完回一句名稱', size: 'xxs', color: '#5F6368', align: 'center' }
     ] }
-  }, { tone: 'b', icon: 'calendar', source: 'Google「工作」行事曆' });
+  }, { tone: 'b', icon: 'calendar', source: `Google「${calendarDisplayName_()}」行事曆` });
 }
 
 function buildCalendarRangeEndCard_(startDay, today, token) {
@@ -1692,7 +1697,7 @@ function buildCalendarRangeEndCard_(startDay, today, token) {
     footer: { type: 'box', layout: 'vertical', contents: [
       { type: 'text', text: `結束日要在開始日之後，最多 ${LINE_CAL_RANGE_MAX_DAYS} 天；選完回一句名稱`, size: 'xxs', color: '#5F6368', align: 'center' }
     ] }
-  }, { tone: 'b', icon: 'calRange', source: '工作行事曆', state: { kind: 'wait', text: '等你選結束日' }, back: false });
+  }, { tone: 'b', icon: 'calRange', source: `「${calendarDisplayName_()}」行事曆`, state: { kind: 'wait', text: '等你選結束日' }, back: false });
 }
 
 function buildCalendarDoneCard_(view) {
@@ -1710,7 +1715,7 @@ function buildCalendarDoneCard_(view) {
     type: 'bubble',
     header: { type: 'box', layout: 'vertical', contents: [
       { type: 'text', text: `已新增 ${view.id}`, weight: 'bold' },
-      { type: 'text', text: '已寫入 Google「工作」行事曆', size: 'xs' }
+      { type: 'text', text: `已寫入 Google「${calendarDisplayName_()}」行事曆`, size: 'xs' }
     ] },
     body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
       { type: 'text', text: view.title, size: 'md', weight: 'bold', wrap: true },
