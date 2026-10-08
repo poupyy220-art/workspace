@@ -81,7 +81,7 @@ async function inspectOne(file) {
       definedNamesExact: !wb._bomDefinedNamesXml || outputWorkbookXml.includes(wb._bomDefinedNamesXml),
       workbookXmlNotCorrupted: !outputWorkbookXml.includes('<calcPr:'),
       reportPosition: historyIndex >= 0 ? reportIndex === historyIndex - 1 : reportIndex === afterAll.length - 1,
-      reportStyle: !!report && report.autoFilter === 'A10:G10' && report.views[0]?.topLeftCell === 'A11' && ['A10','G10','A11','G11'].every(a => report.getCell(a).border?.top?.style === 'thin'),
+      reportStyle: !!report && report.autoFilter === 'A10:H10' && report.views[0]?.topLeftCell === 'A11' && ['A10','H10','A11','H11'].every(a => report.getCell(a).border?.top?.style === 'thin'),
       reportSeverityColors: !!report && Array.from({length: Math.max(0, report.rowCount - 10)}, (_, i) => i + 11).every(row => {
         const severity = String(report.getCell(row, 4).value || '').toUpperCase();
         const expected = severity === 'BLOCKER' ? 'FFC7CE' : severity === 'WARNING' ? 'FFF2CC' : 'DDEBF7';
