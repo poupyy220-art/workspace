@@ -380,6 +380,28 @@ test('Claude status entry: updates F and U status columns only, without pushing 
   assert(w.calls.pushes.length === pushesBefore && w.calls.replies.length === repliesBefore, 'Status change must not message LINE');
 });
 
+test('Claude pending check: returns only ids, statuses and supplement times, key required, no LINE', () => {
+  const w = createWorld();
+  w.properties.CLAUDE_REPLY_KEY = 'claude-key';
+  w.post([w.text('#回報 BOM 轉檔錯誤 機密描述')]);
+  w.post([w.text('#更新 PN_Project_Map 測試')]);
+  w.post([w.text('F001 補充說明內容')]);
+  const pushesBefore = w.calls.pushes.length;
+  const repliesBefore = w.calls.replies.length;
+  const call = (body) => JSON.parse(w.api.doPost({ parameter: {}, postData: { type: 'text/plain', contents: JSON.stringify({ events: [], claudePending: body }) } }));
+  assert(call({ key: 'wrong' }).error === 'unauthorized', 'Wrong key must be rejected');
+  const result = call({ key: 'claude-key' });
+  assert(result.ok && Array.isArray(result.items), `Pending result wrong: ${JSON.stringify(result)}`);
+  const f = result.items.find((item) => item.id === 'F001');
+  const u = result.items.find((item) => item.id === 'U001');
+  assert(f && f.status === '新回饋' && /^\d{4}-\d{2}-\d{2}T/.test(f.supplementAt), `F item wrong: ${JSON.stringify(f)}`);
+  assert(u && u.status === '新需求' && u.supplementAt === '', `U item wrong: ${JSON.stringify(u)}`);
+  result.items.forEach((item) => assert(Object.keys(item).sort().join() === 'id,status,supplementAt', 'Only id/status/supplementAt allowed'));
+  const raw = JSON.stringify(result);
+  assert(!raw.includes('機密描述') && !raw.includes('補充說明內容') && !raw.includes('PN_Project_Map'), 'Pending check must not expose report text');
+  assert(w.calls.pushes.length === pushesBefore && w.calls.replies.length === repliesBefore, 'Pending check must not message LINE');
+});
+
 test('LINE status command: only maintainers can change status; others are recorded as supplements', () => {
   const w = createWorld();
   w.properties.LINE_ADMIN_USER_IDS = 'Umaintainer';
