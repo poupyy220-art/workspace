@@ -105,6 +105,8 @@ function handleLineWebhook_(e, payload) {
   // Claude 改處理狀態：同一把 CLAUDE_REPLY_KEY 驗證，只改 G 欄，不發 LINE
   if (payload.claudeStatus) return json_(handleClaudeStatus_(payload.claudeStatus));
   if (payload.claudeLog) return json_(handleClaudeLog_(payload.claudeLog));
+  // 本機門鈴：只查有沒有新編號或新補充，不含描述、補充內容、群組或連結
+  if (payload.claudePending) return json_(handleClaudePending_(payload.claudePending));
 
   // 暗號不對就當作沒看到，不透露任何資訊
   const key = e && e.parameter ? String(e.parameter.k || '') : '';
@@ -682,6 +684,30 @@ function handleClaudeStatus_(request) {
   const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
   if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
   return setReportStatus_(request.id, request.status, request.project, request.summary);
+}
+
+/**
+ * 本機門鈴每分鐘呼叫：回傳 F／U 每列的編號、處理狀態、同事補充時間，讓本機比對 processed.json 決定要不要叫醒 Claude。
+ * payload：{ events: [], claudePending: { key } }；只讀，不寫 Sheet、不發 LINE。
+ */
+function handleClaudePending_(request) {
+  const expected = PropertiesService.getScriptProperties().getProperty('CLAUDE_REPLY_KEY');
+  if (!expected || String(request.key || '') !== expected) return { ok: false, error: 'unauthorized' };
+  const book = SpreadsheetApp.openById(requiredProperty_('SPREADSHEET_ID'));
+  const items = [];
+  [[FEEDBACK_SHEET, 'F'], [DATA_REQUEST_SHEET, 'U']].forEach(function (pair) {
+    const sheet = book.getSheetByName(pair[0]);
+    const lastRow = sheet ? sheet.getLastRow() : 0;
+    if (lastRow < 5) return;
+    const timeColumn = SUPPLEMENT_COLUMNS[pair[1]].time;
+    sheet.getRange(5, 1, lastRow - 4, timeColumn).getValues().forEach(function (row) {
+      const id = String(row[0] || '').trim();
+      if (!/^[FU]\d{3,}$/.test(id) || id.charAt(0) !== pair[1]) return;
+      const time = row[timeColumn - 1];
+      items.push({ id: id, status: String(row[6] || ''), supplementAt: time instanceof Date ? time.toISOString() : String(time || '') });
+    });
+  });
+  return { ok: true, items: items };
 }
 
 /** 改 BOM Feedback／Data Requests 的處理狀態（G 欄）；只接受該分頁下拉選單有的值。U 列可另帶 project 寫入「判定專案」欄（N 欄），F 列可另帶 summary 寫入「問題摘要」欄（T 欄），其他欄位不動。 */
