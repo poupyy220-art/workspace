@@ -143,6 +143,22 @@
     return ctx;
   }
 
+  // 依問題類型給白話處理建議（沿用 pn-bom-import 的建議方式，配合本模組的欄位與原因用語）
+  function adviceFor(issue) {
+    const reason = String(issue.reason || ''); const field = String(issue.field || '此欄位').replace(/\n/g, ' ').trim();
+    const where = issue.sheet && issue.excelRow && issue.excelRow !== '-' ? `「${issue.sheet}」頁第 ${issue.excelRow} 列` : '來源資料';
+    if (issue.severity === 'PASS') return '-';
+    if (field === '欄位辨識' || /表頭|欄位/.test(reason) && /辨識|找不到|重複/.test(reason)) return '可能是表頭辨識問題：請處理人員先核對該頁表頭文字與合併儲存格，不要直接要求 RD 重填資料。';
+    if (/公式儲存格/.test(reason)) return `系統已保留 ${where}「${field}」的公式未自動改值；請在 Excel 確認公式結果是否正確，必要時手動修改。`;
+    if (/長度/.test(reason) && /不合規符號|全型字/.test(reason)) return `請 RD 修改 ${where}「${field}」：移除不合規符號／全型字，並縮短至 30 字元內。`;
+    if (/長度/.test(reason)) return `請 RD 將 ${where}「${field}」縮短至 30 字元內；如何縮寫由 RD 確認，系統不代為刪改。`;
+    if (/不合規符號|全型字/.test(reason)) return `請 RD 檢查 ${where}「${field}」，移除或改正不接受的符號／全型字後重新檢查。`;
+    if (/Level|階層|跳階/.test(field + reason)) return `請 RD 核對 ${where}的 BOM 階層：第一筆須為 Level 1，向下不可一次跳超過一階。`;
+    if (field === '客戶料號') return `客戶料號為必填：請 RD 補上 ${where}的客戶料號（只提醒，不擋交 IT）。`;
+    if (field === '狀態' || /NEW|OLD/.test(reason)) return `請 RD 確認 ${where}應為 NEW 或 OLD，避免套用錯誤的檢查規則。`;
+    return `請 RD／處理人員核對 ${where}「${field}」與問題原因，修正後重新檢查。`;
+  }
+
   function createReport(workbook, issues) {
     const old = workbook.getWorksheet('【異常檢測報告】'); if (old) workbook.removeWorksheet(old.id);
     const ws = workbook.addWorksheet('【異常檢測報告】', { properties: { tabColor: { argb: '1F497D' } }, views: [{ state: 'frozen', ySplit: 10, showGridLines: true }] });
@@ -168,15 +184,20 @@
       cell.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFF' } };
       cell.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
     }
-    ws.addRow(['⚠ 原始 BOM 分頁格式會完整保留；原檔既有黃色／棕字不代表系統判定 NEW，請同時查看狀態欄與本報告。']); ws.mergeCells('A7:G7'); ws.getCell('A7').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: '9C6500' } }; ws.getCell('A7').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEB9C' } }; ws.getCell('A7').alignment = { vertical: 'center', wrapText: true };
+    ws.addRow(['⚠ 原始 BOM 分頁格式會完整保留；原檔既有黃色／棕字不代表系統判定 NEW，請同時查看狀態欄與本報告。']); ws.mergeCells('A7:H7'); ws.getCell('A7').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: '9C6500' } }; ws.getCell('A7').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEB9C' } }; ws.getCell('A7').alignment = { vertical: 'center', wrapText: true };
     ws.addRow(['🔍 BOM 結構與 NEW 料件卡關問題明細清單']); ws.getCell('A8').font = { name: 'Microsoft JhengHei', size: 12, bold: true, color: { argb: '1F497D' } };
-    ws.addRow([]); ws.addRow(['分頁名稱','Excel行號','欄位名稱','嚴重度','卡關原因','當前內容','修改後內容']);
-    const headerRow = ws.getRow(10); for (let col = 1; col <= 7; col += 1) { const cell = headerRow.getCell(col); cell.fill = clone(BLUE_FILL); cell.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFF' } }; cell.border = clone(THIN_BORDER); cell.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    if (issues.length) issues.forEach(issue => ws.addRow([issue.sheet, issue.excelRow, issue.field, issue.severity, issue.reason, issue.currentValue, issue.modifiedValue]));
-    else ws.addRow(['全表合規','-','-','PASS','無 BOM 階層跳階或 NEW 料件內容異常','-','-']);
+    // 第 9 列：本次摘要（第 10 列表頭位置不變）
+    const blockers = issues.filter(x => x.severity === 'BLOCKER').length, warnings = issues.filter(x => x.severity === 'WARNING').length;
+    const sheetsWithIssues = Array.from(new Set(issues.filter(x => x.severity === 'BLOCKER' || x.severity === 'WARNING').map(x => x.sheet))).filter(Boolean);
+    ws.addRow([`📊 本次摘要：BLOCKER ${blockers} 筆、WARNING ${warnings} 筆${sheetsWithIssues.length ? `；涉及頁籤：${sheetsWithIssues.join('、')}` : '；全表無卡關問題'}。處理方式見每列「建議處理方式」。`]);
+    ws.mergeCells('A9:H9'); ws.getCell('A9').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: blockers ? '9C0006' : '1F497D' } }; ws.getCell('A9').alignment = { vertical: 'center', wrapText: true };
+    ws.addRow(['分頁名稱','Excel行號','欄位名稱','嚴重度','卡關原因','當前內容','修改後內容','建議處理方式']);
+    const headerRow = ws.getRow(10); for (let col = 1; col <= 8; col += 1) { const cell = headerRow.getCell(col); cell.fill = clone(BLUE_FILL); cell.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFF' } }; cell.border = clone(THIN_BORDER); cell.alignment = { horizontal: 'center', vertical: 'middle' }; }
+    if (issues.length) issues.forEach(issue => ws.addRow([issue.sheet, issue.excelRow, issue.field, issue.severity, issue.reason, issue.currentValue, issue.modifiedValue, adviceFor(issue)]));
+    else ws.addRow(['全表合規','-','-','PASS','無 BOM 階層跳階或 NEW 料件內容異常','-','-','-']);
     for (let row = 11; row <= ws.rowCount; row += 1) {
       const severity = String(ws.getCell(row, 4).value || '').toUpperCase();
-      for (let col = 1; col <= 7; col += 1) {
+      for (let col = 1; col <= 8; col += 1) {
         const cell = ws.getCell(row, col);
         cell.font = Object.assign({ name: 'Microsoft JhengHei', size: 10 }, cell.font || {});
         cell.border = clone(THIN_BORDER);
@@ -189,8 +210,8 @@
         ws.getCell(row, col).font = Object.assign({}, ws.getCell(row, col).font, { color: { argb: fontColor }, bold: severity !== 'INFO' && severity !== 'PASS' });
       }
     }
-    ws.columns = [{ width: 32 },{ width: 12 },{ width: 28 },{ width: 12 },{ width: 52 },{ width: 44 },{ width: 30 }];
-    ws.autoFilter = { from: 'A10', to: 'G10' };
+    ws.columns = [{ width: 32 },{ width: 12 },{ width: 28 },{ width: 12 },{ width: 52 },{ width: 44 },{ width: 30 },{ width: 60 }];
+    ws.autoFilter = { from: 'A10', to: 'H10' };
 
     // 方便使用者完成轉檔後立即查看報告：若原檔含 History，將報告放在
     // History 的正前方；沒有 History 時維持新增於最後分頁。

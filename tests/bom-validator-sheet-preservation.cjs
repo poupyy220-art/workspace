@@ -31,7 +31,7 @@ if (!inputPath || !outputPath) throw new Error('Usage: node bom-validator-sheet-
     reportCreated: outputNames.includes('【異常檢測報告】'),
     reportGridLinesVisible: report.views[0]?.showGridLines !== false,
     legendBordersComplete: ['A3', 'F3', 'A4', 'F4', 'A5', 'F5'].every(address => report.getCell(address).border?.top?.style === 'thin'),
-    issueTableBordersComplete: ['A10', 'G10', 'A11', 'G11'].every(address => report.getCell(address).border?.top?.style === 'thin'),
+    issueTableBordersComplete: ['A10', 'H10', 'A11', 'H11'].every(address => report.getCell(address).border?.top?.style === 'thin'),
     issueSeverityColorPresent: ['FFC7CE', 'FFF2CC', 'DDEBF7'].includes(report.getCell('C11').fill?.fgColor?.argb) && !report.getCell('A11').fill?.fgColor?.argb
   };
   console.log(JSON.stringify({ assertions, loadedNames, outputNames, counts: { itemCount: result.itemCount, blockerCount: result.blockerCount, warningCount: result.warningCount } }, null, 2));
