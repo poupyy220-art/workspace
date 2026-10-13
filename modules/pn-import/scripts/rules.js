@@ -10,13 +10,15 @@ alias('料號','料号','PN','Part Number');alias('英文品名','英文品名(E
 const blank=v=>v===null||v===undefined||String(v).trim()===''||String(v).trim().toLowerCase()==='nan';
 const str=v=>String(v??'').trim();
 function header(v){const n=norm(v);if(/^([1-9]|10|11)$/.test(n))return '階層'+n;if(n==='level'||n==='itemlevel'||n==='階層')return 'Level';const withoutLengthNote=n.replace(/\d+字元(?:\(中\d+字=\d+字元\))?$/,'');return aliases[n]||aliases[withoutLengthNote]||null}
+// 除 NEW／OLD 外，少數公司範本會用「替代」標記既有替代料件列（功能上比照 OLD：只看料號／用量／主件底數／階層，其餘忽略）
+const GROUPED_STATUS_EXTRA=['替代'];
 function inferGroupedStatusColumn(sheet,index,map,dupes){
  if(map['新/舊料']!==undefined||index<1)return;
  const group=sheet.rows[index-1]||[],current=sheet.rows[index]||[],matches=[];
  for(let c=0;c<Math.max(group.length,current.length);c++){
-  if(!blank(current[c])||norm(group[c])!=='bomusageandpartinformation')continue;
-  const values=sheet.rows.slice(index+1).map(r=>str(r[c]).toUpperCase()).filter(Boolean);
-  if(values.length&&values.every(v=>v==='NEW'||v==='OLD'))matches.push(c);
+  if(header(current[c])||norm(group[c])!=='bomusageandpartinformation')continue;   // 表頭格內容若已是其他已知欄位名稱就跳過；有些範本在此格印死「OLD」等字樣而非留空
+  const values=sheet.rows.slice(index+1).map(r=>str(r[c])).filter(Boolean);
+  if(values.length&&values.every(v=>['NEW','OLD'].includes(v.toUpperCase())||GROUPED_STATUS_EXTRA.includes(v)))matches.push(c);
  }
  if(matches.length===1)map['新/舊料']=matches[0];
  else if(matches.length>1)dupes.push('新/舊料（群組表頭推定）');
@@ -118,9 +120,13 @@ function process(candidates,options){
    for(const k of ['分群碼','來源碼','採購類型','單位','特殊料件特性','來源特性','需包材工程師設計包材'])if(!blank(v[k]))set(k,R.convertCode(v[k]),'沿用既有代碼轉換');
    for(const k of ['規格','繁中品名','簡中品名'])if(!blank(v[k]))set(k,R.toTraditionalChinese(v[k]),'沿用既有繁體正規化');
    if(!blank(v['繁中品名']))fill('簡中品名',v['繁中品名']);if(!blank(v['英文品名']))fill('越南品名',v['英文品名']);
-   for(const k of ['英文品名','繁中品名','分群碼','來源碼','單位','機種別','產品分類','細項產品別','市場分類'])requireField(k);
+   for(const k of ['英文品名','繁中品名','分群碼','來源碼','單位','機種別'])requireField(k);
+   // 市場分類／產品分類／細項產品別：RD 常漏填，允許在介面直接輸入或選預設組合補上（審計進 changes，不是靜默補值）
+   const fillOf=field=>(options.fieldFills||[]).find(x=>x.sheet===source.sheet&&x.row===source.row&&x.field===field&&!blank(x.value));
+   const requireOrFill=k=>{if(!blank(v[k]))return;const f=fillOf(k);if(f)set(k,f.value,'RD 介面確認填寫'+(f.who?'：'+f.who:''));else add(loc,k,'請 RD 補齊明細')};
+   for(const k of ['產品分類','細項產品別','市場分類'])requireOrFill(k);
    const confirm=(options.specApprovals||[]).find(a=>a.sheet===source.sheet&&a.row===source.row&&str(a.note));
-   if(blank(v['規格'])){if(!confirm)add(loc,'規格','請 RD 補齊；如允許留白，需提供此列的 RD 確認紀錄');else changes.push({...loc,field:'規格',before:'',after:'',reason:'RD確認留白：'+confirm.note})}
+   if(blank(v['規格'])){const f=fillOf('規格');if(f)set('規格',f.value,'RD 介面確認填寫'+(f.who?'：'+f.who:''));else if(!confirm)add(loc,'規格','請 RD 補齊；如允許留白，需提供此列的 RD 確認紀錄');else changes.push({...loc,field:'規格',before:'',after:'',reason:'RD確認留白：'+confirm.note})}
    if(str(v['分群碼'])==='3'&&str(v['來源碼']).toUpperCase()==='P')requireField('採購類型');
    fill('特殊料件特性','GE');fill('來源特性','N');fill('有害物質管制規範','RS');fill('拋轉廠區','AVC,AVCDG,AVCCN,AVCWH');fill('需包材工程師設計包材','N');
    const pn=str(v['料號']),customerPn=/^S[A-Z0-9]{9}$/i.test(pn)?pn:'NA';

@@ -17,6 +17,29 @@
   for(const x of d?.issues||[]){if(x.field!=='規格'||!/RD 確認紀錄/.test(String(x.reason||''))||!x.sheet||!Number.isInteger(Number(x.row)))continue;const k=x.sheet+'|'+x.row;if(seen.has(k))continue;seen.add(k);out.push({sheet:String(x.sheet),row:Number(x.row)})}
   return out;
  }
+ // 預設組合：一次把產品分類／細項產品別／市場分類三欄一起填好；依使用者 2026-10-13 提供的對照表（字面順序：市場分類／產品分類／細項產品別）
+ // 若對照順序有誤，只需改這張表，不影響其他邏輯。
+ const FILLABLE_FIELDS=['產品分類','細項產品別','市場分類','規格'];
+ const CLASSIFY_PRESETS=[
+  {市場分類:'SY',產品分類:'LT',細項產品別:'DT'},
+  {市場分類:'SY',產品分類:'LT',細項產品別:'AIO'},
+  {市場分類:'SY',產品分類:'L6',細項產品別:'DT'},
+  {市場分類:'SY',產品分類:'L6',細項產品別:'AIO'},
+  {市場分類:'SY',產品分類:'CDU',細項產品別:'SER'},
+ ];
+ // 從明細找出可在介面直接補值的缺漏欄位（市場分類／產品分類／細項產品別／規格），依頁籤＋列號分組
+ function fillCandidates(detailsText){
+  let d;try{d=JSON.parse(detailsText||'')}catch{return []}
+  const byRow=new Map();
+  for(const x of d?.issues||[]){
+   if(!FILLABLE_FIELDS.includes(x.field)||!x.sheet||!Number.isInteger(Number(x.row)))continue;
+   if(x.field==='規格'&&!/RD 確認紀錄/.test(String(x.reason||'')))continue;
+   if(x.field!=='規格'&&!/請 RD 補齊明細/.test(String(x.reason||'')))continue;
+   const key=x.sheet+'|'+x.row;if(!byRow.has(key))byRow.set(key,{sheet:String(x.sheet),row:Number(x.row),fields:[]});
+   byRow.get(key).fields.push(x.field);
+  }
+  return [...byRow.values()];
+ }
  // 把勾選的料號併入既有確認紀錄（同頁同列以新的為準）；確認人與日期不可空白，既有內容格式錯誤時拒絕覆蓋
  function buildApprovals(existingText,picks,confirmer){
   const who=String(confirmer||'').trim();
@@ -27,7 +50,17 @@
   const key=x=>x.sheet+'|'+Number(x.row);const picked=new Set(picks.map(key));
   return JSON.stringify([...list.filter(x=>!picked.has(key(x))),...picks.map(p=>({sheet:p.sheet,row:p.row,note:who}))]);
  }
- g.PnBomUi={classify,specCandidates,buildApprovals};
+ // 把勾選列直接輸入／選好的欄位值併入既有介面補值紀錄（同頁同列同欄位以新的為準）；確認人與日期不可空白
+ function buildFieldFills(existingText,entries,confirmer){
+  const who=String(confirmer||'').trim();
+  if(!entries.length)throw Error('請至少勾選一筆並填入數值。');
+  if(!who)throw Error('請填寫確認人與日期，例如「王小明 10/07 確認可留白」。');
+  let list=[];const raw=String(existingText||'').trim();
+  if(raw){try{list=JSON.parse(raw)}catch{throw Error('進階欄位裡的介面補值格式有誤，請先修正或清空後再套用。')}if(!Array.isArray(list))throw Error('進階欄位裡的介面補值格式有誤，請先修正或清空後再套用。')}
+  const key=x=>x.sheet+'|'+Number(x.row)+'|'+x.field;const picked=new Set(entries.map(key));
+  return JSON.stringify([...list.filter(x=>!picked.has(key(x))),...entries.map(e=>({sheet:e.sheet,row:e.row,field:e.field,value:e.value,who}))]);
+ }
+ g.PnBomUi={classify,specCandidates,fillCandidates,buildApprovals,buildFieldFills,CLASSIFY_PRESETS};
  if(typeof document==='undefined')return;
  const $=id=>document.getElementById(id);
  const status=$('status'),shared=$('sharedStatus'),sheets=$('sheets'),reportBtn=$('report');
@@ -44,17 +77,52 @@
   for(const [li,card,done] of steps){li.classList.toggle('done',done);card.classList.toggle('done',done);const isCurrent=!done&&!current;li.classList.toggle('current',isCurrent);if(isCurrent)current=true}
   $('check').classList.toggle('primary',s1&&picked);
  }
- // 規格空白料號清單：檢查完成後依明細自動列出，打勾＋確認人即可寫入確認紀錄並重新檢查
- const panel=$('specPanel'),specList=$('specList'),specMsg=$('specMsg');
+ // 待確認／待補值清單：檢查完成後依明細自動列出。規格可勾「允許留白」或直接填值；
+ // 產品分類／細項產品別／市場分類可選預設組合或自行輸入；「全選」方便列數多時一次勾選。
+ const panel=$('specPanel'),specList=$('specList'),specMsg=$('specMsg'),selectAll=$('specSelectAll');
+ const PRESET_LABEL=p=>`市場分類＝${p.市場分類}／產品分類＝${p.產品分類}／細項產品別＝${p.細項產品別}`;
  function refreshSpec(){
-  const items=reportBtn.disabled?[]:specCandidates($('details').textContent);
-  specList.replaceChildren();specMsg.textContent='';panel.hidden=!items.length;
-  for(const it of items){const label=document.createElement('label'),box=document.createElement('input');box.type='checkbox';box.dataset.sheet=it.sheet;box.dataset.row=String(it.row);label.append(box,document.createTextNode(`「${it.sheet}」頁第 ${it.row} 列：規格空白`));specList.append(label)}
+  const items=reportBtn.disabled?[]:fillCandidates($('details').textContent);
+  specList.replaceChildren();specMsg.textContent='';panel.hidden=!items.length;selectAll.checked=false;
+  for(const it of items){
+   const row=document.createElement('div');row.className='spec-row';row.dataset.sheet=it.sheet;row.dataset.row=String(it.row);
+   const head=document.createElement('label');const rowBox=document.createElement('input');rowBox.type='checkbox';rowBox.className='spec-row-pick';
+   head.append(rowBox,document.createTextNode(`「${it.sheet}」頁第 ${it.row} 列：缺 ${it.fields.join('、')}`));row.append(head);
+   const classifyFields=it.fields.filter(f=>f!=='規格');
+   if(classifyFields.length){
+    const sel=document.createElement('select');sel.className='spec-preset';
+    sel.append(new Option('選預設組合…',''));CLASSIFY_PRESETS.forEach((p,i)=>sel.append(new Option(PRESET_LABEL(p),String(i))));
+    row.append(sel);
+    const inputs={};for(const f of ['市場分類','產品分類','細項產品別']){if(!classifyFields.includes(f))continue;const wrap=document.createElement('label');wrap.className='spec-field';const inp=document.createElement('input');inp.type='text';inp.dataset.field=f;inp.placeholder=f;wrap.append(document.createTextNode(f+'：'),inp);row.append(wrap);inputs[f]=inp}
+    sel.addEventListener('change',()=>{if(!sel.value)return;const p=CLASSIFY_PRESETS[Number(sel.value)];for(const f in inputs)inputs[f].value=p[f]});
+   }
+   if(it.fields.includes('規格')){
+    const blankLabel=document.createElement('label');blankLabel.className='spec-field';const blankBox=document.createElement('input');blankBox.type='checkbox';blankBox.className='spec-blank';blankLabel.append(blankBox,document.createTextNode('允許規格留白'));
+    const valWrap=document.createElement('label');valWrap.className='spec-field';const valInp=document.createElement('input');valInp.type='text';valInp.className='spec-value';valInp.dataset.field='規格';valInp.placeholder='或直接填規格值';valWrap.append(document.createTextNode('規格：'),valInp);
+    row.append(blankLabel,valWrap);
+   }
+   specList.append(row);
+  }
  }
+ selectAll.addEventListener('change',()=>{for(const b of specList.querySelectorAll('.spec-row-pick'))b.checked=selectAll.checked});
  $('specApply').addEventListener('click',()=>{
-  const picks=Array.from(specList.querySelectorAll('input:checked')).map(b=>({sheet:b.dataset.sheet,row:Number(b.dataset.row)}));
-  let value;try{value=buildApprovals($('approvals').value,picks,$('specConfirmer').value)}catch(e){specMsg.textContent=e.message;return}
-  const box=$('approvals');box.value=value;box.dispatchEvent(new Event('input',{bubbles:true}));$('check').click();
+  const fillEntries=[],blankPicks=[];
+  for(const row of specList.querySelectorAll('.spec-row')){
+   if(!row.querySelector('.spec-row-pick').checked)continue;
+   const sheet=row.dataset.sheet,rowNo=Number(row.dataset.row);
+   for(const inp of row.querySelectorAll('input[type=text][data-field]')){const v=inp.value.trim();if(v)fillEntries.push({sheet,row:rowNo,field:inp.dataset.field,value:v})}
+   const blankBox=row.querySelector('.spec-blank'),specValInp=row.querySelector('.spec-value');
+   if(blankBox&&blankBox.checked&&!(specValInp&&specValInp.value.trim()))blankPicks.push({sheet,row:rowNo});
+  }
+  if(!fillEntries.length&&!blankPicks.length){specMsg.textContent='請至少勾選一列，並填入數值或勾選「允許規格留白」。';return}
+  // 先驗證兩份紀錄，再一起寫入，避免一半成功一半失敗。
+  let fills,approvals;
+  try{
+   if(fillEntries.length)fills=buildFieldFills($('fieldFills').value,fillEntries,$('specConfirmer').value);
+   if(blankPicks.length)approvals=buildApprovals($('approvals').value,blankPicks,$('specConfirmer').value);
+  }catch(e){specMsg.textContent=e.message;return}
+  for(const [id,value] of [['fieldFills',fills],['approvals',approvals]])if(value!==undefined){const box=$(id);box.value=value;box.dispatchEvent(new Event('input',{bubbles:true}))}
+  $('check').click();
  });
  new MutationObserver(refreshSpec).observe($('details'),{childList:true,characterData:true,subtree:true});
  new MutationObserver(refreshSpec).observe(reportBtn,{attributes:true,attributeFilter:['disabled']});
