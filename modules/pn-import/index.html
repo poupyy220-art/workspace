@@ -1,0 +1,102 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'"><title>PN／BOM 申請整理</title>
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--ink:#1d2733;--sub:#5b6b7c;--line:#dfe5ec;--brand:#1f4e78;--brand-ink:#fff;--brand-soft:#e7eff7;--ok:#1e7a46;--ok-soft:#e5f4ea;--bad:#b42318;--bad-soft:#fdecea;--warn:#9a6700;--warn-soft:#fff6db;--focus:#2f7dd1;--shadow:0 1px 2px rgba(16,24,40,.06),0 2px 8px rgba(16,24,40,.05)}
+@media (prefers-color-scheme:dark){:root{--bg:#11161d;--card:#18202a;--ink:#e6ebf1;--sub:#9aa8b8;--line:#2a3442;--brand:#5b9bd5;--brand-ink:#0d1520;--brand-soft:#1d2b3b;--ok:#4cc98a;--ok-soft:#14301f;--bad:#f17066;--bad-soft:#3a1a18;--warn:#e3b341;--warn-soft:#352a10;--shadow:none}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.6 "Microsoft JhengHei UI","Microsoft JhengHei",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+header{background:var(--brand);color:var(--brand-ink)}
+header .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:18px 22px}
+header h1{margin:0;font-size:22px;letter-spacing:.5px}
+header p{margin:0;opacity:.85;font-size:13px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+main.wrap{padding-top:22px;padding-bottom:40px}
+.steps{display:flex;gap:8px;margin:0 0 18px;padding:0;list-style:none;flex-wrap:wrap}
+.steps li{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--sub);font-size:14px}
+.steps li b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--line);color:var(--ink);font-size:13px}
+.steps li.done{color:var(--ok);border-color:var(--ok)}.steps li.done b{background:var(--ok);color:#fff}
+.steps li.current{color:var(--brand);border-color:var(--brand)}.steps li.current b{background:var(--brand);color:var(--brand-ink)}
+section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:0 0 16px;box-shadow:var(--shadow)}
+.card h2{display:flex;align-items:center;gap:10px;margin:0 0 4px;font-size:18px}
+.card h2 .num{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--brand-soft);color:var(--brand);font-size:15px}
+.card.done h2 .num{background:var(--ok);color:#fff}
+.lead{margin:0 0 14px;color:var(--sub);font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.field{display:block;margin:0}
+.field>span{display:block;font-weight:600;margin-bottom:6px}
+.field small,.hint{display:block;color:var(--sub);font-size:13px;margin-top:4px}
+input[type=file],select,input[type=number],textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:100%}
+input[type=file]{padding:6px}
+input[type=file]::file-selector-button{font:inherit;margin-right:10px;padding:6px 12px;border:0;border-radius:6px;background:var(--brand-soft);color:var(--brand);cursor:pointer}
+input[type=number]{width:150px}
+textarea{min-height:84px;font-family:Consolas,"Cascadia Mono",monospace;font-size:13px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.folder{border:1px dashed var(--line);border-radius:10px;padding:14px;background:var(--bg)}
+.folder legend{font-weight:600;padding:0 6px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:14px;background:var(--warn-soft);color:var(--warn);margin:0 0 10px}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+button{font:inherit;padding:9px 16px;margin:10px 8px 0 0;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+button.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+button.primary:hover:not(:disabled){filter:brightness(1.08);color:var(--brand-ink)}
+button.small{padding:5px 10px;font-size:13px;margin-top:6px}
+button:disabled{opacity:.45;cursor:not-allowed}
+#sheets{display:grid;gap:8px;margin:4px 0 14px}
+#sheets:empty::before{content:"按上方「辨識料件明細」後，候選明細頁會列在這裡。";color:var(--sub);font-size:14px}
+#sheets label{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:var(--bg)}
+#sheets label:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
+#sheets input[type=checkbox]{margin-top:5px;width:18px;height:18px;accent-color:var(--brand)}
+#sheets label{flex-wrap:wrap}
+#sheets input.sheet-range{flex:1 1 260px;min-width:220px;margin-left:auto;font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+#rangeHint code{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.range{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+details{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
+details summary{cursor:pointer;font-weight:600}
+#status{margin:0 0 6px;padding:14px 16px;border-radius:10px;border-left:6px solid var(--line);background:var(--bg);font-size:15px}
+#status.ok{border-color:var(--ok);background:var(--ok-soft)}
+#status.blocked{border-color:var(--bad);background:var(--bad-soft)}
+#status.warn{border-color:var(--warn);background:var(--warn-soft)}
+.actions{display:flex;flex-wrap:wrap;align-items:center}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:360px;overflow:auto}
+.spec{margin:14px 0 4px;padding:14px 16px;border:1px solid var(--bad);border-radius:10px;background:var(--bad-soft)}
+.spec h3{margin:0 0 4px;font-size:16px}
+.spec input[type=text]{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:420px}
+#specList{display:grid;gap:6px;margin:8px 0 12px}
+#specList label{display:flex;gap:10px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
+#specList input{width:18px;height:18px;accent-color:var(--brand)}
+#specMsg:empty{display:none}
+#specMsg{color:var(--bad);font-weight:600}
+footer{color:var(--sub);font-size:13px;text-align:center;padding:0 22px 30px}
+@media (max-width:560px){header .wrap,.wrap{padding-left:16px;padding-right:16px}section.card{padding:16px}}
+</style></head><body>
+<header><div class="wrap"><h1>PN／BOM 申請整理</h1><p>RD 申請檔只在這台電腦的瀏覽器處理，不上傳、不送件；原檔不會被修改。公司範本以存取碼從雲端取得。</p></div></header>
+<main class="wrap">
+<ol class="steps" aria-label="進度"><li id="step1"><b>1</b>選檔與類型</li><li id="step2"><b>2</b>勾選明細並檢查</li><li id="step3"><b>3</b>下載結果</li></ol>
+
+<section class="card" id="card1"><h2><span class="num">1</span>選擇檔案與申請類型</h2><p class="lead">選 RD 申請檔與申請類型；公司範本與代碼表輸入存取碼後從雲端取得。</p>
+<div class="grid">
+<label class="field"><span>RD 申請檔</span><input id="source" type="file" accept=".xlsx"><small>每次另選；建議用「原檔名_修改」副本。</small></label>
+<label class="field"><span>申請類型</span><select id="mode"><option value="">請選擇</option><option value="bom">BOM 組裝申請</option><option value="standalone">各別單獨料號申請</option></select><small>選錯會造成階層判斷錯誤（例如「第一筆必須 Level 1」）。</small></label>
+</div>
+<fieldset class="folder" style="margin-top:14px"><legend>公司範本與代碼表</legend><p id="sharedStatus" class="pill">尚未取得公司範本。</p>
+<div class="grid"><label class="field"><span>存取碼</span><input id="accessCode" type="password" autocomplete="off" spellcheck="false" placeholder="向維護者索取的存取碼"><small>只用來向雲端取得公司匯入範本與代碼表；RD 申請檔不會送出。</small></label>
+<label class="field" style="align-self:end"><span><input id="rememberCode" type="checkbox" checked style="width:auto;margin-right:6px">在這台電腦記住存取碼</span><small>共用電腦請取消勾選。</small></label></div>
+<div style="margin-top:10px"><button id="sharedFolder" type="button" class="primary">取得公司範本</button><button id="forgetSharedFolder" type="button">忘記存取碼</button></div>
+<details><summary>備用：手動選擇範本與代碼表</summary><div class="grid" style="margin-top:10px"><label class="field"><span>公司匯入範本（Bom Import）</span><input id="template" type="file" accept=".xlsx"></label><label class="field"><span>代碼表</span><input id="codes" type="file" accept=".xlsx"></label></div><small class="hint">已取得雲端公司範本時，會優先使用雲端版本。</small></details></fieldset>
+<button id="inspect" class="primary">辨識料件明細</button></section>
+
+<section class="card" id="card2"><h2><span class="num">2</span>確認本次明細並檢查</h2><p class="lead">多張候選不預選，請勾選本次申請的明細頁。</p>
+<div id="sheets"></div>
+<p id="rangeHint" class="hint">每張勾選的頁右邊可填「這次的列」：表裡只有這次要申請的料 → <b>空著就好</b>。RD 把以前的舊資料也留在表裡 → 填這次資料的列號（看 Excel 最左邊），例如 <code>35-40</code>；舊資料夾在中間就分段填，例如 <code>10-15, 21-25</code>。每張頁各自填、互不影響；BOM 組裝時每一段都要從 Level 1 開始。</p>
+<button id="check" class="primary">檢查並準備匯入資料</button></section>
+
+<section class="card" id="card3"><h2><span class="num">3</span>檢查結果與下載</h2>
+<p id="status" role="status">等待選擇檔案。</p>
+<div id="specPanel" class="spec" hidden><h3>規格空白的料號</h3><p class="hint">以下料號因為「規格」空白被擋住。若 RD 已確認這顆料的規格可以空白，勾選後填上確認人與日期，再按「套用並重新檢查」；沒確認的請 RD 補上規格。</p><div id="specList"></div><label class="field"><span>確認人與日期</span><input id="specConfirmer" type="text" placeholder="例如：王小明 10/07 確認可留白" autocomplete="off"></label><p id="specMsg" class="hint" role="alert"></p><button id="specApply" type="button" class="primary">套用並重新檢查</button></div>
+<div class="actions"><button id="export" class="primary" disabled>下載匯入草稿</button><button id="excelReport" disabled>下載異常檢查與補值報表</button><button id="report" disabled>下載原始 JSON 紀錄</button></div>
+<small class="hint">有阻擋問題時匯入草稿不能下載；請看異常檢查報表的「問題摘要」與「異常報表」。報表前三頁是檢查結果；檢查通過時第四頁「匯入草稿」是對照用副本（匯入公司系統請用單獨下載的草稿）；後面保留原始分頁，問題格只加 Excel 備註，不改原有格式。</small>
+<details><summary>查看本機檢查明細</summary><pre id="details"></pre></details>
+<details><summary>進階：已套用的規格確認紀錄（可直接編輯）</summary><p class="hint">上方打勾套用後會自動寫在這裡，一般不需手動修改。格式為每筆一組｛頁籤名稱、列號、確認說明｝。</p><textarea id="approvals" aria-label="規格留白確認紀錄（進階）" placeholder='[{"sheet":"頁籤名稱","row":10,"note":"確認人 日期 確認內容"}]'></textarea><button id="approvalsExample" type="button" class="small">插入範例格式</button></details></section>
+</main>
+<footer>此工具不操作公司系統、不寄信；通過檢查不代表公司系統一定接受，匯入前請在 Excel 抽查。</footer>
+<script src="vendor/jszip.min.js?v=20261012-1"></script><script src="vendor/cn2t.js?v=20261012-1"></script><script src="vendor/bom-rules.js?v=20261012-1"></script><script src="scripts/rules.js?v=20261012-1"></script><script src="scripts/xlsx-io.js?v=20261012-1"></script><script src="scripts/check-report.js?v=20261012-1"></script><script src="scripts/remote-store.js?v=20261012-1"></script><script src="scripts/app.js?v=20261012-1"></script><script src="scripts/ui.js?v=20261012-1"></script></body></html>
