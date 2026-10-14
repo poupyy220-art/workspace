@@ -1442,6 +1442,36 @@ test('cards show the configured calendar name and every button label fits LINE (
   assert(json.includes('Google「工作」行事曆'), 'Default name should stay 工作');
 });
 
+test('update date command stays inside the allowed group boundary', () => {
+  const w=createWorld(); w.post([w.text('#資料更新日','Ualice',OTHER_GROUP)]);
+  assert(w.calls.replies.length===0,'No reply outside whitelist');
+});
+test('update date command reports missing configuration without creating a request', () => {
+  const w=createWorld(); w.post([w.text('#資料更新日')]);
+  assert(w.lastReply().includes('尚未設定')); assert(!w.dataRow(5).length);
+});
+test('update date command reads only the configured source and returns Taiwan date', () => {
+  const w=createWorld(); w.properties.PN_DATABASE_READ_URL='https://script.google.com/macros/s/fake/exec';
+  const original=w.context.UrlFetchApp.fetch; let reads=0;
+  w.context.UrlFetchApp.fetch=(url,options)=>{
+    if(url.startsWith(w.properties.PN_DATABASE_READ_URL)){
+      assert(url.endsWith('?sheet=PN_Project_Map')); assert(options.method==='get'); reads++;
+      return {getResponseCode:()=>200,getContentText:()=>JSON.stringify([['更新日'],['2026-09-30T16:00:00Z']])};
+    } return original(url,options);
+  };
+  w.post([w.text('#資料更新日')]);
+  assert(reads===1);assert(w.lastReply().includes('2026-10-01'));assert(w.calls.pushes.length===0 && !w.dataRow(5).length);
+});
+test('update date failure never claims a successful read or exposes source errors', () => {
+  const w=createWorld(); w.properties.PN_DATABASE_READ_URL='https://script.google.com/macros/s/fake/exec';
+  const original=w.context.UrlFetchApp.fetch;
+  w.context.UrlFetchApp.fetch=(url,options)=>{if(url.startsWith(w.properties.PN_DATABASE_READ_URL))throw Error('PRIVATE_SOURCE_DETAIL');return original(url,options);};
+  w.post([w.text('#資料更新日')]);assert(w.lastReply().includes('讀取失敗'));assert(!w.lastReply().includes('PRIVATE_SOURCE_DETAIL'));
+});
+test('helper menu exposes update date query', () => {
+  const w=createWorld();w.post([w.text('#小幫手')]);assert(JSON.stringify(w.calls.replies).includes('#資料更新日'));
+});
+
 let passed = 0;
 for (const item of tests) {
   try {
