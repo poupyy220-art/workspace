@@ -96,6 +96,9 @@ function run() {
   const cols = captured['!cols'];
   check(cols && cols.length === 17, 'export: !cols set');
   check(cols[3].hidden && cols[4].hidden && cols[6].hidden && !cols[5].hidden, 'export: D/E/G hidden only');
+  // v2.17.6 修正：沒給寬度的欄 Excel 會當寬度 0、整份看起來空白，每欄都要有寬度
+  check(cols.every((c) => c.wch >= 8 && c.wch <= 50), 'export: every column has a visible width');
+  check(cols[0].wch === 22 && cols[4].wch === 8, 'export: width follows longest text (min 8)');
   check(captured['L1'].s.font.color.rgb === 'FF0000' && captured['L1'].s.font.bold, 'export: header red keeps bold');
   check(captured['M2'].s.font.color.rgb === 'FF0000', 'export: data red');
   check(!(captured['K2'].s.font && captured['K2'].s.font.color), 'export: other columns not red');
@@ -103,6 +106,23 @@ function run() {
   // 一般格式匯出不加 !cols
   ectx.exportExcelWithStyles(all.data, 'x', all.styles, 'xlsx');
   check(!captured['!cols'], 'export all: no hidden columns');
+  check(captured['A1'].s.fill.fgColor.rgb === 'D9D9D9' && !captured['A2'].s.font, 'export: no personal flag keeps original format');
+
+  // v2.17.7 看報表類套用維護者偏好：Comic Sans MS 10、表頭淺黃 #FFFFCC（比照 8️⃣ 待貼入）
+  ectx.exportExcelWithStyles(cd.data, 'x', cd.styles, 'xlsx', { ...cd.layout, personal: true });
+  const f = (ref) => captured[ref].s.font;
+  check(captured['A1'].s.fill.fgColor.rgb === 'FFFFCC' && f('A1').bold && f('A1').name === 'Comic Sans MS' && f('A1').sz === 10, 'personal: header light yellow, bold Comic Sans 10');
+  check(f('A2').name === 'Comic Sans MS' && f('A2').sz === 10 && !f('A2').bold, 'personal: data Comic Sans 10');
+  check(f('M2').name === 'Comic Sans MS' && f('M2').color.rgb === 'FF0000', 'personal: red columns keep Comic Sans');
+  check(captured['!cols'][3].hidden, 'personal: hidden columns kept');
+  ectx.exportExcelWithStyles(all.data, 'x', { 2: 'yellow' }, 'xlsx', { personal: true });
+  check(captured['A3'].s.fill.fgColor.rgb === 'FFFACD' && f('A3').name === 'Comic Sans MS', 'personal: row highlight kept with Comic Sans');
+
+  // 看報表類有套、上傳公司系統用的檔沒套
+  ['合併報表_ChgDate', '合併報表 (篩選 + 隱藏)', 'EC 檔案合併 (丟入 PIM_MTM)', 'EC_Note_2026'].forEach((n) =>
+    check(new RegExp('exportExcelWithStyles\\([^\\n]*"' + n.replace(/[()+]/g, '\\$&') + '"[^\\n]*PERSONAL_REPORT').test(pn), 'personal applied: ' + n));
+  ['ODMBOM_', 'Download_Part', 'MTMNumber', 'SingleBOM_FactSheet上傳清單'].forEach((n) =>
+    check(!new RegExp('exportExcelWithStyles\\([^\\n]*' + n + '[^\\n]*PERSONAL_REPORT').test(pn), 'upload file untouched: ' + n));
 
   // 介面有 ChgDate 選項
   check(/<select id="report5Mode"[\s\S]*?value="chgdate"/.test(pn), 'ui: ChgDate option');
