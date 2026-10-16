@@ -106,8 +106,22 @@ function process(candidates,options){
  const rangesFor=name=>shared||options.ranges?.[name]||[];
  const hasRanges=!!shared||candidates.some(c=>rangesFor(c.name).length);
  const issues=[],warnings=[],changes=[],output=[];const R=g.BomRules;
- const add=(loc,field,reason)=>issues.push({...loc,field,reason,severity:'BLOCKER'});
- const warn=(loc,field,reason)=>warnings.push({...loc,field,reason,severity:'WARNING'});
+ const tagH=(loc,reason)=>loc.hParent?'H 父件：'+reason:reason;
+ const add=(loc,field,reason)=>issues.push({...loc,field,reason:tagH(loc,reason),severity:'BLOCKER'});
+ const warn=(loc,field,reason)=>warnings.push({...loc,field,reason:tagH(loc,reason),severity:'WARNING'});
+ // 單階料自動加 H 父件（2026-10-16 使用者確認；只適用各別單獨料號、須使用者每次確認才勾選）：
+ // 每顆料上面加一顆 H 父件（階層1、NEW），原料號掛下一階（階層2、用量／底數照 RD）。H 料號：公司編碼第一個「-」換「H」，聯想 S 十碼最後加「H」。
+ const hParent=!!options.hParent;
+ if(hParent&&options.mode!=='standalone')add({sheet:'',row:0},'H 父件','H 父件只適用「各別單獨料號申請」，BOM 組裝申請不可勾選');
+ const toHpn=pn=>{const p=str(pn).toUpperCase();if(/^S[A-Z0-9]{9}$/.test(p))return p+'H';const m=p.match(/^(\d{2,3})-([A-Z0-9]?\d{6}-\d{2}[A-Z])$/);return m?m[1]+'H'+m[2]:''};
+ const H_COPY=['英文品名','繁中品名','簡中品名','越南品名','機種別','產品分類','細項產品別','市場分類','終端客戶','有害物質管制規範','特殊料件特性','來源特性','需包材工程師設計包材','客戶料號'];
+ const levelKeyList=['Level',...Array.from({length:11},(_,i)=>'階層'+(i+1))];
+ const expandH=rows=>rows.flatMap(s=>{
+  const raw=s.value,h={};for(const k of H_COPY)if(!blank(raw[k]))h[k]=raw[k];
+  Object.assign(h,{'新/舊料':'NEW','料號':toHpn(raw['料號']),'規格':'H PN','分群碼':'1','來源碼':'M','Basic Name':'LINEFIT','品牌':'NA','用量':1,'主件底數':1,'單位':'PCS','拋轉廠區':'AVC,AVCDG,AVCCN,AVCWH','階層1':1});
+  const child={...raw};for(const k of levelKeyList)delete child[k];child['階層2']=2;
+  return [{...s,value:h,hParent:true},{...s,value:child}];
+ });
  for(const sheet of candidates){
   const base={sheet:sheet.name,row:sheet.headerRow};sheet.problems.forEach(p=>add(base,'欄位辨識',p));if(sheet.problems.length)continue;
   for(const required of ['新/舊料','料號','用量','主件底數'])if(sheet.map[required]===undefined)add(base,required,'找不到來源欄位，請確認欄位名稱');
@@ -116,14 +130,21 @@ function process(candidates,options){
   for(const block of blocks){
   if(block.a&&!block.rows.length&&!shared){add({sheet:sheet.name,row:block.a},'本次資料列範圍',`第 ${block.a}～${block.b} 列沒有可處理的料件資料，請確認列號`);continue}
   let previous=0,first=true;
-  for(const source of block.rows){
-   const v={...source.value},loc={sheet:source.sheet,row:source.row};
+  for(const source of (hParent&&options.mode==='standalone'?expandH(block.rows):block.rows)){
+   const v={...source.value},loc={sheet:source.sheet,row:source.row,...(source.hParent?{hParent:true}:{})};
+   if(source.hParent&&blank(v['料號']))add(loc,'料號','無法由原料號推算 H 料號（只支援公司編碼 XXX-XXXXXX-XXX 與聯想 S 開頭 10 碼），請確認');
    const set=(k,val,why)=>{if(String(v[k]??'')!==String(val)){changes.push({...loc,field:k,before:v[k]??'',after:val,reason:why});v[k]=val}};
    const fill=(k,val,why='空白套用已確認規則')=>{if(blank(v[k]))set(k,val,why)};
    const requireField=k=>{if(blank(v[k]))add(loc,k,'請 RD 補齊明細')};
    const originalStatus=str(v['新/舊料']).toUpperCase();
-   fill('新/舊料',R.isStandardPn(v['料號'])?'OLD':'NEW','依既有料號格式判定；未查公司系統');
-   if((originalStatus==='NEW'||originalStatus==='OLD')&&str(v['新/舊料']).toUpperCase()!==originalStatus)add(loc,'新/舊料','既有 NEW／OLD 不得被重新判定');
+   // 有完整料號一律 OLD（2026-10-16 使用者確認：有的 RD 會把既有料號維持寫 NEW）；空白或只有前綴（以「-」結尾，如 330-）才是 NEW；H PN（330H01005-01A、SM31W58442H 型）維持原 NEW 規則；「替代」原樣保留
+   // 勾選 H 父件時照 RD 填的 NEW／OLD（新料可能已先配好料號，2026-10-16 使用者選擇）。H PN 實際為 H 後 6 碼（332H002906-01A），舊範例 5 碼一併接受
+   const pnText=str(v['料號']),isHpn=/^\d{3}H\d{5,6}-\d{2}[A-Z]$/i.test(pnText)||/^S[A-Z0-9]{9}H$/i.test(pnText),hasPn=!hParent&&pnText!==''&&!pnText.endsWith('-')&&!isHpn;
+   if(hasPn&&str(v['新/舊料'])!=='替代')set('新/舊料','OLD','有完整料號一律 OLD（只確認用量與主件底數）');
+   else {
+    fill('新/舊料',R.isStandardPn(v['料號'])?'OLD':'NEW','依既有料號格式判定；未查公司系統');
+    if((originalStatus==='NEW'||originalStatus==='OLD')&&str(v['新/舊料']).toUpperCase()!==originalStatus)add(loc,'新/舊料','既有 NEW／OLD 不得被重新判定');
+   }
    const state=R.classifyNewStatus(v['新/舊料']);
    if(state===null){add(loc,'新/舊料','NEW/OLD 語意衝突，請 RD 確認');output.push({...source,value:v});continue}
    const levelEntries=Object.keys(v).filter(k=>k==='Level'||/^階層\d+$/.test(k)).filter(k=>!blank(v[k]));
@@ -161,7 +182,7 @@ function process(candidates,options){
    fill('客戶料號',customerPn);
    if(str(v['規格'])==='H PN')set('Basic Name','LINEFIT','規格字面 H PN 的既有規則');else fill('Basic Name','NA');
    const basic=str(v['Basic Name']);if(['DPK','SPK','EDPK'].includes(basic)){if(blank(v['軟體Key類型']))fill('軟體Key類型',basic);else if(str(v['軟體Key類型'])!==basic)add(loc,'軟體Key類型','與 Basic Name 不一致；保留原值，請 RD 確認')}
-   if(blank(v['品牌'])){if(/^(231|232)/.test(pn)||/^\d{3}H\d{5}-\d{2}[A-Z]$/i.test(pn)||/^S[A-Z0-9]{9}H$/i.test(pn))fill('品牌','NA');else if(str(v['分群碼'])==='1'&&str(v['來源碼']).toUpperCase()==='M')requireField('品牌')}
+   if(blank(v['品牌'])){if(/^(231|232)/.test(pn)||/^\d{3}H\d{5,6}-\d{2}[A-Z]$/i.test(pn)||/^S[A-Z0-9]{9}H$/i.test(pn))fill('品牌','NA');else if(str(v['分群碼'])==='1'&&str(v['來源碼']).toUpperCase()==='M')requireField('品牌')}
    if(['L044','L062'].includes(str(v['機種別']).toUpperCase()))set('終端客戶','0076','使用者確認：L044/L062 終端客戶固定0076');else if(!blank(v['機種別']))fill('終端客戶',({L063:'0299'})[str(v['機種別']).toUpperCase()]||'0062');
    for(const k of Object.keys(CODE_TABLES)){
     if(blank(v[k]))continue;const table=options.codes?.[CODE_TABLES[k]];

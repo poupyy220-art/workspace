@@ -82,6 +82,7 @@ footer{color:var(--sub);font-size:13px;text-align:center;padding:0 22px 30px}
 <div class="grid">
 <label class="field"><span>RD 申請檔</span><input id="source" type="file" accept=".xlsx"><small>每次另選；建議用「原檔名_修改」副本。</small></label>
 <label class="field"><span>申請類型</span><select id="mode"><option value="">請選擇</option><option value="bom">BOM 組裝申請</option><option value="standalone">各別單獨料號申請</option></select><small>選錯會造成階層判斷錯誤（例如「第一筆必須 Level 1」）。</small></label>
+<label class="field"><span>H 父件</span><span><input type="checkbox" id="hParent"> 單階料自動加 H 父件</span><small>只適用「各別單獨料號申請」。每顆料上面加一顆 H 料號（階層 1、NEW），原料號掛在下一階；預設不勾，每次確認後才勾。</small></label>
 </div>
 <fieldset class="folder" style="margin-top:14px"><legend>公司範本與代碼表</legend><p id="sharedStatus" class="pill">尚未取得公司範本。</p>
 <div class="grid"><label class="field"><span>存取碼</span><input id="accessCode" type="password" autocomplete="off" spellcheck="false" placeholder="向維護者索取的存取碼"><small>只用來向雲端取得公司匯入範本與代碼表；RD 申請檔不會送出。</small></label>
@@ -107,4 +108,4 @@ footer{color:var(--sub);font-size:13px;text-align:center;padding:0 22px 30px}
 <details><summary>進階：已套用的介面補值（可直接編輯）</summary><p class="hint">上方選預設組合或手動輸入套用後會自動寫在這裡，一般不需手動修改。格式為每筆一組｛頁籤名稱、列號、欄位、值、確認人｝。</p><textarea id="fieldFills" aria-label="介面補值紀錄（進階）" placeholder='[{"sheet":"頁籤名稱","row":10,"field":"市場分類","value":"SY","who":"確認人 日期"}]'></textarea></details></section>
 </main>
 <footer>此工具不操作公司系統、不寄信；通過檢查不代表公司系統一定接受，匯入前請在 Excel 抽查。</footer>
-<script src="vendor/jszip.min.js?v=20261012-1"></script><script src="vendor/cn2t.js?v=20261012-1"></script><script src="vendor/bom-rules.js?v=20261012-1"></script><script src="scripts/rules.js?v=20261013-1"></script><script src="scripts/xlsx-io.js?v=20261012-1"></script><script src="scripts/check-report.js?v=20261012-1"></script><script src="scripts/remote-store.js?v=20261012-1"></script><script src="scripts/app.js?v=20261013-1"></script><script src="scripts/ui.js?v=20261013-1"></script></body></html>
+<script src="vendor/jszip.min.js?v=20261012-1"></script><script src="vendor/cn2t.js?v=20261012-1"></script><script src="vendor/bom-rules.js?v=20261012-1"></script><script src="scripts/rules.js?v=20261016-1"></script><script src="scripts/xlsx-io.js?v=20261012-1"></script><script src="scripts/check-report.js?v=20261012-1"></script><script src="scripts/remote-store.js?v=20261012-1"></script><script src="scripts/app.js?v=20261016-1"></script><script src="scripts/ui.js?v=20261013-1"></script></body></html>
