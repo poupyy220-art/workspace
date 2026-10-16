@@ -10,13 +10,15 @@ alias('料號','料号','PN','Part Number');alias('英文品名','英文品名(E
 const blank=v=>v===null||v===undefined||String(v).trim()===''||String(v).trim().toLowerCase()==='nan';
 const str=v=>String(v??'').trim();
 function header(v){const n=norm(v);if(/^([1-9]|10|11)$/.test(n))return '階層'+n;if(n==='level'||n==='itemlevel'||n==='階層')return 'Level';const withoutLengthNote=n.replace(/\d+字元(?:\(中\d+字=\d+字元\))?$/,'');return aliases[n]||aliases[withoutLengthNote]||null}
+// 除 NEW／OLD 外，少數公司範本會用「替代」標記既有替代料件列（功能上比照 OLD：只看料號／用量／主件底數／階層，其餘忽略）
+const GROUPED_STATUS_EXTRA=['替代'];
 function inferGroupedStatusColumn(sheet,index,map,dupes){
  if(map['新/舊料']!==undefined||index<1)return;
  const group=sheet.rows[index-1]||[],current=sheet.rows[index]||[],matches=[];
  for(let c=0;c<Math.max(group.length,current.length);c++){
-  if(!blank(current[c])||norm(group[c])!=='bomusageandpartinformation')continue;
-  const values=sheet.rows.slice(index+1).map(r=>str(r[c]).toUpperCase()).filter(Boolean);
-  if(values.length&&values.every(v=>v==='NEW'||v==='OLD'))matches.push(c);
+  if(header(current[c])||norm(group[c])!=='bomusageandpartinformation')continue;   // 表頭格內容若已是其他已知欄位名稱就跳過；有些範本在此格印死「OLD」等字樣而非留空
+  const values=sheet.rows.slice(index+1).map(r=>str(r[c])).filter(Boolean);
+  if(values.length&&values.every(v=>['NEW','OLD'].includes(v.toUpperCase())||GROUPED_STATUS_EXTRA.includes(v)))matches.push(c);
  }
  if(matches.length===1)map['新/舊料']=matches[0];
  else if(matches.length>1)dupes.push('新/舊料（群組表頭推定）');
@@ -53,6 +55,32 @@ function classCodeSuggestion(v,table){
  for(const [sourcePattern,descPattern] of specific)if(sourcePattern.test(text)){const hit=entries.find(([,desc])=>descPattern.test(str(desc)));if(hit)return{code:hit[0],description:str(hit[1])}}
  const generic=entries.find(([,desc])=>/^(標籤|标签|LABEL)$/i.test(str(desc)));
  return generic?{code:generic[0],description:str(generic[1])}:null;
+}
+// 分類／終端客戶代碼正規化（2026-10-15）：只接受代碼表上唯一明確的對應——純代碼、完整名稱、名稱括號前或括號內文字、代碼接名稱；
+// 查無、多重對應、代碼與名稱不符一律回報，不猜。終端客戶代碼是數字時補成 4 碼文字（0076），保留前導零。
+const CODE_TABLES={'產品分類':'產品分類','細項產品別':'細項產品別','市場分類':'市場分類','終端客戶':'終端客戶清單'};
+const codeKey=v=>toHalfWidth(str(v)).replace(/[\s（）()\-_:：、.．]/g,'').toUpperCase();
+function codeIndex(field,table){
+ const pad=field==='終端客戶',canon=c=>{const s=toHalfWidth(str(c)).toUpperCase();return pad&&/^\d+$/.test(s)?s.padStart(4,'0'):s};
+ return Object.entries(table).map(([code,desc])=>{const name=toHalfWidth(str(desc)),aliases=new Set([name]);const m=name.match(/^([^(]+)\((.+)\)$/);if(m){aliases.add(m[1]);aliases.add(m[2])}return{code:canon(code),name:str(desc),aliases:[...aliases].map(codeKey).filter(Boolean)}});
+}
+function normalizeCode(field,raw,table){
+ const idx=codeIndex(field,table),key=codeKey(raw),pad=field==='終端客戶';
+ const asCode=pad&&/^\d+$/.test(key)?key.padStart(4,'0'):key;
+ let hits=idx.filter(e=>codeKey(e.code)===asCode);
+ if(hits.length===1)return{code:hits[0].code,how:'代碼'};
+ if(hits.length>1)return{error:'代碼表中此代碼重複，無法唯一對應'};
+ hits=idx.filter(e=>e.aliases.includes(key));
+ if(hits.length===1)return{code:hits[0].code,how:'名稱「'+hits[0].name+'」'};
+ if(hits.length>1)return{error:'名稱對應到多個代碼（'+hits.map(e=>e.code).join('／')+'），請 RD 指定代碼'};
+ // 代碼接名稱，例如「0062聯想」「SY 系統產品」：前段代碼與後段名稱須指向同一筆
+ const m=pad?key.match(/^(\d+)(.+)$/):null,prefixed=idx.filter(e=>m?codeKey(e.code)===m[1].padStart(4,'0'):key.startsWith(codeKey(e.code))&&key.length>codeKey(e.code).length);
+ const matched=prefixed.filter(e=>e.aliases.includes(m?m[2]:key.slice(codeKey(e.code).length)));
+ if(matched.length===1)return{code:matched[0].code,how:'代碼附名稱'};
+ if(matched.length>1)return{error:'代碼附名稱對應到多個代碼，請 RD 指定代碼'};
+ if(m&&prefixed.length)return{error:'代碼 '+prefixed[0].code+' 在代碼表的名稱是「'+prefixed[0].name+'」，與填寫內容不符，請 RD 確認'};
+ const near=idx.filter(e=>e.aliases.some(a=>a.startsWith(key))).slice(0,3);
+ return{error:'代碼表查無此代碼或名稱'+(near.length?'（相近：'+near.map(e=>e.code+' '+e.name).join('、')+'，請 RD 確認，不自動套用）':'')};
 }
 // 「這次的列」文字解析：空白＝整頁；可多段，例如「10-15, 21-25」「35」「35～40」。回傳排序後的 [起, 迄] 陣列，格式錯誤或重疊時拋出白話錯誤。
 // 全型英數與符號（U+FF01～FF5E）、全型空白（U+3000）換成對應半型；其他字元（含中文、中文標點）不動
@@ -118,9 +146,13 @@ function process(candidates,options){
    for(const k of ['分群碼','來源碼','採購類型','單位','特殊料件特性','來源特性','需包材工程師設計包材'])if(!blank(v[k]))set(k,R.convertCode(v[k]),'沿用既有代碼轉換');
    for(const k of ['規格','繁中品名','簡中品名'])if(!blank(v[k]))set(k,R.toTraditionalChinese(v[k]),'沿用既有繁體正規化');
    if(!blank(v['繁中品名']))fill('簡中品名',v['繁中品名']);if(!blank(v['英文品名']))fill('越南品名',v['英文品名']);
-   for(const k of ['英文品名','繁中品名','分群碼','來源碼','單位','機種別','產品分類','細項產品別','市場分類'])requireField(k);
+   for(const k of ['英文品名','繁中品名','分群碼','來源碼','單位','機種別'])requireField(k);
+   // 市場分類／產品分類／細項產品別：RD 常漏填，允許在介面直接輸入或選預設組合補上（審計進 changes，不是靜默補值）
+   const fillOf=field=>(options.fieldFills||[]).find(x=>x.sheet===source.sheet&&x.row===source.row&&x.field===field&&!blank(x.value));
+   const requireOrFill=k=>{if(!blank(v[k]))return;const f=fillOf(k);if(f)set(k,f.value,'RD 介面確認填寫'+(f.who?'：'+f.who:''));else add(loc,k,'請 RD 補齊明細')};
+   for(const k of ['產品分類','細項產品別','市場分類'])requireOrFill(k);
    const confirm=(options.specApprovals||[]).find(a=>a.sheet===source.sheet&&a.row===source.row&&str(a.note));
-   if(blank(v['規格'])){if(!confirm)add(loc,'規格','請 RD 補齊；如允許留白，需提供此列的 RD 確認紀錄');else changes.push({...loc,field:'規格',before:'',after:'',reason:'RD確認留白：'+confirm.note})}
+   if(blank(v['規格'])){const f=fillOf('規格');if(f)set('規格',f.value,'RD 介面確認填寫'+(f.who?'：'+f.who:''));else if(!confirm)add(loc,'規格','請 RD 補齊；如允許留白，需提供此列的 RD 確認紀錄');else changes.push({...loc,field:'規格',before:'',after:'',reason:'RD確認留白：'+confirm.note})}
    if(str(v['分群碼'])==='3'&&str(v['來源碼']).toUpperCase()==='P')requireField('採購類型');
    fill('特殊料件特性','GE');fill('來源特性','N');fill('有害物質管制規範','RS');fill('拋轉廠區','AVC,AVCDG,AVCCN,AVCWH');fill('需包材工程師設計包材','N');
    const pn=str(v['料號']),customerPn=/^S[A-Z0-9]{9}$/i.test(pn)?pn:'NA';
@@ -130,7 +162,16 @@ function process(candidates,options){
    if(str(v['規格'])==='H PN')set('Basic Name','LINEFIT','規格字面 H PN 的既有規則');else fill('Basic Name','NA');
    const basic=str(v['Basic Name']);if(['DPK','SPK','EDPK'].includes(basic)){if(blank(v['軟體Key類型']))fill('軟體Key類型',basic);else if(str(v['軟體Key類型'])!==basic)add(loc,'軟體Key類型','與 Basic Name 不一致；保留原值，請 RD 確認')}
    if(blank(v['品牌'])){if(/^(231|232)/.test(pn)||/^\d{3}H\d{5}-\d{2}[A-Z]$/i.test(pn)||/^S[A-Z0-9]{9}H$/i.test(pn))fill('品牌','NA');else if(str(v['分群碼'])==='1'&&str(v['來源碼']).toUpperCase()==='M')requireField('品牌')}
-   if(!blank(v['機種別']))fill('終端客戶',({L044:'0076',L062:'0076',L063:'0299'})[str(v['機種別']).toUpperCase()]||'0062');
+   if(['L044','L062'].includes(str(v['機種別']).toUpperCase()))set('終端客戶','0076','使用者確認：L044/L062 終端客戶固定0076');else if(!blank(v['機種別']))fill('終端客戶',({L063:'0299'})[str(v['機種別']).toUpperCase()]||'0062');
+   for(const k of Object.keys(CODE_TABLES)){
+    if(blank(v[k]))continue;const table=options.codes?.[CODE_TABLES[k]];
+    if(!table){warn(loc,k,'代碼表未含「'+CODE_TABLES[k]+'」，此欄未核對代碼，請人工確認');continue}
+    let r=normalizeCode(k,v[k],table);
+    // 原值查無／歧義時，使用者可在介面對該列明確填正確代碼更正（保留原值與確認人）；更正值同樣要過代碼表
+    const f=r.error&&fillOf(k);
+    if(f){const fixed=normalizeCode(k,f.value,table);if(!fixed.error){set(k,fixed.code,'原值「'+str(v[k])+'」'+r.error.replace(/（.*$/,'')+'；RD 介面確認更正'+(f.who?'：'+f.who:''));continue}r=fixed}
+    if(r.error)add(loc,k,'「'+str(f?f.value:v[k])+'」'+r.error);else set(k,r.code,'依代碼表轉成代碼（來源為'+r.how+'）');
+   }
    const requiredDefaults=['特殊料件特性','來源特性','有害物質管制規範','拋轉廠區','需包材工程師設計包材','客戶料號','Basic Name'];
    if(!blank(v['機種別']))requiredDefaults.push('終端客戶');
    for(const k of requiredDefaults)if(blank(v[k]))add(loc,k,'NEW 預設補值驗證失敗，停止放行');
@@ -158,5 +199,6 @@ function locate(problems,candidates){
  }
  return problems;
 }
-g.PnBom={toHalfWidth,fields,header,identify,codesFrom,process,blank,classCodeSuggestion,locate,parseRanges,inRanges};
+g.PnBom={toHalfWidth,normalizeCode,fields,header,identify,codesFrom,process,blank,classCodeSuggestion,locate,parseRanges,inRanges};
 })(typeof window==='undefined'?globalThis:window);
+

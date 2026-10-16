@@ -26,4 +26,25 @@ assert.equal(JSON.stringify(merged),JSON.stringify([{sheet:'A',row:3,note:'舊'}
 assert.throws(()=>ui.buildApprovals('',[],'王小明'),/至少勾選/);
 assert.throws(()=>ui.buildApprovals('',[{sheet:'A',row:1}],'  '),/確認人與日期/);
 assert.throws(()=>ui.buildApprovals('不是JSON',[{sheet:'A',row:1}],'王小明'),/格式有誤/);
-console.log('PASS '+(cases.length+7)+'：介面狀態顏色依文字判斷、規格空白清單與確認紀錄組合');
+// 介面補值清單：市場分類／產品分類／細項產品別／規格缺漏依頁籤＋列號分組；只認「請 RD 補齊明細」或規格的留白確認提示
+const fillDetails=JSON.stringify({issues:[
+ {sheet:'虛構BOM',row:3,field:'產品分類',reason:'請 RD 補齊明細'},
+ {sheet:'虛構BOM',row:3,field:'細項產品別',reason:'請 RD 補齊明細'},
+ {sheet:'虛構BOM',row:3,field:'市場分類',reason:'請 RD 補齊明細'},
+ {sheet:'虛構BOM',row:5,field:'規格',reason:'請 RD 補齊；如允許留白，需提供此列的 RD 確認紀錄'},
+ {sheet:'虛構BOM',row:7,field:'規格',reason:'長度超過30，請 RD 修改'},
+ {sheet:'虛構BOM',row:9,field:'市場分類',reason:'NEW 預設補值驗證失敗，停止放行'},
+]});
+assert.equal(JSON.stringify(ui.fillCandidates(fillDetails)),JSON.stringify([
+ {sheet:'虛構BOM',row:3,fields:['產品分類','細項產品別','市場分類']},
+ {sheet:'虛構BOM',row:5,fields:['規格']},
+]));
+assert.equal(ui.fillCandidates('').length,0);
+assert.equal(ui.CLASSIFY_PRESETS.length,5);assert.equal(JSON.stringify(ui.CLASSIFY_PRESETS[4]),JSON.stringify({市場分類:'SY',產品分類:'CDU',細項產品別:'SER'}));
+// 介面補值紀錄組合：同頁同列同欄位以新的為準、必填檢查、既有格式錯誤不覆蓋
+const mergedFills=JSON.parse(ui.buildFieldFills('[{"sheet":"A","row":1,"field":"規格","value":"舊","who":"舊"}]',[{sheet:'A',row:1,field:'規格',value:'12V'},{sheet:'B',row:2,field:'市場分類',value:'SY'}],'王小明 10/13'));
+assert.equal(JSON.stringify(mergedFills),JSON.stringify([{sheet:'A',row:1,field:'規格',value:'12V',who:'王小明 10/13'},{sheet:'B',row:2,field:'市場分類',value:'SY',who:'王小明 10/13'}]));
+assert.throws(()=>ui.buildFieldFills('',[],'王小明'),/至少勾選/);
+assert.throws(()=>ui.buildFieldFills('',[{sheet:'A',row:1,field:'規格',value:'X'}],' '),/確認人與日期/);
+assert.throws(()=>ui.buildFieldFills('不是JSON',[{sheet:'A',row:1,field:'規格',value:'X'}],'王小明'),/格式有誤/);
+console.log('PASS '+(cases.length+7+8)+'：介面狀態顏色依文字判斷、規格空白清單與確認紀錄組合、介面補值清單與紀錄組合');

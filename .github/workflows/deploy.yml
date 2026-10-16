@@ -9,6 +9,7 @@ on:
       - 'index.html'
       - 'modules/bom-validator/**'
       - 'modules/attendance-tool/**'
+      - 'modules/pn-import/**'
       - 'wrangler.jsonc'
 
 jobs:
@@ -37,6 +38,14 @@ jobs:
           cp modules/bom-validator/vendor/opencc-js/cn2t.js preview-dist/modules/bom-validator/vendor/opencc-js/cn2t.js
           cp modules/bom-validator/vendor/opencc-js/LICENSE preview-dist/modules/bom-validator/vendor/opencc-js/LICENSE
           cp modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md preview-dist/modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md
+          mkdir -p preview-dist/modules/pn-import/scripts preview-dist/modules/pn-import/vendor
+          cp modules/pn-import/index.html preview-dist/modules/pn-import/index.html
+          for file in app.js check-report.js remote-store.js rules.js ui.js xlsx-io.js; do
+            cp "modules/pn-import/scripts/$file" "preview-dist/modules/pn-import/scripts/$file"
+          done
+          for file in bom-rules.js cn2t.js jszip.min.js JSZip-LICENSE OpenCC-LICENSE; do
+            cp "modules/pn-import/vendor/$file" "preview-dist/modules/pn-import/vendor/$file"
+          done
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v4

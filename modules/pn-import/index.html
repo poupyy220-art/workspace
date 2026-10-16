@@ -61,9 +61,14 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:360px;
 .spec{margin:14px 0 4px;padding:14px 16px;border:1px solid var(--bad);border-radius:10px;background:var(--bad-soft)}
 .spec h3{margin:0 0 4px;font-size:16px}
 .spec input[type=text]{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:420px}
-#specList{display:grid;gap:6px;margin:8px 0 12px}
+#specList{display:grid;gap:8px;margin:8px 0 12px}
 #specList label{display:flex;gap:10px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
-#specList input{width:18px;height:18px;accent-color:var(--brand)}
+#specList input[type=checkbox]{width:18px;height:18px;accent-color:var(--brand)}
+.spec-row{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.spec-row>label:first-child{flex:1 0 100%;cursor:pointer}
+.spec-row select.spec-preset{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.spec-row label.spec-field{display:flex;align-items:center;gap:6px;cursor:pointer}
+.spec-row label.spec-field input[type=text]{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:120px}
 #specMsg:empty{display:none}
 #specMsg{color:var(--bad);font-weight:600}
 footer{color:var(--sub);font-size:13px;text-align:center;padding:0 22px 30px}
@@ -92,11 +97,14 @@ footer{color:var(--sub);font-size:13px;text-align:center;padding:0 22px 30px}
 
 <section class="card" id="card3"><h2><span class="num">3</span>檢查結果與下載</h2>
 <p id="status" role="status">等待選擇檔案。</p>
-<div id="specPanel" class="spec" hidden><h3>規格空白的料號</h3><p class="hint">以下料號因為「規格」空白被擋住。若 RD 已確認這顆料的規格可以空白，勾選後填上確認人與日期，再按「套用並重新檢查」；沒確認的請 RD 補上規格。</p><div id="specList"></div><label class="field"><span>確認人與日期</span><input id="specConfirmer" type="text" placeholder="例如：王小明 10/07 確認可留白" autocomplete="off"></label><p id="specMsg" class="hint" role="alert"></p><button id="specApply" type="button" class="primary">套用並重新檢查</button></div>
+<div id="specPanel" class="spec" hidden><h3>待確認／待補值的欄位</h3><p class="hint">以下列缺少欄位而被擋住。「規格」可勾選「允許留白」或直接填值；「產品分類／細項產品別／市場分類」可選預設組合或自行輸入。按「全選」可一次勾選全部，填完按「套用並重新檢查」。確認人與日期必填，會記在自動補值紀錄裡。</p>
+<label class="field" style="margin-bottom:8px"><span><input id="specSelectAll" type="checkbox" style="width:auto;margin-right:6px">全選以下列</span></label>
+<div id="specList"></div><label class="field"><span>確認人與日期</span><input id="specConfirmer" type="text" placeholder="例如：王小明 10/07 確認可留白" autocomplete="off"></label><p id="specMsg" class="hint" role="alert"></p><button id="specApply" type="button" class="primary">套用並重新檢查</button></div>
 <div class="actions"><button id="export" class="primary" disabled>下載匯入草稿</button><button id="excelReport" disabled>下載異常檢查與補值報表</button><button id="report" disabled>下載原始 JSON 紀錄</button></div>
 <small class="hint">有阻擋問題時匯入草稿不能下載；請看異常檢查報表的「問題摘要」與「異常報表」。報表前三頁是檢查結果；檢查通過時第四頁「匯入草稿」是對照用副本（匯入公司系統請用單獨下載的草稿）；後面保留原始分頁，問題格只加 Excel 備註，不改原有格式。</small>
 <details><summary>查看本機檢查明細</summary><pre id="details"></pre></details>
-<details><summary>進階：已套用的規格確認紀錄（可直接編輯）</summary><p class="hint">上方打勾套用後會自動寫在這裡，一般不需手動修改。格式為每筆一組｛頁籤名稱、列號、確認說明｝。</p><textarea id="approvals" aria-label="規格留白確認紀錄（進階）" placeholder='[{"sheet":"頁籤名稱","row":10,"note":"確認人 日期 確認內容"}]'></textarea><button id="approvalsExample" type="button" class="small">插入範例格式</button></details></section>
+<details><summary>進階：已套用的規格確認紀錄（可直接編輯）</summary><p class="hint">上方打勾套用後會自動寫在這裡，一般不需手動修改。格式為每筆一組｛頁籤名稱、列號、確認說明｝。</p><textarea id="approvals" aria-label="規格留白確認紀錄（進階）" placeholder='[{"sheet":"頁籤名稱","row":10,"note":"確認人 日期 確認內容"}]'></textarea><button id="approvalsExample" type="button" class="small">插入範例格式</button></details>
+<details><summary>進階：已套用的介面補值（可直接編輯）</summary><p class="hint">上方選預設組合或手動輸入套用後會自動寫在這裡，一般不需手動修改。格式為每筆一組｛頁籤名稱、列號、欄位、值、確認人｝。</p><textarea id="fieldFills" aria-label="介面補值紀錄（進階）" placeholder='[{"sheet":"頁籤名稱","row":10,"field":"市場分類","value":"SY","who":"確認人 日期"}]'></textarea></details></section>
 </main>
 <footer>此工具不操作公司系統、不寄信；通過檢查不代表公司系統一定接受，匯入前請在 Excel 抽查。</footer>
-<script src="vendor/jszip.min.js?v=20261012-1"></script><script src="vendor/cn2t.js?v=20261012-1"></script><script src="vendor/bom-rules.js?v=20261012-1"></script><script src="scripts/rules.js?v=20261012-1"></script><script src="scripts/xlsx-io.js?v=20261012-1"></script><script src="scripts/check-report.js?v=20261012-1"></script><script src="scripts/remote-store.js?v=20261012-1"></script><script src="scripts/app.js?v=20261012-1"></script><script src="scripts/ui.js?v=20261012-1"></script></body></html>
+<script src="vendor/jszip.min.js?v=20261012-1"></script><script src="vendor/cn2t.js?v=20261012-1"></script><script src="vendor/bom-rules.js?v=20261012-1"></script><script src="scripts/rules.js?v=20261013-1"></script><script src="scripts/xlsx-io.js?v=20261012-1"></script><script src="scripts/check-report.js?v=20261012-1"></script><script src="scripts/remote-store.js?v=20261012-1"></script><script src="scripts/app.js?v=20261013-1"></script><script src="scripts/ui.js?v=20261013-1"></script></body></html>
