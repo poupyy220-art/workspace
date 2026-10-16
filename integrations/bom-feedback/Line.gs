@@ -166,6 +166,10 @@ function handleLineText_(event, groupId, userId, rawText) {
     }
   }
 
+  if (/^[#＃]\s*資料更新日\s*$/.test(text)) {
+    showPnMapUpdateDate_(event);
+    return;
+  }
   if (LINE_REPORT_PREFIX.test(text)) {
     createLineReport_(event, groupId, userId, text.replace(LINE_REPORT_PREFIX, ''));
     return;
@@ -2205,6 +2209,7 @@ function buildHelperMenuCard_(openCount, isAdmin) {
       toyTile_('link', 'g', '常用網站', '', '#網站')
     ])
   ];
+  rows.push(toyRow_([toyTile_('data', 'g', '資料更新日', 'PN_Project_Map', '#資料更新日')]));
   if (isAdmin) {
     rows.push({ type: 'separator', margin: 'md' });
     rows.push({ type: 'text', text: '🔒 只有維護者看得到', size: 'xs', color: '#5F6368', margin: 'sm' });
@@ -2422,4 +2427,54 @@ function lineApi_(url, body) {
   const ok = response.getResponseCode() === 200;
   if (!ok) console.error(`LINE API ${response.getResponseCode()}: ${response.getContentText()}`);
   return ok;
+}
+
+// PN_MAP_DATE_BEGIN: identical browser / LINE date rules
+function pnMapDateSummary(rows) {
+  if (!Array.isArray(rows) || !Array.isArray(rows[0]) || !rows.every(Array.isArray)) throw new Error('invalid table');
+  var cols = rows[0].reduce(function(a,h,i){ if (String(h).trim() === '更新日') a.push(i); return a; }, []);
+  var result = { latest: '', missing: 0, invalid: 0, fieldMissing: cols.length !== 1 };
+  if (result.fieldMissing) return result;
+  rows.slice(1).forEach(function(row) {
+    if (!row.some(function(v){return v !== '' && v != null;})) return;
+    var v = row[cols[0]], day = '';
+    if (v == null || String(v).trim() === '') {result.missing++; return;}
+    var text = String(v).trim();
+    var m = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (m) {
+      var d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+      if (d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2]-1 && d.getUTCDate() === +m[3]) day = d.toISOString().slice(0,10);
+    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(text)) {
+      var stamp = Date.parse(text);
+      var prefix = text.slice(0,10), calendar = new Date(prefix + 'T00:00:00Z');
+      if (Number.isFinite(stamp) && Number.isFinite(calendar.getTime()) && calendar.toISOString().slice(0,10) === prefix) day = new Date(stamp + 8*60*60*1000).toISOString().slice(0,10);
+    }
+    if (!day) result.invalid++; else if(day > result.latest) result.latest = day;
+  });
+  return result;
+}
+function pnMapDateLabel(summary) {
+  if (summary.fieldMissing) return '資料最後更新日：待確認（更新日欄缺漏或重複）';
+  return '資料最後更新日：' + (summary.latest || '尚無有效紀錄') + '（台灣日期；依更新日欄最大值）' +
+    (summary.missing || summary.invalid ? '；空白 ' + summary.missing + ' 筆、無法辨識 ' + summary.invalid + ' 筆，需確認' : '');
+}
+// PN_MAP_DATE_END
+
+// Read-only query. Configure the SAME source endpoint as the website GAS_URL.
+function showPnMapUpdateDate_(event) {
+  const endpoint = String(PropertiesService.getScriptProperties().getProperty('PN_DATABASE_READ_URL') || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint)) {
+    lineReply_(event.replyToken, 'PN_Project_Map 更新日查詢尚未設定，請維護者設定資料來源。');
+    return;
+  }
+  let message;
+  try {
+    const response = UrlFetchApp.fetch(endpoint + '?sheet=PN_Project_Map', {method:'get', muteHttpExceptions:true});
+    if (response.getResponseCode() !== 200) throw new Error('source unavailable');
+    const summary = pnMapDateSummary(JSON.parse(response.getContentText()));
+    message = '📋 PN_Project_Map\n' + pnMapDateLabel(summary) + '\n本次成功讀取：' + Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy/MM/dd HH:mm:ss') + '（台灣時間）\n此日期來自各列更新日，不代表整份試算表的所有修改時間。';
+  } catch (_) {
+    message = 'PN_Project_Map 讀取失敗，目前無法確認更新日，請稍後再試。';
+  }
+  lineReply_(event.replyToken, message);
 }
