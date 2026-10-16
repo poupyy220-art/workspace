@@ -96,6 +96,9 @@ function run() {
   const cols = captured['!cols'];
   check(cols && cols.length === 17, 'export: !cols set');
   check(cols[3].hidden && cols[4].hidden && cols[6].hidden && !cols[5].hidden, 'export: D/E/G hidden only');
+  // v2.17.6 修正：沒給寬度的欄 Excel 會當寬度 0、整份看起來空白，每欄都要有寬度
+  check(cols.every((c) => c.wch >= 8 && c.wch <= 50), 'export: every column has a visible width');
+  check(cols[0].wch === 22 && cols[4].wch === 8, 'export: width follows longest text (min 8)');
   check(captured['L1'].s.font.color.rgb === 'FF0000' && captured['L1'].s.font.bold, 'export: header red keeps bold');
   check(captured['M2'].s.font.color.rgb === 'FF0000', 'export: data red');
   check(!(captured['K2'].s.font && captured['K2'].s.font.color), 'export: other columns not red');
