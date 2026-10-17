@@ -40,7 +40,7 @@ assert.equal(JSON.stringify(ui.fillCandidates(fillDetails)),JSON.stringify([
  {sheet:'虛構BOM',row:5,fields:['規格']},
 ]));
 assert.equal(ui.fillCandidates('').length,0);
-assert.equal(ui.CLASSIFY_PRESETS.length,5);assert.equal(JSON.stringify(ui.CLASSIFY_PRESETS[4]),JSON.stringify({市場分類:'SY',產品分類:'CDU',細項產品別:'SER'}));
+assert.equal(ui.CLASSIFY_PRESETS.length,5);assert.equal(JSON.stringify(ui.CLASSIFY_PRESETS[4]),JSON.stringify({產品分類:'SY',細項產品別:'CDU',市場分類:'SER'}));
 // 介面補值紀錄組合：同頁同列同欄位以新的為準、必填檢查、既有格式錯誤不覆蓋
 const mergedFills=JSON.parse(ui.buildFieldFills('[{"sheet":"A","row":1,"field":"規格","value":"舊","who":"舊"}]',[{sheet:'A',row:1,field:'規格',value:'12V'},{sheet:'B',row:2,field:'市場分類',value:'SY'}],'王小明 10/13'));
 assert.equal(JSON.stringify(mergedFills),JSON.stringify([{sheet:'A',row:1,field:'規格',value:'12V',who:'王小明 10/13'},{sheet:'B',row:2,field:'市場分類',value:'SY',who:'王小明 10/13'}]));

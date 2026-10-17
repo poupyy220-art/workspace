@@ -17,15 +17,15 @@
   for(const x of d?.issues||[]){if(x.field!=='規格'||!/RD 確認紀錄/.test(String(x.reason||''))||!x.sheet||!Number.isInteger(Number(x.row)))continue;const k=x.sheet+'|'+x.row;if(seen.has(k))continue;seen.add(k);out.push({sheet:String(x.sheet),row:Number(x.row)})}
   return out;
  }
- // 預設組合：一次把產品分類／細項產品別／市場分類三欄一起填好；依使用者 2026-10-13 提供的對照表（字面順序：市場分類／產品分類／細項產品別）
- // 若對照順序有誤，只需改這張表，不影響其他邏輯。
+ // 預設組合：一次把產品分類／細項產品別／市場分類三欄一起填好；2026-10-16 使用者確認照代碼表放
+ // （代碼表：SY＝產品分類；LT／L6／CDU＝細項產品別；DT／AIO／SER＝市場分類）。10/13 版誤放成市場／產品／細項，套用即被代碼核對擋下。
  const FILLABLE_FIELDS=['產品分類','細項產品別','市場分類','規格'];
  const CLASSIFY_PRESETS=[
-  {市場分類:'SY',產品分類:'LT',細項產品別:'DT'},
-  {市場分類:'SY',產品分類:'LT',細項產品別:'AIO'},
-  {市場分類:'SY',產品分類:'L6',細項產品別:'DT'},
-  {市場分類:'SY',產品分類:'L6',細項產品別:'AIO'},
-  {市場分類:'SY',產品分類:'CDU',細項產品別:'SER'},
+  {產品分類:'SY',細項產品別:'LT',市場分類:'DT'},
+  {產品分類:'SY',細項產品別:'LT',市場分類:'AIO'},
+  {產品分類:'SY',細項產品別:'L6',市場分類:'DT'},
+  {產品分類:'SY',細項產品別:'L6',市場分類:'AIO'},
+  {產品分類:'SY',細項產品別:'CDU',市場分類:'SER'},
  ];
  // 從明細找出可在介面直接補值的缺漏欄位（市場分類／產品分類／細項產品別／規格），依頁籤＋列號分組
  function fillCandidates(detailsText){
@@ -80,7 +80,7 @@
  // 待確認／待補值清單：檢查完成後依明細自動列出。規格可勾「允許留白」或直接填值；
  // 產品分類／細項產品別／市場分類可選預設組合或自行輸入；「全選」方便列數多時一次勾選。
  const panel=$('specPanel'),specList=$('specList'),specMsg=$('specMsg'),selectAll=$('specSelectAll');
- const PRESET_LABEL=p=>`市場分類＝${p.市場分類}／產品分類＝${p.產品分類}／細項產品別＝${p.細項產品別}`;
+ const PRESET_LABEL=p=>`產品分類＝${p.產品分類}／細項產品別＝${p.細項產品別}／市場分類＝${p.市場分類}`;
  function refreshSpec(){
   const items=reportBtn.disabled?[]:fillCandidates($('details').textContent);
   specList.replaceChildren();specMsg.textContent='';panel.hidden=!items.length;selectAll.checked=false;
@@ -93,7 +93,7 @@
     const sel=document.createElement('select');sel.className='spec-preset';
     sel.append(new Option('選預設組合…',''));CLASSIFY_PRESETS.forEach((p,i)=>sel.append(new Option(PRESET_LABEL(p),String(i))));
     row.append(sel);
-    const inputs={};for(const f of ['市場分類','產品分類','細項產品別']){if(!classifyFields.includes(f))continue;const wrap=document.createElement('label');wrap.className='spec-field';const inp=document.createElement('input');inp.type='text';inp.dataset.field=f;inp.placeholder=f;wrap.append(document.createTextNode(f+'：'),inp);row.append(wrap);inputs[f]=inp}
+    const inputs={};for(const f of ['產品分類','細項產品別','市場分類']){if(!classifyFields.includes(f))continue;const wrap=document.createElement('label');wrap.className='spec-field';const inp=document.createElement('input');inp.type='text';inp.dataset.field=f;inp.placeholder=f;wrap.append(document.createTextNode(f+'：'),inp);row.append(wrap);inputs[f]=inp}
     sel.addEventListener('change',()=>{if(!sel.value)return;const p=CLASSIFY_PRESETS[Number(sel.value)];for(const f in inputs)inputs[f].value=p[f]});
    }
    if(it.fields.includes('規格')){
