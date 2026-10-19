@@ -51,8 +51,9 @@ async function run() {
   for(const s of w.worksheets) for(let r=1;r<=s.rowCount;r++) for(let c=1;c<=s.columnCount;c++) {
     const cell=s.getCell(r,c);
     check(cell.font.name==='Comic Sans MS' && cell.font.size===(s.name==='Combine EC' && [6,17].includes(c)?8:10),'font with user overrides');
-    check(['top','left','bottom','right'].every(side=>cell.border[side].style==='thin'),'borders');
-    if(r===1) check(cell.fill.fgColor.argb==='FFFFFFCC','header yellow');
+    const active = s.name !== 'Summary' || (c <= 8 && r <= 6) || (c >= 10 && r <= 7);
+    check(['top','left','bottom','right'].every(side=>active ? cell.border[side]?.style==='thin' : !cell.border?.[side]?.style),'independent table borders');
+    if(r===1) check(active ? cell.fill.fgColor.argb==='FFFFFFCC' : cell.fill.pattern==='none','header yellow only in tables');
     check(cell.type!==ExcelJS.ValueType.Error,'no Excel error');
   }
   // Compare every pre-existing output field against the released baseline.
