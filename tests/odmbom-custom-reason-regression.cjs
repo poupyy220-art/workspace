@@ -4,7 +4,7 @@ const { extract, pn } = require('./ec-tracking-pn-map-regression.cjs');
 
 // 2026-09-29 F010：4️⃣ ODMBOM Version Y 選「5. 自定義」時，每個料號可各自填原因；
 // 空白沿用共用原因，改料號清單時保留已填內容，從 Excel 貼一整欄會往下填。
-function run() {
+async function run() {
   let checks = 0;
   const check = (v, msg) => { assert(v, msg); checks++; };
   const el = {
@@ -13,7 +13,7 @@ function run() {
   };
   let exported = null, alerts = [], confirmAnswer = true, confirms = [];
   const ctx = { Map, Set, String, console, document: { getElementById: id => el[id] }, window: {},
-    alert: m => alerts.push(m), confirm: m => { confirms.push(m); return confirmAnswer; },
+    alert: m => alerts.push(m), pageConfirm: async m => { confirms.push(m); return confirmAnswer; },
     exportExcelWithStyles: (d, name) => { exported = { d, name }; }, incrementGlobalSeq() {} };
   vm.createContext(ctx);
   vm.runInContext([
@@ -38,7 +38,7 @@ function run() {
   // 共用原因＋個別原因
   el.bomCustomText.value = 'shared reason';
   ctx.setBomReason4(1, '  only B  ');
-  ctx.generateReport4();
+  await ctx.generateReport4();
   check(JSON.stringify(comments()) === JSON.stringify(['shared reason', 'only B', 'shared reason', 'shared reason']), 'per-PN with shared fallback: ' + comments());
   check(exported.d.length === 5 && exported.d[1][2] === 'Y', 'rows and flag kept');
   check(confirms.length === 0, 'no confirm when all have reasons');
@@ -59,7 +59,7 @@ function run() {
   el.bomCustomText.value = '';
   ctx.setBomReason4(2, '');
   exported = null; confirmAnswer = false;
-  ctx.generateReport4();
+  await ctx.generateReport4();
   check(confirms.length === 1 && confirms[0].includes('1 筆料號沒有原因') && exported === null, 'blank confirm cancels');
 
   // 特殊字元不會破壞表格
@@ -70,12 +70,12 @@ function run() {
 
   // 其他模板不受影響
   el.bomTemplate.value = 'india1'; el.pnInput.value = 'PN-A'; confirmAnswer = true;
-  ctx.generateReport4();
+  await ctx.generateReport4();
   check(comments()[0] === 'BOM incloud SBB1T33034 for india. no need set up BOM', 'other template unchanged');
   el.verY.checked = false; el.bomTemplate.value = 'custom';
-  ctx.generateReport4();
+  await ctx.generateReport4();
   check(comments()[0] === '' && exported.d[1][2] === 'N', 'Version N unchanged');
 
   console.log(`PASS ${checks}; FAIL 0; unreadable 0`);
 }
-if (require.main === module) run();
+if (require.main === module) run().catch(e => { console.error(e); process.exitCode = 1; });

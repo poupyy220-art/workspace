@@ -14,7 +14,8 @@ async function main() {
     const page = await browser.newPage();
     let cloud, posts, mode, errors = [], dialogs = [], accept = true;
     page.on('pageerror', e => errors.push(e.message));
-    page.on('dialog', async d => { dialogs.push(d.message()); await (d.type() === 'confirm' && !accept ? d.dismiss() : d.accept()); });
+    let nativeDialogs = 0;
+    page.on('dialog', async d => { nativeDialogs++; await d.dismiss(); });
     await page.route('**/*', async route => {
       const req = route.request();
       if (req.url() === 'https://test.invalid/') return route.fulfill({contentType:'text/html', body:pn.replace(/<script[^>]+src=[^>]*><\/script>/g, '')});
@@ -38,7 +39,17 @@ async function main() {
     };
     const check = (v,msg) => { assert(v,msg);passed++; };
     const keypart = () => page.evaluate(()=>applyAllScheme('keypart'));
-    const write = () => page.evaluate(()=>batchWriteNewPNs());
+    // 存入改用網頁內建確認視窗（#pageConfirmOk／#pageConfirmCancel），不再跳瀏覽器原生 confirm。
+    const answer = async p => {
+      const done = p.then(()=>'done');
+      const shown = page.waitForSelector('#pageConfirmOk',{timeout:5000}).then(()=>'shown').catch(()=>'none');
+      if (await Promise.race([done, shown]) === 'shown') {
+        dialogs.push(await page.locator('#pageConfirmMessage').innerText());
+        await page.locator(accept ? '#pageConfirmOk' : '#pageConfirmCancel').click();
+      }
+      await p;
+    };
+    const write = () => answer(page.evaluate(()=>batchWriteNewPNs()));
     await reset(); await keypart();
     check(await page.locator('#dbchk_0').count() === 1, 'Keypart must have a pending save row');
     check(await page.locator('#pnrow_0').innerText().then(s=>s.includes('DEMO-A-001')), 'pending row contains new version');
@@ -46,6 +57,8 @@ async function main() {
     check(posts.length===1,'one POST');
     check(posts[0].data.length===2,'send only selected additions, never stale DB');
     check(posts[0].data[1][0]==='DEMO-A-001'&&posts[0].data[1][2]==='DEMO-A','internal and customer PN stay distinct');
+    check(dialogs.length===1&&dialogs[0].includes('確認新增以下 1 筆')&&dialogs[0].includes('DEMO-A-001'),'in-page confirm shows count and summary');
+    check(await page.locator('#pageConfirmOverlay').count()===0,'confirm overlay closed after OK');
     check(cloud[0].join('|')===base.join('|'),'old version preserved');
     check(await page.locator('#dbWriteStatus').innerText().then(s=>s.includes('驗證成功')), 'verified success shown');
     await write(); check(posts.length===1,'no duplicate submit after success');
@@ -60,6 +73,7 @@ async function main() {
     check(!(await page.locator('#dbchk_1').isChecked()),'scheme changes preserve selection');
     await write(); check(posts[0].data.length===2,'unchecked rows excluded');
     await reset(); await keypart(); accept=false; await write();check(posts.length===0,'cancel does not write');
+    await reset(); await keypart(); { const p=page.evaluate(()=>batchWriteNewPNs()); await page.waitForSelector('#pageConfirmOk'); await page.keyboard.press('Escape'); await p; } check(posts.length===0&&await page.locator('#pageConfirmOverlay').count()===0,'Escape cancels and closes');
     await reset(); await keypart();await page.locator('#dbtime_0').fill('');await write();check(posts.length===0,'missing date blocks');
     await reset(); await keypart();cloud.push(['DEMO-A-001','2026/01/02','DEMO-A','another user']);await write();check(posts.length===0,'existing PN on different date blocks');
     await reset(); await keypart();cloud.push(['DEMO-A-002','2026/01/02','DEMO-A','another user']);await write();check(posts.length===0,'changed latest version blocks');
@@ -75,8 +89,9 @@ async function main() {
     await reset('DEMO-NEW\nDEMO-NEXT',[]);await page.locator('#chkAll').uncheck();await write();check(posts.length===0,'unselect all writes nothing');
     await reset('DEMO-NEW',[]);await write();check(posts[0].data[1][0]==='DEMO-NEW','first version still writable');
     check(errors.length===0,'no runtime errors: '+errors.join(';'));
+    check(nativeDialogs===0,'no native browser dialog used');
     await reset();await keypart();
-    await page.evaluate(async()=>{await Promise.all([batchWriteNewPNs(),batchWriteNewPNs()]);});
+    await answer(page.evaluate(async()=>{await Promise.all([batchWriteNewPNs(),batchWriteNewPNs()]);}));
     check(posts.length===1,'double click writes once');
     await reset();await keypart();
     await page.evaluate(()=>{window.exported=null;exportExcelWithStyles=(d,n)=>{window.exported={d,n};};downloadReport3();});
