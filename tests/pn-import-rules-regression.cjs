@@ -17,15 +17,15 @@ test('OLD 除三個必填不套預設',()=>{const r=run({'新/舊料':'OLD','料
 test('OLD 匯入只保留料號用量主件底數與結構欄',()=>{const r=run({'新/舊料':'OLD','料號':'12345678-01A','階層2':2,'英文品名':'CLEAR','規格':'CLEAR','分群碼':'3','來源碼':'P','採購類型':'AVAP','用量':2,'主件底數':1,'單位':'PCS','Class Code':'FE','終端客戶':'0076'});assert(r.ready);const v=r.output[0].value;assert.equal(v['新/舊料'],'OLD');assert.equal(v['料號'],'12345678-01A');assert.equal(v['階層2'],2);assert.equal(v['用量'],2);assert.equal(v['主件底數'],1);for(const k of ['英文品名','規格','分群碼','來源碼','採購類型','單位','Class Code','終端客戶'])assert.equal(v[k],'');assert.equal(r.changes.length,8)});
 test('OLD 用量缺漏阻擋',()=>assert(!run({'新/舊料':'OLD','料號':'12345678-01A','主件底數':1}).ready));
 test('原始三種料號判 OLD',()=>{for(const pn of ['12A123456-01B','123-A123456-01B','S123456789'])assert.equal(run({...seed(),'新/舊料':'','料號':pn}).output[0].value['新/舊料'],'OLD')});
-// 2026-10-16 使用者確認：有完整料號一律 OLD（RD 可能維持寫 NEW）；空白或只有前綴（以「-」結尾）才是 NEW
-test('有完整料號：RD 寫 NEW 也改 OLD，只留料號用量底數',()=>{for(const pn of ['12A123456-01B','231123456-01A','ABC-TEST']){const r=run({...seed(),'新/舊料':'NEW','料號':pn});const v=r.output[0].value;assert.equal(v['新/舊料'],'OLD');assert.equal(v['英文品名'],'');assert.equal(v['特殊料件特性'],undefined);assert(r.ready,pn);assert(r.changes.some(c=>c.field==='新/舊料'&&c.reason.includes('有完整料號')))}});
+// 2026-10-21：明填 NEW 優先；完整料號不代表已完成申請
+test('有完整料號：明填 NEW 保留新料欄位，不改 OLD',()=>{for(const pn of ['12A123456-01B','231123456-01A','ABC-TEST','SYNTHETIC-AA001']){const r=run({...seed(),'料號':pn});const v=r.output[0].value;assert.equal(v['新/舊料'],'NEW');assert.equal(v['英文品名'],'TEST PART');assert.equal(v['規格'],'TEST');assert.equal(v['特殊料件特性'],'GE');assert(r.ready);assert(!r.changes.some(c=>c.field==='新/舊料'))}});
 test('H PN 有料號仍維持 NEW（2026-10-16 使用者確認例外）',()=>{for(const pn of ['330H01005-01A','SM31W58442H'])assert.equal(run({...seed(),'新/舊料':'NEW','料號':pn}).output[0].value['新/舊料'],'NEW')});
 test('只有前綴的料號（330-）維持 NEW',()=>{const r=run({...seed(),'新/舊料':'NEW','料號':'330-'});assert.equal(r.output[0].value['新/舊料'],'NEW');assert.equal(r.output[0].value['特殊料件特性'],'GE')});
 test('H PN 保持 NEW 且品牌 NA，非 LINEFIT 觸發',()=>{for(const pn of ['330H01005-01A','SM31W58442H']){const v=run({...seed(),'新/舊料':'','料號':pn,'分群碼':'1','來源碼':'M'}).output[0].value;assert.equal(v['新/舊料'],'NEW');assert.equal(v['品牌'],'NA');assert.equal(v['Basic Name'],'NA')}});
-// 2026-10-16 起完整料號一律 OLD，231/232 有料號時不再走 NEW 品牌規則
-test('231/232 有完整料號改 OLD，不套品牌',()=>{for(const pn of ['231123456-01A','232123456-01A']){const v=run({...seed(),'料號':pn,'分群碼':'1','來源碼':'M'}).output[0].value;assert.equal(v['新/舊料'],'OLD');assert.equal(v['品牌'],undefined)}});
+// 狀態空白且完整料號時，維持推定 OLD
+test('231/232 狀態空白有完整料號推定 OLD，不套品牌',()=>{for(const pn of ['231123456-01A','232123456-01A']){const v=run({...seed(),'新/舊料':'','料號':pn,'分群碼':'1','來源碼':'M'}).output[0].value;assert.equal(v['新/舊料'],'OLD');assert.equal(v['品牌'],undefined)}});
 test('其餘1/M缺品牌阻擋',()=>assert(run({...seed(),'分群碼':'1','來源碼':'M'}).issues.some(x=>x.field==='品牌')));
-test('客戶料號空白：草稿照補、另列人工確認（不阻擋）',()=>{const r=run({...seed(),'客戶料號':''});assert.equal(r.ready,true);assert.equal(r.output[0].value['客戶料號'],'NA');const w=r.warnings.filter(x=>x.field==='客戶料號');assert.equal(w.length,1);assert.equal(w[0].severity,'WARNING');assert.match(w[0].reason,/暫補「NA」/);const s10=run({...seed(),'料號':'S123456789','客戶料號':''});assert.equal(s10.output[0].value['新/舊料'],'OLD');assert.equal(s10.warnings.filter(x=>x.field==='客戶料號').length,0)/* 2026-10-16 起完整料號一律 OLD */});
+test('客戶料號空白：草稿照補、另列人工確認（不阻擋）',()=>{const r=run({...seed(),'客戶料號':''});assert.equal(r.ready,true);assert.equal(r.output[0].value['客戶料號'],'NA');const w=r.warnings.filter(x=>x.field==='客戶料號');assert.equal(w.length,1);assert.equal(w[0].severity,'WARNING');assert.match(w[0].reason,/暫補「NA」/);const s10=run({...seed(),'料號':'S123456789','客戶料號':''});assert.equal(s10.output[0].value['新/舊料'],'NEW');assert.equal(s10.output[0].value['客戶料號'],'S123456789');assert.equal(s10.warnings.filter(x=>x.field==='客戶料號').length,1)});
 test('客戶料號：RD 已填或原表沒有此欄時不提醒；OLD 料不提醒',()=>{assert.equal(run({...seed(),'客戶料號':'C-001'}).warnings.filter(x=>x.field==='客戶料號').length,0);assert.equal(run(seed()).warnings.filter(x=>x.field==='客戶料號').length,0);assert.equal(run({'新/舊料':'OLD','料號':'12345678-01A','用量':1,'主件底數':1,'客戶料號':''}).warnings.filter(x=>x.field==='客戶料號').length,0)});
 test('介面補值：市場分類／產品分類／細項產品別／規格空白時可用 fieldFills 直接填入，記入補值紀錄並通過',()=>{
  const v={...seed(),'產品分類':'','細項產品別':'','市場分類':'','規格':''};
@@ -44,7 +44,7 @@ test('全型英數／符號／空白自動轉半型並留紀錄',()=>{const r=ru
 test('全型轉半型後是禁用符號或中文標點仍阻擋；轉完長度重算',()=>{const comma=run({...seed(),'規格':'Ａ，Ｂ'});assert.equal(comma.ready,false);assert.equal(comma.output[0].value['規格'],'A,B');assert.ok(comma.issues.some(x=>x.field==='規格'&&/不合規符號/.test(x.reason)));const punct=run({...seed(),'繁中品名':'測試、件'});assert.ok(punct.issues.some(x=>x.field==='繁中品名'&&/全型/.test(x.reason)));const long=run({...seed(),'英文品名':'ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰ'});assert.equal(long.output[0].value['英文品名'],'ABCDEFGHIJKLMNOP');assert.ok(!long.issues.some(x=>x.field==='英文品名'))});
 test('OLD 料不做全型轉換',()=>{const r=run({'新/舊料':'OLD','料號':'12345678-01A','用量':1,'主件底數':1});assert.ok(!r.changes.some(x=>x.reason==='全型英數／符號自動轉半型'));assert.equal(P.toHalfWidth('Ａ　１、'),'A 1、')});
 test('欄名「新或舊料」也能辨識為 NEW／OLD 欄',()=>{const sheet={name:'本次',rows:[['新或舊料','料號','英文品名','繁中品名','用量','主件底數'],['NEW','','TEST','測試',1,1]]};const c=P.identify(sheet);assert.ok(c);assert.equal(c.map['新/舊料'],0)});
-test('S十碼有料號改 OLD（2026-10-16 起不再走 NEW 客戶料號複製）',()=>assert.equal(run({...seed(),'料號':'S123456789'}).output[0].value['新/舊料'],'OLD'));
+test('S十碼明填 NEW 沿用狀態並複製客戶料號',()=>{const v=run({...seed(),'料號':'S123456789'}).output[0].value;assert.equal(v['新/舊料'],'NEW');assert.equal(v['客戶料號'],'S123456789')});
 test('規格 H PN 觸發 LINEFIT',()=>assert.equal(run({...seed(),'規格':'H PN','Basic Name':'OTHER'}).output[0].value['Basic Name'],'LINEFIT'));
 for(const code of ['DPK','SPK','EDPK'])test('軟體Key '+code,()=>assert.equal(run({...seed(),'Basic Name':code}).output[0].value['軟體Key類型'],code));
 test('Key衝突保留且阻擋',()=>{const r=run({...seed(),'Basic Name':'DPK','軟體Key類型':'SPK'});assert(!r.ready);assert.equal(r.output[0].value['軟體Key類型'],'SPK')});
@@ -106,6 +106,8 @@ test('H 父件：聯想 S 十碼最後加 H',()=>assert.equal(run({...seed(),'�
 test('H 父件：推不出 H 料號要阻擋並標明 H 父件',()=>{for(const pn of ['','330-','ABC-TEST']){const r=run({...seed(),'料號':pn},{hParent:true});assert(r.issues.some(x=>x.field==='料號'&&x.reason.startsWith('H 父件：')),pn)}});
 test('H 父件：BOM 組裝申請不可勾選',()=>{const r=run(seed(),{hParent:true,mode:'bom'});assert(r.issues.some(x=>x.field==='H 父件'))});
 test('H 父件：6 碼 H PN 被認得（不會被「有料號一律 OLD」改掉）',()=>assert.equal(run({...seed(),'料號':'332H002906-01A'}).output[0].value['新/舊料'],'NEW'));
+test('完整料號加 NEW OLD 衝突仍阻擋，不能強制改 OLD',()=>{const r=run({...seed(),'料號':'SYNTHETIC-AA001','新/舊料':'NEW OLD'});assert(!r.ready);assert(r.issues.some(x=>x.field==='新/舊料'))});
+test('有完整料號的 NEW 仍檢查新料必填欄位',()=>{const r=run({...seed(),'料號':'SYNTHETIC-AA001','英文品名':''});assert(!r.ready);assert(r.issues.some(x=>x.field==='英文品名'));assert.equal(r.output[0].value['新/舊料'],'NEW')});
 console.log(JSON.stringify({passed:count,failed:0,checks},null,2));
 
 
