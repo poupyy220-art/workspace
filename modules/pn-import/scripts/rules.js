@@ -5,7 +5,7 @@ const norm=v=>String(v??'').replace(/<[^>]*>/g,'').replace(/[\s*＊]/g,'').repla
 const aliases={};
 function alias(key,...names){[key,...names].forEach(n=>aliases[norm(n)]=key)}
 fields.forEach(f=>alias(f));
-alias('新/舊料','新／舊料','新舊料','NEW/OLD','料件狀態','status','新/旧料','新旧料','新或舊料','新或旧料');
+alias('新/舊料','新舊','新旧','新／舊料','新舊料','NEW/OLD','料件狀態','status','新/旧料','新旧料','新或舊料','新或旧料');
 alias('料號','料号','PN','Part Number');alias('英文品名','英文品名(EN)','EN');alias('繁中品名','繁中品名(ZF)','繁體品名','ZF');alias('簡中品名','簡中品名(ZH)','簡體品名','简中品名','ZH');alias('越南品名','越南品名(VI)','VI');alias('規格','规格');alias('Basic Name','Basicname');alias('機種別','機種別(代碼)','機種別(代號)');alias('替代','替代(多料號時以,分隔)');alias('取代','取代(多料號時以,分隔)');alias('位號','位號(多值時以,分隔)');alias('拋轉廠區','拋轉廠區(多廠區時以,分隔)');alias('有害物質管制規範','AVC有害物質管制規範');alias('需包材工程師設計包材','需包材工程師');
 const blank=v=>v===null||v===undefined||String(v).trim()===''||String(v).trim().toLowerCase()==='nan';
 const str=v=>String(v??'').trim();
