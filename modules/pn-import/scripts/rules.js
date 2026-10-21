@@ -137,10 +137,10 @@ function process(candidates,options){
    const fill=(k,val,why='空白套用已確認規則')=>{if(blank(v[k]))set(k,val,why)};
    const requireField=k=>{if(blank(v[k]))add(loc,k,'請 RD 補齊明細')};
    const originalStatus=str(v['新/舊料']).toUpperCase();
-   // 有完整料號一律 OLD（2026-10-16 使用者確認：有的 RD 會把既有料號維持寫 NEW）；空白或只有前綴（以「-」結尾，如 330-）才是 NEW；H PN（330H01005-01A、SM31W58442H 型）維持原 NEW 規則；「替代」原樣保留
+   // 2026-10-21：RD 明填 NEW／OLD 優先，已有料號也可能仍待申請；僅狀態空白才推定。
    // 勾選 H 父件時照 RD 填的 NEW／OLD（新料可能已先配好料號，2026-10-16 使用者選擇）。H PN 實際為 H 後 6 碼（332H002906-01A），舊範例 5 碼一併接受
    const pnText=str(v['料號']),isHpn=/^\d{3}H\d{5,6}-\d{2}[A-Z]$/i.test(pnText)||/^S[A-Z0-9]{9}H$/i.test(pnText),hasPn=!hParent&&pnText!==''&&!pnText.endsWith('-')&&!isHpn;
-   if(hasPn&&str(v['新/舊料'])!=='替代')set('新/舊料','OLD','有完整料號一律 OLD（只確認用量與主件底數）');
+   if(hasPn&&blank(v['新/舊料']))set('新/舊料','OLD','狀態空白且有完整料號，依已確認規則推定 OLD；未查公司系統');
    else {
     fill('新/舊料',R.isStandardPn(v['料號'])?'OLD':'NEW','依既有料號格式判定；未查公司系統');
     if((originalStatus==='NEW'||originalStatus==='OLD')&&str(v['新/舊料']).toUpperCase()!==originalStatus)add(loc,'新/舊料','既有 NEW／OLD 不得被重新判定');
