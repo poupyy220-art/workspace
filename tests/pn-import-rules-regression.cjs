@@ -108,6 +108,8 @@ test('H 父件：BOM 組裝申請不可勾選',()=>{const r=run(seed(),{hParent:
 test('H 父件：6 碼 H PN 被認得（不會被「有料號一律 OLD」改掉）',()=>assert.equal(run({...seed(),'料號':'332H002906-01A'}).output[0].value['新/舊料'],'NEW'));
 test('完整料號加 NEW OLD 衝突仍阻擋，不能強制改 OLD',()=>{const r=run({...seed(),'料號':'SYNTHETIC-AA001','新/舊料':'NEW OLD'});assert(!r.ready);assert(r.issues.some(x=>x.field==='新/舊料'))});
 test('有完整料號的 NEW 仍檢查新料必填欄位',()=>{const r=run({...seed(),'料號':'SYNTHETIC-AA001','英文品名':''});assert(!r.ready);assert(r.issues.some(x=>x.field==='英文品名'));assert.equal(r.output[0].value['新/舊料'],'NEW')});
+for(const label of ['新舊','新旧','新\n舊'])test('短欄名辨識 '+label,()=>{const c=P.identify({name:'SYNTHETIC',rows:[['狀態',label,'料號','英文品名','規格','用量','主件底數'],['','NEW','SYNTHETIC-AA001','TEST','SPEC',1,1],['','OLD','SYNTHETIC-AA002','TEST','SPEC',1,1]]});assert(c);assert.equal(c.map['新/舊料'],1);assert.equal(c.rows[0].value['新/舊料'],'NEW');assert.equal(c.rows[1].value['新/舊料'],'OLD')});
+test('短欄名與正式狀態欄重複仍阻擋',()=>{const c=P.identify({name:'SYNTHETIC',rows:[['新舊','新/舊料','料號','英文品名','規格','用量','主件底數'],['NEW','OLD','SYNTHETIC-AA001','TEST','SPEC',1,1]]});assert(c.problems.some(x=>x.includes('同名欄位重複')))});
 console.log(JSON.stringify({passed:count,failed:0,checks},null,2));
 
 
