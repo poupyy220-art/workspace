@@ -1,0 +1,2254 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PN 報表自動化系統 (V36.14 時區修復版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js"></script>
+
+    <style>
+        /* --- 全域設定 --- */
+        :root {
+            --primary-color: #2980b9;
+            --secondary-color: #8e44ad;
+            --success-color: #27ae60;
+            --danger-color: #c0392b;
+            --bg-color: #f0f8ff;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+        }
+
+        body { font-family: "Microsoft JhengHei", "Segoe UI", Arial, sans-serif; background: linear-gradient(135deg, #f0f8ff 0%, #e6f7ff 100%); padding: 20px; max-width: 1280px; margin: 0 auto; color: var(--text-color); line-height: 1.5; }
+        h1 { color: #2980b9; text-align: center; border-bottom: 3px dashed #2980b9; padding-bottom: 15px; margin-bottom: 25px; letter-spacing: 1px; }
+
+        .container { background: var(--card-bg); padding: 25px 35px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); border: 1px solid #daeefc; position: relative; }
+
+        #loadingOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; }
+        #debugPanel { display: none; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; overflow-y: auto; background: #1e2d3d; color: #d5f5e3; font-family: monospace; font-size: 12px; padding: 10px 14px; z-index: 10000; box-shadow: 0 -4px 12px rgba(0,0,0,0.3); white-space: pre-wrap; }
+        #debugPanel .dbg-head { display:flex; justify-content:space-between; align-items:center; color:#fff; font-weight:bold; margin-bottom:6px; border-bottom:1px solid #445; padding-bottom:4px; }
+        #debugPanel .dbg-close { cursor:pointer; background:#c0392b; border:none; color:#fff; padding:2px 10px; border-radius:4px; font-size:12px; }
+        #debugPanel .dbg-err { color:#ff8a80; }
+        .spinner { border: 5px solid #f3f3f3; border-top: 5px solid var(--primary-color); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .cloud-config { background: #e8f6fd; border: 1px solid #bce0fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
+        .cloud-row { display: flex; gap: 10px; align-items: center; }
+        #gasUrl { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 14px; }
+
+        .db-panel { background-color: #fcf9fe; border: 1px solid #d2b4de; border-left: 5px solid var(--secondary-color); border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+        .db-title { color: var(--secondary-color); font-size: 1.3em; font-weight: bold; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .db-status { font-size: 0.9em; padding: 5px 15px; border-radius: 20px; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; background-color: #ccc; display: inline-block; transition: background-color 0.3s; }
+        .status-active { background-color: var(--success-color); box-shadow: 0 0 5px var(--success-color); }
+
+        .db-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .manual-area { border: 1px dashed var(--secondary-color); background: #fff; padding: 15px; border-radius: 8px; }
+        .lookup-container { height: 250px; min-height: 100px; resize: vertical; overflow-y: auto; margin-top: 6px; border: 1px solid #eee; background: #fff; border-radius: 4px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        th, td { border: 1px solid #eee; padding: 8px 12px; text-align: left; white-space: pre-wrap; }
+        th { background: #f4ecf7; color: var(--secondary-color); position: sticky; top: 0; z-index: 10; font-weight: bold; }
+        .highlight-text-red { color: var(--danger-color); font-weight: bold; }
+
+        .settings-panel { background-color: #fff8f0; border: 1px solid #fae5d3; border-radius: 8px; padding: 15px; margin-bottom: 25px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: center; }
+        .settings-label { font-weight: bold; color: #d35400; display: flex; align-items: center; gap: 5px; }
+        select { padding: 6px 10px; border: 1px solid #edbb99; border-radius: 4px; background: white; cursor: pointer; outline: none; }
+
+        .toggle-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 0.95em; }
+        .toggle-switch input { margin: 0; cursor: pointer; accent-color: var(--primary-color); width: 16px; height: 16px; }
+
+        .input-group { margin-bottom: 30px; position: relative; }
+        .input-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        textarea { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-family: monospace; font-size: 14px; background-color: #fbfbfb; box-sizing: border-box; resize: vertical; min-height: 100px; }
+
+        #bomInputs { margin-bottom: 10px; padding: 10px; background: #f0f9f4; border: 1px dashed var(--success-color); border-radius: 6px; }
+        #bomInputs select, #bomInputs input { width: 100%; box-sizing: border-box; margin-bottom: 5px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+
+        .btn-group { display: flex; gap: 8px; margin-top: auto; }
+        button { border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 0.9em; flex: 1; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 5px; color: white; transition: filter 0.2s; white-space: nowrap; }
+        button:hover { filter: brightness(1.1); }
+
+        .btn-primary { background-color: var(--primary-color); }
+        .btn-secondary { background-color: var(--secondary-color); }
+        .btn-success { background-color: var(--success-color); }
+        .btn-danger { background-color: var(--danger-color); }
+        .btn-dark { background-color: #34495e; }
+        .btn-blue { background-color: #2980b9; }
+        .btn-outline { background-color: white; border: 1px solid #ccc; color: #555; }
+        .btn-mini { padding: 4px 10px; font-size: 0.8em; flex: initial; width: auto; }
+
+        .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+        .card { border: 1px solid #eee; padding: 20px; border-radius: 10px; background: #fff; display: flex; flex-direction: column; transition: transform 0.2s, box-shadow 0.2s; border-top: 4px solid transparent; }
+        .card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.08); }
+        .card-orange { border-top-color: #e67e22; }
+        .card-purple { border-top-color: var(--secondary-color); background-color: #fbfbfd; }
+        .card-green { border-top-color: var(--success-color); }
+        .card-red { border-top-color: var(--danger-color); background-color: #fffbfb; }
+        .card-blue { border-top-color: var(--primary-color); background-color: #f4faff; }
+
+        .card h3 { margin: 0 0 15px 0; font-size: 1.1em; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .sys-req { font-size: 0.75em; background: #eee; padding: 2px 8px; border-radius: 4px; color: #555; margin-left: auto; font-weight: normal; white-space: nowrap; flex-shrink: 0; }
+
+        #previewArea { margin-top: 20px; border-top: 2px solid #eee; padding-top: 12px; display: none; }
+        .preview-box { background: #fff; padding: 0; border-radius: 6px; border: 1px solid #ddd; max-height: 380px; overflow: auto; }
+        .copy-controls { display: flex; gap: 10px; padding: 10px; background: #f9f9f9; border-bottom: 1px solid #ddd; align-items: center; }
+        .highlight-yellow { background-color: #fffacd !important; }
+        .highlight-gray { background-color: #efefef !important; }
+
+        .scheme-selector { font-size: 0.85em; display: flex; flex-direction: column; gap: 4px; }
+        .scheme-selector label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal; margin: 0; color: #555; }
+        /* 2026-09-29 F010：4️⃣ ODMBOM 自定義逐筆原因 */
+        .bom-custom-help { font-size: 0.8em; color: #555; background: #f4fbf6; border: 1px solid #cdebd6; border-radius: 6px; padding: 6px 8px; margin: 6px 0; line-height: 1.6; text-align: left; }
+        .bom-custom-table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+        .bom-custom-table th, .bom-custom-table td { border: 1px solid #e3e3e3; padding: 3px 5px; text-align: left; }
+        .bom-custom-table th { background: #f6f6f6; position: sticky; top: 0; }
+        .bom-custom-table td:first-child { color: #999; width: 28px; text-align: right; }
+        .bom-custom-table input { width: 100%; box-sizing: border-box; padding: 3px 5px; margin: 0; }
+        .bom-custom-empty { font-size: 0.82em; color: var(--danger-color); padding: 6px; text-align: left; }
+    </style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div style="font-weight:bold; color:#555;" id="loadingText">處理中...</div>
+</div>
+
+<div id="debugPanel">
+    <div class="dbg-head"><span>🐛 除錯訊息（7️⃣ 測試用）</span><button class="dbg-close" onclick="document.getElementById('debugPanel').style.display='none'">關閉</button></div>
+    <div id="debugPanelBody"></div>
+</div>
+
+<div class="container">
+    <h1>☁️ PN 報表自動化系統 (V36.14 時區修復版)</h1>
+
+    <div class="cloud-config">
+        <div class="cloud-row">
+            <label style="white-space:nowrap;">🔗 Google Script URL:</label>
+            <input type="text" id="gasUrl" value="https://script.google.com/macros/s/AKfycbwKf3QIVeDIcIcC8CX6sCmmWRUEkCW54wmTRd1mwu00Kuu7cDh_0UzyTq3qDPLamxkz/exec">
+            <button onclick="saveGasUrl()" class="btn-primary btn-mini" style="width: auto;">💾 儲存連結</button>
+        </div>
+    </div>
+
+    <div class="db-panel">
+        <div class="db-title">
+            <span>📚 雲端資料庫 (Cloud DB)</span>
+            <div class="db-status">
+                <span id="statusDot" class="status-dot"></span>
+                <span id="dbLastTime">狀態: 未連線</span>
+            </div>
+        </div>
+
+        <div class="db-controls">
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="background: #fff; padding:15px; border-radius:6px; border:1px solid #daeefc;">
+                    <label style="font-size: 1em; margin-bottom:10px; color:#2980b9; font-weight:bold; display:block;">☁️ 雲端同步操作:</label>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button onclick="syncFromCloud()" class="btn-primary">📥 從雲端下載資料 (Pull)</button>
+                        <button onclick="syncToCloud()" class="btn-danger">📤 上傳目前資料到雲端 (Push)</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.9em; margin-bottom:5px;">🔍 快速搜尋 (支援多行貼上):</label>
+                    <div style="display:flex; gap:5px; align-items: flex-start;">
+                        <textarea id="lookupInput" placeholder="輸入 PN (換行搜尋多筆)..." style="flex:1; height:60px; min-height:60px;"></textarea>
+                        <div style="display:flex; flex-direction:column; gap:4px; min-width: 120px;">
+                            <button onclick="lookupDB()" class="btn-secondary" style="width:100%; flex:none;">🔍 搜尋</button>
+                            <div id="lookupDownloadArea" style="display:none; flex-direction: column; gap: 4px;">
+                                <button onclick="downloadLookupResult()" id="btnDownloadLookup" class="btn-success btn-mini" style="width:100%; font-size:12px;">📥 下載結果</button>
+                                <label class="toggle-switch" style="font-size: 11px; color: #27ae60; font-weight: bold;">
+                                    <input type="checkbox" id="lookupOnlyLatest"> 僅留最新版次
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="manual-area">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <label style="margin:0; font-size:0.95em; color:var(--secondary-color);">📝 臨時新增資料 (手動貼上):</label>
+                    <button onclick="manualAddData()" class="btn-success btn-mini">➕ 加入暫存</button>
+                </div>
+                <textarea id="manualDbInput" style="height:120px; font-size:12px; border-color:#d2b4de;" placeholder="料號 [Tab] 時間 [Tab] 客戶料號 [Tab] 備註"></textarea>
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px; gap:10px;">
+            <span id="lookupCount" style="font-size:0.9em; font-weight:bold; color:#2980b9;"></span>
+            <button id="btnLookupSize" onclick="toggleLookupSize()" class="btn-secondary btn-mini" style="flex:none;" title="也可以拖拉結果區右下角調整高度">⬇ 放大結果區</button>
+        </div>
+        <div class="lookup-container" id="lookupContainer">
+            <table>
+                <thead><tr><th style="width:25%">內部料號</th><th style="width:20%">建立時間</th><th style="width:25%">客戶料號</th><th>備註</th></tr></thead>
+                <tbody id="lookupBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="settings-panel">
+        <div class="settings-label">⚙️ 輸出設定:</div>
+        <select id="fileFormat"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (.csv)</option></select>
+        <select id="globalSeq">
+            <option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option>
+            <option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option>
+        </select>
+        <label class="toggle-switch">
+            <input type="checkbox" id="autoIncSeq" checked><span>下載後自動跳號</span>
+        </label>
+    </div>
+
+    <div class="input-group">
+        <div class="input-header">
+            <label>📋 步驟一：在此貼上 PN 資料</label>
+            <button onclick="clearInput()" class="btn-outline btn-mini" style="color:var(--danger-color); border-color:var(--danger-color);">🗑️ 清除</button>
+        </div>
+        <textarea id="pnInput" placeholder="貼上料號，一行一筆..."></textarea>
+    </div>
+
+    <div class="actions">
+        <div class="card card-orange">
+            <h3>1️⃣ Download_Part <span class="sys-req">Fixed .xlsx</span></h3>
+            <div class="btn-group">
+                <button onclick="downloadTemplate1()" class="btn-outline">📥 範本</button>
+                <button onclick="generateReport1()" class="btn-primary">⚡ 產出</button>
+            </div>
+        </div>
+        <div class="card card-orange">
+            <h3>2️⃣ MTMNumber <span class="sys-req">Fixed .xlsx</span></h3>
+            <div class="btn-group">
+                <button onclick="downloadTemplate2()" class="btn-outline">📥 範本</button>
+                <button onclick="generateReport2()" class="btn-primary">⚡ 產出</button>
+            </div>
+        </div>
+        <div class="card card-green">
+            <h3>4️⃣ ODMBOM (Y/N) <span class="sys-req">Fixed .xlsx</span></h3>
+            <div class="control-row" style="display:flex; justify-content: center; gap:10px; margin-bottom:10px; font-size:0.9em;">
+                <label><input type="radio" name="verType" value="Y" id="verY" onchange="toggleBomInputs()"> Version Y</label>
+                <label><input type="radio" name="verType" value="N" id="verN" checked onchange="toggleBomInputs()"> Version N</label>
+            </div>
+            <div id="bomInputs" style="display:none;">
+                <select id="bomTemplate" onchange="toggleBomCustomInput()">
+                    <option value="default">1. 自動判斷 S 碼 (預設)</option>
+                    <option value="brazil1">2. Brazil (B52)</option>
+                    <option value="brazil2">3. Brazil (B51)</option>
+                    <option value="india1">4. India</option>
+                    <option value="custom">5. 自定義</option>
+                </select>
+                <div id="bomCustomBox" style="display:none;">
+                    <div class="bom-custom-help">
+                        <b>怎麼用：</b><br>
+                        ① 先在上方「步驟一」貼好料號，下面會自動列出每一筆<br>
+                        ② 大家都一樣的原因，打在「共用原因」就好<br>
+                        ③ 只有不一樣的料號，才在右邊格子另外打（空白＝用共用原因）<br>
+                        💡 原因已經在 Excel？複製整欄，點第 1 格貼上，會自動往下填
+                    </div>
+                    <input type="text" id="bomCustomText" placeholder="共用原因（沒另外填的料號都用這個）..." oninput="renderBomCustomTable4()">
+                    <div id="bomCustomTable" style="max-height:240px; overflow:auto; margin-top:6px;"></div>
+                </div>
+            </div>
+            <button onclick="generateReport4()" class="btn-success">📊 產出報告</button>
+        </div>
+
+        <div class="card card-purple" style="grid-column: 1 / -1; padding:12px 14px;">
+            <h3 style="margin-bottom:10px;font-size:0.97em;">3️⃣ EC 備註產生器: SPB MTM AVC PN (2026 互動選單)</h3>
+            <div style="display:flex;gap:12px;align-items:flex-start;min-height:60px;">
+                <!-- LEFT controls -->
+                <div style="min-width:180px;max-width:190px;display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+                    <button onclick="previewReport3()" class="btn-secondary" style="width:100%;font-size:0.82em;padding:7px 8px;">🔍 預覽 / 產出</button>
+                    <button onclick="downloadReport3()" id="btnDL3" style="display:none;width:100%;background:#6c3483;color:#fff;border:none;border-radius:6px;padding:7px 8px;font-size:0.82em;font-weight:bold;cursor:pointer;">💾 下載 Excel</button>
+                    <div id="rep3CopyControls" style="display:none;flex-direction:column;gap:3px;">
+                        <button onclick="copyRep3Col(1)" class="btn-outline btn-mini" style="width:100%;font-size:0.75em;">複製 AVC PN</button>
+                        <button onclick="copyRep3Col(2)" class="btn-outline btn-mini" style="width:100%;font-size:0.75em;">複製備註</button>
+                        <button onclick="copyRep3All()" class="btn-success btn-mini" style="width:100%;font-size:0.75em;">複製整表</button>
+                    </div>
+                </div>
+                <!-- RIGHT inline preview -->
+                <div style="flex:1;min-width:0;">
+                    <div id="preview3Empty" style="color:#bbb;font-size:0.8em;padding:14px 8px;text-align:center;">← 點「🔍 預覽 / 產出」查看結果</div>
+                    <div id="preview3Content" class="preview-box" style="display:none;max-height:none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-red" style="grid-column: 1 / -1;">
+            <h3>5️⃣ 合併報表 (篩選 + 隱藏)</h3>
+            <input type="file" id="csvFiles5" multiple accept=".csv" style="width: 100%; margin-bottom:10px;">
+            <div style="margin-bottom:10px; font-size:0.85em; color:#555;">
+                報表格式：
+                <select id="report5Mode" onchange="document.getElementById('btnDL5').style.display='none'">
+                    <option value="all">一般（全部 Change Type）</option>
+                    <option value="chgdate">📅 ChgDate 日期變更報表</option>
+                </select>
+                <small style="color:#888; display:block; margin-top:4px;">ChgDate：只留 Change Type＝ChgDate 的列，Child Part／Qty／Substitute Relationship 隱藏，另加 LastModified、EOW Date、GA Date、AnnoucementDate、Withdrawal Date、Qualification Date 並標紅字（固定下載 xlsx）。</small>
+            </div>
+            <div class="btn-group">
+                <button onclick="processMergeReport5()" class="btn-dark">🔨 處理預覽</button>
+                <button onclick="downloadMergedReport5()" id="btnDL5" style="display:none; background-color:#c0392b;">💾 下載</button>
+            </div>
+        </div>
+        <div class="card card-blue" style="grid-column: 1 / -1;">
+            <h3>6️⃣ _EC 檔案合併 (丟入 PIM_MTM)</h3>
+            <input type="file" id="csvFiles6" multiple accept=".csv" style="width: 100%; margin-bottom:10px;">
+            <div class="btn-group">
+                <button onclick="processMergeReport6()" class="btn-blue">🔨 處理預覽</button>
+                <button onclick="downloadMergedReport6()" id="btnDL6" style="display:none; background-color:#16a085;">💾 下載</button>
+            </div>
+        </div>
+
+        <div class="card card-purple" style="grid-column: 1 / -1; border-top-color:#e67e22;">
+            <h3>7️⃣ SPB / FactSheet 快篩</h3>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:10px;">
+                <div style="flex:1; min-width:220px;">
+                    <label style="font-size:0.85em; color:#555; display:block; margin-bottom:4px;">① Flatfile CSV（多選，跟 5️⃣/6️⃣ 同一批）</label>
+                    <div style="display:flex; gap:6px;">
+                        <input type="file" id="csvFiles7" multiple accept=".csv" style="width:100%;">
+                        <button onclick="clearFileInput7('csvFiles7')" class="btn-outline btn-mini" style="flex:initial; white-space:nowrap;" title="清空這個檔案選擇，不用重整頁面">🗑️</button>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:220px;">
+                    <label style="font-size:0.85em; color:#555; display:block; margin-bottom:4px;">② FactSheet .xlsx（多選，你本機已下載的，可不選）</label>
+                    <div style="display:flex; gap:6px;">
+                        <input type="file" id="factSheetFiles7" multiple accept=".xlsx" style="width:100%;">
+                        <button onclick="clearFileInput7('factSheetFiles7')" class="btn-outline btn-mini" style="flex:initial; white-space:nowrap;" title="清空這個檔案選擇，不用重整頁面">🗑️</button>
+                    </div>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button onclick="processSpbPrecheck()" class="btn-secondary">🔨 快篩預覽</button>
+                <button onclick="downloadMissingFactSheetList()" id="btnDL7" style="display:none; background-color:#e67e22;" title="全部頂層 MTM（正常L10＋SPB），同一份可上傳客人網站產出 Single BOM 與 FactSheet">💾 下載上傳清單</button>
+                <button onclick="toggleDebugPanel()" class="btn-outline btn-mini" style="flex:initial;" title="平常不用點，跑錯結果或畫面怪怪的時候再打開看">🐛 除錯視窗</button>
+            </div>
+            <div id="precheck7Summary" style="margin-top:10px; font-size:0.85em; color:#555;"></div>
+        </div>
+
+        <div class="card card-green" style="grid-column: 1 / -1;">
+            <h3>8️⃣ EC Tracking 待貼入報表 <span class="sys-req" style="background:#fdebd0;color:#b9770e;" title="0012系列規則、ChgDes新規則尚無真實案例完整驗證，CTO_開頭EC的Family為系統推測（約94%準確率，橘色標記處建議複核）">⚠ 部分規則尚待真實案例驗證，請參考 SOP</span></h3>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:10px;">
+                <div style="flex:1; min-width:220px;">
+                    <label style="font-size:0.85em; color:#555; display:block; margin-bottom:4px;">① Flatfile CSV（多選，跟 5️⃣/6️⃣/7️⃣ 同一批）</label>
+                    <div style="display:flex; gap:6px;">
+                        <input type="file" id="csvFiles8" multiple accept=".csv" style="width:100%;">
+                        <button onclick="clearFileInput8('csvFiles8')" class="btn-outline btn-mini" style="flex:initial; white-space:nowrap;" title="清空這個檔案選擇，不用重整頁面">🗑️</button>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:220px;">
+                    <label style="font-size:0.85em; color:#555; display:block; margin-bottom:4px;">② FactSheet .xlsx（SPB MTM 才需要，可不選）</label>
+                    <div style="display:flex; gap:6px;">
+                        <input type="file" id="factSheetFiles8" multiple accept=".xlsx" style="width:100%;">
+                        <button onclick="clearFileInput8('factSheetFiles8')" class="btn-outline btn-mini" style="flex:initial; white-space:nowrap;" title="清空這個檔案選擇，不用重整頁面">🗑️</button>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:220px;">
+                    <label style="font-size:0.85em; color:#555; display:block; margin-bottom:4px;">③ PN_Project_Map 對照表（預設自動讀取雲端；選檔時改用此檔案）</label>
+                    <div style="display:flex; gap:6px;">
+                        <input type="file" id="pnProjectMapFile8" accept=".xlsx" style="width:100%;">
+                        <button onclick="clearFileInput8('pnProjectMapFile8')" class="btn-outline btn-mini" style="flex:initial; white-space:nowrap;" title="清空這個檔案選擇，不用重整頁面">🗑️</button>
+                    </div>
+                </div>
+                <div style="min-width:140px;">
+                    <label style="font-size:0.85em; color:#555; display:block; margin-bottom:4px;">Creater（執行人）</label>
+                    <select id="creater8" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+                        <option value="May">May</option>
+                        <option value="Pauline">Pauline</option>
+                        <option value="Doris">Doris</option>
+                    </select>
+                </div>
+            </div>
+            <div style="font-size:0.78em; color:#888; margin-bottom:10px;">
+                MTM Family 跟國別對照會自動從雲端 CustomDB／CountryDB／PN_Project_Map 讀取，不用另外上傳主表。前4碼查不到時，以完整料號查 PN_Project_Map。
+                <b>本版本已修正「FactSheet 只限 Change Type=New 才查」的規則</b>（Node 版 build-staging-report.js 目前還是舊規則，尚未決定要不要一起改）。
+                確認者欄：POR/600/0000開頭/30000開頭SPB → 跟 Creater 一樣；2000/0012/4000/0013開頭、CTO_開頭 → 查 Project 對應的 SE；其餘留空（後4條是用9萬2千多列歷史資料反推的統計規律，非100%解出來的公式）。
+            </div>
+            <div class="btn-group">
+                <button onclick="processStagingReport8()" class="btn-success">🔨 產出待貼入報表</button>
+                <button onclick="downloadStagingReport8()" id="btnDL8" style="display:none; background-color:#1e8449;">💾 下載 Excel</button>
+                <button onclick="toggleDebugPanel()" class="btn-outline btn-mini" style="flex:initial;">🐛 除錯視窗</button>
+            </div>
+            <div id="staging8Summary" style="margin-top:10px; font-size:0.85em; color:#555;"></div>
+        </div>
+    </div>
+
+    <div id="previewArea">
+        <div id="previewContent" class="preview-box"></div>
+    </div>
+</div>
+
+<script>
+    let globalDB = [];
+    let lastLookupResults = []; // 暫存搜尋結果
+    const DB_HEADERS = ["料號", "建立時間", "客戶料號", "備註"];
+    const INVALID_KEYWORDS = ["無效", "作廢", "停用", "INVALID", "OBSOLETE", "CANCEL", "歷史"];
+    let cacheRep3=[];
+    let cacheRep5=null, cacheStyle5=null, cacheLayout5=null, cacheRep6=null, cacheStyle6=null;
+    let cacheMissingFactSheet7 = [];
+    let cacheUploadList7 = [];
+
+    window.onload = function() {
+        const savedUrl = localStorage.getItem('pn_tool_gas_url');
+        if (savedUrl) document.getElementById('gasUrl').value = savedUrl;
+        updateDBStatus("未連線 (請按下載)", 0);
+    };
+
+    // postMessage 自動 Pull（從主頁切換到 PN 頁時觸發）
+    window.addEventListener('message', function(e) {
+        if (e.data === 'auto_pull_pn') {
+            var urlInput = document.getElementById('gasUrl');
+            if (!urlInput.value.trim()) {
+                var saved = localStorage.getItem('pn_tool_gas_url');
+                if (saved) urlInput.value = saved;
+            }
+            if (urlInput.value.trim() && globalDB.length === 0) {
+                syncFromCloud();
+            }
+        }
+    });
+
+    function saveGasUrl() {
+        localStorage.setItem('pn_tool_gas_url', document.getElementById('gasUrl').value.trim());
+        alert("✅ 網址儲存成功");
+    }
+
+    const showLoading = (s, t="處理中...") => { document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; };
+
+    function dbg(msg, isErr) {
+        const panel = document.getElementById('debugPanel');
+        const body = document.getElementById('debugPanelBody');
+        if (isErr) panel.style.display = 'block'; // 平常不自動跳出，只有出錯才自動顯示
+        const line = document.createElement('div');
+        if (isErr) line.className = 'dbg-err';
+        const time = new Date().toLocaleTimeString();
+        line.textContent = `[${time}] ${msg}`;
+        body.appendChild(line);
+        panel.scrollTop = panel.scrollHeight;
+        console.log(msg);
+    }
+    function toggleDebugPanel() {
+        const panel = document.getElementById('debugPanel');
+        panel.style.display = (panel.style.display === 'block') ? 'none' : 'block';
+    }
+    const getDateStr = () => { const t = new Date(); return t.getFullYear() + String(t.getMonth()+1).padStart(2,'0') + String(t.getDate()).padStart(2,'0'); };
+    const getSeq = () => document.getElementById('globalSeq').value;
+    const makeFilename = (base, ext) => `${base}_${getDateStr()}_${getSeq()}.${ext}`;
+    const getPNList = () => document.getElementById('pnInput').value.split('\n').map(x=>x.trim()).filter(x=>x!=='');
+    const clearInput = () => { document.getElementById('pnInput').value = ""; if (typeof renderBomCustomTable4 === 'function') renderBomCustomTable4(); };
+    (function bindPnInputSync4() {
+        const bind = () => { const el = document.getElementById('pnInput'); if (el) el.addEventListener('input', () => renderBomCustomTable4()); };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
+    })();
+
+    // --- 【修正】強力去時區化的日期處理 (V36.14) ---
+    function normalizeDate(v) {
+        if (!v) return "";
+        let str = String(v).trim();
+
+        // 1. 處理 Excel 數字日期 (例如 45658)
+        if (!isNaN(str) && parseFloat(str) > 20000 && !str.includes('/') && !str.includes('-')) {
+             const date = new Date((parseFloat(str) - 25569) * 86400 * 1000);
+             return formatDateObj(date);
+        }
+
+        // 2. 處理 M/D/YY 或 MM/DD/YYYY
+        if (str.includes('/')) {
+            const parts = str.split('/');
+            if(parts.length === 3) {
+                let y = parts[2];
+                let m = parts[0];
+                let d = parts[1];
+                if(y.length === 2) y = "20" + y;
+                if(parts[0].length === 4) return `${parts[0]}/${parts[1].padStart(2,'0')}/${parts[2].padStart(2,'0')}`; // 確保 MM/DD 補零
+                return `${y}/${m.padStart(2,'0')}/${d.padStart(2,'0')}`;
+            }
+        }
+
+        // 3. 處理 ISO Date (Google Sheets 傳來的 UTC 時間，例如 2026-03-01T16:00:00.000Z)
+        // 透過 new Date() 會自動轉回本地時間 (台灣 UTC+8)，所以 16:00 會變成隔天 00:00，完美解決減一天問題
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+            return formatDateObj(d);
+        }
+
+        return str; // 無法解析則回傳原字串
+    }
+
+    function formatDateObj(d) {
+        return d.getFullYear() + "/" + String(d.getMonth()+1).padStart(2,'0') + "/" + String(d.getDate()).padStart(2,'0');
+    }
+
+    function updateDBStatus(t, c) {
+        const b = document.getElementById('dbLastTime'), d = document.getElementById('statusDot');
+        b.textContent = c > 0 ? `雲端資料: ${c} 筆 (更新: ${t})` : `狀態: ${t}`;
+        if (c > 0) d.classList.add('status-active'); else d.classList.remove('status-active');
+    }
+
+    const PN_SYNC_RETRIES = 4;
+
+    function waitForPnSync(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function fetchPnJsonWithRetry(url, options = {}, retries = PN_SYNC_RETRIES) {
+        let lastError;
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                const text = await response.text();
+                let data;
+                try { data = JSON.parse(text); }
+                catch (_) { throw new Error('雲端回傳格式異常（HTTP ' + response.status + '）'); }
+                if (!response.ok) throw new Error(data.message || ('HTTP ' + response.status));
+                if (data && data.status === 'error') throw new Error(data.message || '雲端拒絕此操作');
+                return data;
+            } catch (error) {
+                lastError = error;
+                if (attempt < retries) await waitForPnSync(600 * attempt);
+            }
+        }
+        throw lastError;
+    }
+
+    function applyPnCloudData(data) {
+        if (!Array.isArray(data) || data.length < 1) throw new Error('雲端資料格式不正確');
+        globalDB = data.slice(1).map(r => ({
+            internalPN: String(r[0] || ''),
+            createdTime: normalizeDate(r[1]),
+            customerPN: String(r[2] || ''),
+            remarks: String(r[3] || '')
+        })).filter(x => x.internalPN);
+        updateDBStatus(new Date().toLocaleTimeString(), globalDB.length);
+        if (document.getElementById('lookupInput').value.trim()) lookupDB();
+        return globalDB.length;
+    }
+
+    async function pullPnCloudData() {
+        const url = document.getElementById('gasUrl').value.trim();
+        if (!url) throw new Error('請先輸入 GAS URL');
+        const data = await fetchPnJsonWithRetry(url + '?sheet=' + encodeURIComponent('PN Database') + '&t=' + Date.now(), { cache: 'no-store' });
+        return applyPnCloudData(data);
+    }
+
+    async function pushPnDataAndVerify(sendData, verifyEntries) {
+        const url = document.getElementById('gasUrl').value.trim();
+        if (!url) throw new Error('請先輸入 GAS URL');
+        const intended = new Set(sendData.slice(1).map(r => String(r[0] || '').trim().toUpperCase()).filter(Boolean));
+        let postError = null;
+        try {
+            await fetchPnJsonWithRetry(url, {
+                method: 'POST',
+                body: JSON.stringify({ sheet: 'PN Database', action: 'upsert', data: sendData })
+            });
+        } catch (error) {
+            // Apps Script 偶爾在已完成寫入後回傳 404；以下方重新下載的結果為準。
+            postError = error;
+        }
+        let count;
+        try { count = await pullPnCloudData(); }
+        catch (verifyError) {
+            throw new Error('無法重新下載驗證：' + verifyError.message + (postError ? '；上傳回應：' + postError.message : ''));
+        }
+        const cloudKeys = new Set(globalDB.map(r => String(r.internalPN || '').trim().toUpperCase()).filter(Boolean));
+        const missing = [...intended].filter(key => !cloudKeys.has(key));
+        if (missing.length) throw new Error('雲端驗證未通過，缺少 ' + missing.length + ' 筆；請勿重複操作並通知管理者');
+
+        // 進一步比對「備註」等欄位是否真的同步到雲端（避免 Apps Script upsert 只寫入部分欄位卻不報錯）
+        if (verifyEntries && verifyEntries.length) {
+            const cloudMap = new Map(globalDB.map(r => [
+                String(r.internalPN || '').trim().toUpperCase() + '|' + String(r.createdTime || ''),
+                r
+            ]));
+            const fieldMismatch = verifyEntries.filter(e => {
+                const key = String(e.internalPN || '').trim().toUpperCase() + '|' + String(e.createdTime || '');
+                const cloudRow = cloudMap.get(key);
+                if (!cloudRow) return false;
+                return (cloudRow.remarks || '') !== (e.remarks || '') || (cloudRow.customerPN || '') !== (e.customerPN || '');
+            });
+            if (fieldMismatch.length) {
+                const list = fieldMismatch.map(e => e.internalPN).join('、');
+                throw new Error('雲端已寫入料號，但備註/客戶料號內容與貼上的不一致（可能是雲端 upsert 邏輯問題），受影響料號：' + list + '；請重新整理確認並手動補正');
+            }
+        }
+        return count;
+    }
+
+    async function syncFromCloud() {
+        if (!document.getElementById('gasUrl').value.trim()) return alert('請輸入 URL');
+        showLoading(true, '雲端同步中...');
+        try {
+            const count = await pullPnCloudData();
+            alert('✅ 下載並驗證成功，共 ' + count + ' 筆');
+        } catch (error) {
+            alert('❌ 下載失敗：' + error.message);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 網頁內建確認視窗：取代瀏覽器原生 confirm()，讓自動化工具也能點到「確定」；文字不變，按「取消」或 Esc 一樣不執行。
+    let pageConfirmOpen = false;
+    function pageConfirm(message) {
+        if (pageConfirmOpen) return Promise.resolve(false);
+        pageConfirmOpen = true;
+        return new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.id = 'pageConfirmOverlay';
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999;';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;color:#222;border-radius:8px;padding:18px 20px;width:min(560px,calc(100% - 32px));box-shadow:0 8px 30px rgba(0,0,0,.3);font-size:14px;';
+            const msg = document.createElement('div');
+            msg.id = 'pageConfirmMessage';
+            msg.style.cssText = 'white-space:pre-wrap;max-height:60vh;overflow:auto;margin-bottom:14px;line-height:1.5;';
+            msg.textContent = message;
+            const bar = document.createElement('div');
+            bar.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+            const makeBtn = (id, text, bg) => {
+                const b = document.createElement('button');
+                b.id = id; b.type = 'button'; b.textContent = text;
+                b.style.cssText = 'border:none;border-radius:4px;padding:6px 18px;cursor:pointer;font-size:14px;color:#fff;background:' + bg + ';';
+                return b;
+            };
+            const cancel = makeBtn('pageConfirmCancel', '取消', '#7f8c8d');
+            const ok = makeBtn('pageConfirmOk', '確定', '#2980b9');
+            const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); finish(false); } };
+            function finish(value) {
+                document.removeEventListener('keydown', onKey, true);
+                overlay.remove();
+                pageConfirmOpen = false;
+                resolve(value);
+            }
+            cancel.onclick = () => finish(false);
+            ok.onclick = () => finish(true);
+            document.addEventListener('keydown', onKey, true);
+            bar.append(cancel, ok);
+            box.append(msg, bar);
+            overlay.append(box);
+            document.body.append(overlay);
+            ok.focus();
+        });
+    }
+
+    async function syncToCloud() {
+        const url = document.getElementById('gasUrl').value.trim();
+        if (!url || !(await pageConfirm('確定將目前資料安全合併至雲端？此動作不會刪除雲端既有 PN。'))) return;
+        showLoading(true, '安全合併並驗證中...');
+        const sendData = [DB_HEADERS, ...[...globalDB].reverse().map(i => [i.internalPN, i.createdTime, i.customerPN, i.remarks])];
+        try {
+            const count = await pushPnDataAndVerify(sendData);
+            alert('✅ 上傳完成且已重新驗證，雲端共 ' + count + ' 筆');
+        } catch (error) {
+            alert('❌ 上傳驗證失敗：' + error.message);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function lookupDB() {
+        const v = document.getElementById('lookupInput').value.trim();
+        const tb = document.getElementById('lookupBody');
+        const dlArea = document.getElementById('lookupDownloadArea');
+        const countEl = document.getElementById('lookupCount');
+        tb.innerHTML = "";
+        lastLookupResults = [];
+        countEl.textContent = "";
+
+        if(!v) {
+            dlArea.style.display = 'none';
+            return;
+        }
+
+        const queries = v.split('\n').map(x=>x.trim().toUpperCase()).filter(x=>x);
+        let found = false;
+        const missing = [];
+        queries.forEach(q => {
+            const matches = globalDB.filter(i => (i.internalPN+i.customerPN+(i.remarks||"")).toUpperCase().includes(q));
+            if (!matches.length) missing.push(q);
+            matches.forEach(r => {
+                found = true;
+                lastLookupResults.push(r);
+                const tr = document.createElement('tr');
+                let displayRem = r.remarks;
+                if(r.remarks.includes("巴西")) displayRem = `<span class='highlight-text-red'>${r.remarks}</span>`;
+                tr.innerHTML = `<td>${r.internalPN}</td><td>${r.createdTime}</td><td>${r.customerPN}</td><td>${displayRem}</td>`;
+                tb.appendChild(tr);
+            });
+        });
+
+        // F020：顯示查到幾筆；多個關鍵字時列出查無的關鍵字方便對漏
+        let countText = `查到 ${lastLookupResults.length} 筆`;
+        if (queries.length > 1) countText += `（${queries.length} 個關鍵字${missing.length ? `，${missing.length} 個查無：${missing.slice(0, 10).join('、')}${missing.length > 10 ? '…' : ''}` : ''}）`;
+        countEl.textContent = countText;
+
+        if (!found) {
+            tb.innerHTML = `<tr><td colspan="4" style="text-align:center; color:red; padding:15px;">❌ 查無資料</td></tr>`;
+            dlArea.style.display = 'none';
+        } else {
+            dlArea.style.display = 'flex';
+        }
+    }
+
+    function toggleLookupSize() {
+        const box = document.getElementById('lookupContainer');
+        const btn = document.getElementById('btnLookupSize');
+        const expand = box.style.height !== '70vh';
+        box.style.height = expand ? '70vh' : '250px';
+        btn.textContent = expand ? '⬆ 縮小結果區' : '⬇ 放大結果區';
+    }
+
+    function downloadLookupResult() {
+        if (lastLookupResults.length === 0) return alert("沒有資料可供下載");
+
+        let exportData = lastLookupResults;
+        const onlyLatest = document.getElementById('lookupOnlyLatest').checked;
+
+        if (onlyLatest) {
+            const groups = {};
+            exportData.forEach(item => {
+                const cpn = item.customerPN;
+                if (!groups[cpn]) {
+                    groups[cpn] = item;
+                } else {
+                    const getSeq = (pn) => {
+                        const m = pn.match(/-(\d{3})$/);
+                        return m ? parseInt(m[1]) : 0;
+                    };
+                    if (getSeq(item.internalPN) > getSeq(groups[cpn].internalPN)) {
+                        groups[cpn] = item;
+                    }
+                }
+            });
+            exportData = Object.values(groups);
+        }
+
+        const data = [DB_HEADERS];
+        exportData.forEach(r => {
+            // 使用 export 時直接給 r.createdTime 即可，因 syncFromCloud 時已轉換好
+            data.push([r.internalPN, r.createdTime, r.customerPN, r.remarks]);
+        });
+
+        const fileName = onlyLatest ? "SearchResult_LatestOnly" : "SearchResult_All";
+        exportExcelWithStyles(data, fileName, {}, 'xlsx', PERSONAL_REPORT);
+    }
+
+    function manualAddData() {
+        const t = document.getElementById('manualDbInput').value; if(!t.trim()) return;
+        const newEntries = [];
+        t.split('\n').forEach(l => {
+            const c = l.split('	');
+            if(c.length >= 3) {
+                const entry = {
+                    internalPN: c[0],
+                    createdTime: normalizeDate(c[1]),
+                    customerPN: c[2],
+                    remarks: c[3]||""
+                };
+                globalDB.push(entry);
+                newEntries.push(entry);
+            }
+        });
+        document.getElementById('manualDbInput').value = "";
+        updateDBStatus('上傳中...', globalDB.length);
+        autoPushAfterAdd(newEntries.length, newEntries);
+    }
+
+    async function autoPushAfterAdd(added, newEntries) {
+        if (!document.getElementById('gasUrl').value.trim()) {
+            updateDBStatus('請先設定 GAS URL', globalDB.length);
+            return;
+        }
+        showLoading(true, '自動上傳並驗證中...');
+        const sendData = [DB_HEADERS, ...[...globalDB].reverse().map(i => [i.internalPN, i.createdTime, i.customerPN, i.remarks])];
+        try {
+            const count = await pushPnDataAndVerify(sendData, newEntries);
+            updateDBStatus(new Date().toLocaleTimeString(), count);
+            const msg = document.getElementById('copyMsg');
+            if (msg) { msg.textContent = '✅ 已新增 ' + added + ' 筆、上傳並驗證！'; msg.style.opacity = 1; setTimeout(() => msg.style.opacity = 0, 3000); }
+        } catch (error) {
+            updateDBStatus('上傳驗證失敗，請勿重複操作', globalDB.length);
+            alert('❌ 自動上傳驗證失敗：' + error.message);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function incrementGlobalSeq() {
+        const sel = document.getElementById('globalSeq');
+        if (sel.selectedIndex < sel.options.length - 1) sel.selectedIndex++; else sel.selectedIndex = 0;
+    }
+
+    function previewReport3() {
+        if (rep3Busy) return;
+        const seen = new Set();
+        const list = getPNList().filter(p => { const key = p.toUpperCase(); if (seen.has(key)) return false; seen.add(key); return true; }); if(!list.length) return alert("請貼 PN");
+        rep3Blocked = false;
+        const cont = document.getElementById('preview3Content');
+        const emptyHint = document.getElementById('preview3Empty');
+        cont.innerHTML = "";
+        cont.style.display = 'none';
+        if(emptyHint) emptyHint.style.display = 'block';
+        cacheRep3 = [];
+
+        const newPNs = [];
+        const _td=new Date();const nowStr=`${_td.getFullYear()}/${String(_td.getMonth()+1).padStart(2,'0')}/${String(_td.getDate()).padStart(2,'0')}`;
+
+        // Build preview table rows
+        const tableRows = [];
+
+        list.forEach((cpn, idx) => {
+            const {isNew, lastVer, nextVer} = rep3Versions(cpn);
+            const item = {
+                input: cpn, isNew: isNew, lastVer: lastVer, nextVer: nextVer,
+                curPN: isNew ? cpn : lastVer, curNote: isNew ? "【新料號】第一版原號申請。" : `【變更件】2.無影響-手動改 (目前版: ${lastVer})`
+            };
+            cacheRep3.push(item);
+            if(isNew) newPNs.push({cpn, idx});
+
+            let schemeHTML = isNew
+                ? `<span style="color:var(--success-color);font-weight:bold;font-size:0.85em;">🆕 第一版</span>`
+                : `<div class="scheme-selector" style="font-size:0.82em;">
+                    <label><input type="radio" name="sch_${idx}" checked onclick="updRep3(${idx},'manual')"> 無影響-手動改</label>
+                    <label><input type="radio" name="sch_${idx}" onclick="updRep3(${idx},'keypart')"> Keypart-產新號</label>
+                  </div>`;
+
+            tableRows.push(`<tr style="border-bottom:1px solid #eee;">
+                <td style="padding:4px 8px;font-size:0.82em;color:#333;">${cpn}</td>
+                <td style="padding:4px 8px;">${schemeHTML}</td>
+                <td style="padding:4px 8px;font-size:0.82em;" id="pn_cell_${idx}">${item.curPN}</td>
+                <td style="padding:4px 8px;font-size:0.78em;color:#555;" id="note_cell_${idx}">${item.curNote}</td>
+            </tr>`);
+
+
+        });
+
+        const hasNew = newPNs.length > 0;
+        const leftWidth = '100%';
+        const rightBlock = '<div id="rep3Pending" style="width:100%"></div>';
+
+        cont.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:0;align-items:flex-start;">
+                <!-- LEFT: scheme preview table -->
+                <div style="width:${leftWidth};min-width:0;overflow:auto;max-height:320px;">
+                    <table style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#f4ecf7;">
+                                <th style="padding:5px 8px;text-align:left;font-size:0.82em;color:#6c3483;">Input</th>
+                                <th style="padding:5px 8px;text-align:left;font-size:0.82em;color:#6c3483;min-width:150px;">
+                                    <div style="display:flex;flex-direction:column;gap:3px;">
+                                        <span>方案選擇</span>
+                                        <div style="display:flex;gap:4px;">
+                                            <button onclick="applyAllScheme('manual')" style="border:none;background:#8e44ad;color:#fff;padding:1px 7px;border-radius:3px;font-size:0.75em;cursor:pointer;font-weight:bold;white-space:nowrap;">全部：手動改</button>
+                                            <button onclick="applyAllScheme('keypart')" style="border:none;background:#2980b9;color:#fff;padding:1px 7px;border-radius:3px;font-size:0.75em;cursor:pointer;font-weight:bold;white-space:nowrap;">全部：產新號</button>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th style="padding:5px 8px;text-align:left;font-size:0.82em;color:#6c3483;">建議 AVC PN</th>
+                                <th style="padding:5px 8px;text-align:left;font-size:0.82em;color:#6c3483;">2026 方案判定備註</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows.join('')}</tbody>
+                    </table>
+                </div>
+                ${rightBlock}
+            </div>`;
+
+        renderRep3Pending();
+
+        // Show
+        cont.style.display = 'block';
+        if(emptyHint) emptyHint.style.display = 'none';
+        document.getElementById('rep3CopyControls').style.display = 'flex';
+        document.getElementById('btnDL3').style.display = 'block';
+
+        // Auto-focus first remark
+        if(hasNew) {
+            setTimeout(() => {
+                const first = document.getElementById('dbremark_' + newPNs[0].idx);
+                if(first) { first.focus(); first.select(); }
+            }, 50);
+        }
+    }
+
+    // Store newPNs reference globally for batch write
+    let _newPNsCache = [];
+
+    function applyGlobalDate(val) {
+        // Apply to all date inputs if "統一日期" is checked
+        document.querySelectorAll('[id^="dbtime_"]:not(:disabled)').forEach(el => { el.value = val; });
+    }
+
+    function syncDateIfLinked(changedInput) {
+        // If "統一日期" checkbox is on, sync to globalDatePicker AND all other rows
+        const linked = document.getElementById('linkDateChk');
+        if(linked && linked.checked) {
+            const val = changedInput.value;
+            const gp = document.getElementById('globalDatePicker');
+            if(gp) gp.value = val;
+            document.querySelectorAll('[id^="dbtime_"]:not(:disabled)').forEach(el => { el.value = val; });
+        }
+    }
+
+    function applyGlobalRemark(val) {
+        const linked = document.getElementById('linkRemarkChk');
+        if(linked && !linked.checked) return;
+        document.querySelectorAll('[id^="dbremark_"]:not(:disabled)').forEach(el => { el.value = val; });
+    }
+
+    function syncRemarkIfLinked(changedInput) {
+        const linked = document.getElementById('linkRemarkChk');
+        if(linked && linked.checked) {
+            const val = changedInput.value;
+            const gp = document.getElementById('globalRemarkInput');
+            if(gp) gp.value = val;
+            document.querySelectorAll('[id^="dbremark_"]:not(:disabled)').forEach(el => { el.value = val; });
+        }
+    }
+
+    function toggleAllChk(src) {
+        const checked = src.checked;
+        // Sync both checkboxes (top bar + thead)
+        const chkAll = document.getElementById('chkAll');
+        const chkAllTh = document.getElementById('chkAllTh');
+        if(chkAll) chkAll.checked = checked;
+        if(chkAllTh) chkAllTh.checked = checked;
+        document.querySelectorAll('[id^="dbchk_"]').forEach(c => { if (!c.disabled) c.checked = checked; });
+        updateBatchBtn();
+    }
+
+    let rep3Busy = false;
+    let rep3Blocked = false;
+
+    function rep3Escape(value) {
+        return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function rep3Versions(cpn) {
+        const recs = globalDB.filter(i => i.customerPN.toUpperCase() === cpn.toUpperCase() && !INVALID_KEYWORDS.some(kw => (i.remarks || '').includes(kw)));
+        let max = 0, suffix = false;
+        recs.forEach(r => { const m = r.internalPN.match(/-(\d{3})$/); if (m) { max = Math.max(max, Number(m[1])); suffix = true; } });
+        return { isNew: recs.length === 0, lastVer: max === 0 && !suffix ? cpn : `${cpn}-${String(max).padStart(3,'0')}`, nextVer: `${cpn}-${String(max + 1).padStart(3,'0')}` };
+    }
+
+    function renderRep3Pending() {
+        // Keep edited dates, remarks and selections when switching schemes.
+        cacheRep3.forEach((item, idx) => {
+            const chk = document.getElementById('dbchk_' + idx);
+            if (chk) item.form = { checked: chk.checked, date: document.getElementById('dbtime_' + idx).value, remark: document.getElementById('dbremark_' + idx).value };
+        });
+        const host = document.getElementById('rep3Pending');
+        if (!host) return;
+        const date = formatDateObj(new Date()).replace(/\//g, '-');
+        const rows = [];
+        cacheRep3.forEach((item, idx) => {
+            if (!item.isNew && item.curPN !== item.nextVer) return;
+            if (!item.form) item.form = { checked: true, date, remark: item.isNew ? '' : item.curNote };
+            const f = item.form, saved = item.saved;
+            rows.push(`<tr id="pnrow_${idx}" style="${saved ? 'opacity:.6;' : ''}">
+                <td><input type="checkbox" id="dbchk_${idx}" ${f.checked && !saved ? 'checked' : ''} ${saved ? 'disabled' : ''} onchange="updateBatchBtn()" aria-label="選取 ${rep3Escape(item.curPN)}"></td>
+                <td>${rep3Escape(item.curPN)}<br><small>${saved ? '已存入並驗證' : item.isNew ? '全新料號' : 'Keypart 新版號'}</small></td>
+                <td><input type="date" id="dbtime_${idx}" value="${rep3Escape(f.date)}" ${saved ? 'disabled' : ''} onchange="syncDateIfLinked(this)"></td>
+                <td>${rep3Escape(item.input)}</td>
+                <td><input type="text" id="dbremark_${idx}" value="${rep3Escape(f.remark)}" ${saved ? 'disabled' : ''} oninput="syncRemarkIfLinked(this)" placeholder="備註..." style="width:100%;min-width:100px"></td>
+            </tr>`);
+        });
+        const existing = document.getElementById('newPNRows');
+        if (existing) existing.innerHTML = rows.join('');
+        else host.innerHTML = `<div style="border-top:2px solid #27ae60;margin-top:12px;padding-top:10px">
+            <b style="color:#15803d">📚 待存入 Cloud DB</b>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0">
+                <label><input type="checkbox" id="chkAll" checked onchange="toggleAllChk(this)"> 全選</label>
+                <label><input type="checkbox" id="linkDateChk" checked> 統一日期</label>
+                <input type="date" id="globalDatePicker" value="${date}" onchange="applyGlobalDate(this.value)" aria-label="統一日期">
+                <label><input type="checkbox" id="linkRemarkChk" checked> 統一備註</label>
+                <input type="text" id="globalRemarkInput" placeholder="套用到全部備註..." oninput="applyGlobalRemark(this.value)" aria-label="統一備註">
+            </div>
+            <div style="overflow:auto;max-height:300px"><table><thead><tr><th><input type="checkbox" id="chkAllTh" checked onchange="toggleAllChk(this)" aria-label="全選待存入"></th><th>料號</th><th>時間</th><th>客戶料號</th><th>備註</th></tr></thead><tbody id="newPNRows">${rows.join('')}</tbody></table></div>
+            <p id="rep3NoPending" style="margin:8px 0">手動改不新增料號，沒有待存入項目。</p>
+            <button id="batchWriteBtn" onclick="batchWriteNewPNs()" class="btn-success">檢查並存入</button>
+            <div id="dbWriteStatus" role="status" aria-live="polite" style="margin-top:8px"></div>
+        </div>`;
+        document.getElementById('rep3NoPending').hidden = rows.length > 0;
+        updateBatchBtn();
+    }
+
+    function updateBatchBtn() {
+        const all = [...document.querySelectorAll('[id^="dbchk_"]')].filter(c => !c.disabled);
+        const checkedCount = all.filter(c => c.checked).length;
+        const btn = document.getElementById('batchWriteBtn');
+        if (btn) { btn.textContent = `📚 檢查並存入（${checkedCount} 筆）`; btn.disabled = rep3Busy || rep3Blocked || checkedCount === 0; }
+        for (const id of ['chkAll', 'chkAllTh']) {
+            const chk = document.getElementById(id);
+            if (chk) { chk.checked = all.length > 0 && checkedCount === all.length; chk.indeterminate = checkedCount > 0 && checkedCount < all.length; }
+        }
+    }
+
+    async function batchWriteNewPNs() {
+        if (rep3Busy || rep3Blocked) return;
+        if (!document.getElementById('gasUrl').value.trim()) return alert('請先填寫 GAS URL');
+        const statusEl = document.getElementById('dbWriteStatus');
+        if (!statusEl) return;
+        const selected = [];
+        cacheRep3.forEach((item, idx) => {
+            const chk = document.getElementById('dbchk_' + idx);
+            if (!chk || !chk.checked || chk.disabled || item.saved || (!item.isNew && item.curPN !== item.nextVer)) return;
+            selected.push({ internalPN: item.curPN, createdTime: document.getElementById('dbtime_' + idx).value.replace(/-/g, '/'), customerPN: item.input, remarks: document.getElementById('dbremark_' + idx).value.trim(), idx });
+        });
+        if (!selected.length) return;
+        if (selected.some(e => !/^\d{4}\/\d{2}\/\d{2}$/.test(e.createdTime))) { statusEl.textContent = '請先填寫每筆日期，未寫入。'; return; }
+        const summary = selected.map(e => `${e.internalPN}｜${e.createdTime}｜${e.remarks || '（無備註）'}`).join('\n');
+        if (!(await pageConfirm(`確認新增以下 ${selected.length} 筆？原有版本會保留。\n\n${summary}`))) return;
+        rep3Busy = true;
+        updateBatchBtn();
+        showLoading(true, '檢查最新資料並存入...');
+        let attempted = false;
+        try {
+            await pullPnCloudData();
+            const existingKeys = new Set(globalDB.map(e => e.internalPN.trim().toUpperCase()));
+            const selectedKeys = new Set();
+            for (const entry of selected) {
+                const key = entry.internalPN.trim().toUpperCase();
+                if (existingKeys.has(key) || selectedKeys.has(key)) throw new Error('待存入料號已存在或重複，請重新預覽；未寫入。');
+                selectedKeys.add(key);
+                const current = rep3Versions(entry.customerPN), before = cacheRep3[entry.idx];
+                if (current.isNew !== before.isNew || current.lastVer !== before.lastVer || current.nextVer !== before.nextVer) throw new Error('雲端版號已變更，請重新預覽並確認新版號；未寫入。');
+            }
+            const entries = selected.map(({idx, ...entry}) => entry);
+            const sendData = [DB_HEADERS, ...entries.map(e => [e.internalPN, e.createdTime, e.customerPN, e.remarks])];
+            attempted = true;
+            const count = await pushPnDataAndVerify(sendData, entries);
+            // A matching PN alone is insufficient: date and every submitted field must match.
+            if (!entries.every(e => globalDB.some(r => r.internalPN === e.internalPN && r.createdTime === e.createdTime && r.customerPN === e.customerPN && r.remarks === e.remarks))) throw new Error('寫入後四個欄位未完全一致');
+            selected.forEach(e => { cacheRep3[e.idx].saved = true; });
+            renderRep3Pending();
+            statusEl.textContent = `✅ 已存入 ${entries.length} 筆並驗證成功（雲端共 ${count} 筆）。原有版本保留。`;
+        } catch (err) {
+            rep3Blocked = attempted;
+            statusEl.textContent = attempted ? `⚠️ 寫入結果待確認：${err.message}。請先從雲端下載並核對，勿重複存入。` : `⚠️ ${err.message}`;
+        } finally {
+            rep3Busy = false;
+            showLoading(false);
+            updateBatchBtn();
+        }
+    }
+
+
+    function writeNewPNtoDB(cpn, idx) {
+        // legacy single-write kept for compatibility
+        batchWriteNewPNs();
+    }
+
+    function applyAllScheme(type) {
+        if (rep3Busy) return;
+        // Apply the chosen scheme to ALL non-new rows
+        cacheRep3.forEach((item, idx) => {
+            if(item.isNew || item.saved) return; // saved choices are immutable
+            updRep3(idx, type);
+            // Also update the radio button UI
+            const radio = document.querySelector(`input[name="sch_${idx}"][value]`);
+            const radios = document.querySelectorAll(`input[name="sch_${idx}"]`);
+            radios.forEach(r => { r.checked = false; });
+            if(type === 'manual' && radios[0]) radios[0].checked = true;
+            if(type === 'keypart' && radios[1]) radios[1].checked = true;
+        });
+    }
+
+    function updRep3(idx, type) {
+        if (rep3Busy) return;
+        const item = cacheRep3[idx];
+        if (!item || item.saved) return;
+        if(type === 'manual') {
+            item.curPN = item.lastVer;
+            item.curNote = `【變更件】2.無影響-手動改 (目前版: ${item.lastVer})`;
+        } else {
+            item.curPN = item.nextVer;
+            item.curNote = `【變更件】3.Keypart修改-產新號 (${item.nextVer})`;
+        }
+        document.getElementById(`pn_cell_${idx}`).innerText = item.curPN;
+        document.getElementById(`note_cell_${idx}`).innerText = item.curNote;
+        renderRep3Pending();
+    }
+
+    function downloadReport3() {
+        const data = [["Input", "建議 AVC PN", "2026 方案判定備註"]];
+        cacheRep3.forEach(i => data.push([i.input, i.curPN, i.curNote]));
+        exportExcelWithStyles(data, "EC_Note_2026", {}, null, PERSONAL_REPORT);
+        if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+
+    function copyRep3Col(cIdx) {
+        let txt = cacheRep3.map(i => cIdx === 1 ? i.curPN : i.curNote).join('\n');
+        navigator.clipboard.writeText(txt).then(()=>alert("複製成功"));
+    }
+
+    function copyRep3All() {
+        let txt = "Input\t建議 AVC PN\t備註\n" + cacheRep3.map(i => `${i.input}\t${i.curPN}\t${i.curNote}`).join('\n');
+        navigator.clipboard.writeText(txt).then(()=>alert("整表複製成功"));
+    }
+
+    async function generateReport4() {
+        const isY = document.getElementById('verY').checked;
+        const verStr = isY ? "Y" : "N";
+        const tmpl = document.getElementById('bomTemplate').value;
+        const d = [["MTM No.", "MFG Bom Comments", "Comments flag", "ODM"]];
+        const list = getPNList();
+        if (!list.length) return alert('請先在上方「步驟一」貼上料號');
+        if (isY && tmpl === 'custom') {
+            const shared = document.getElementById('bomCustomText').value.trim();
+            const blank = uniquePNs4().filter(pn => !bomCustomReasons4.get(pn) && !shared);
+            if (blank.length && !(await pageConfirm('有 ' + blank.length + ' 筆料號沒有原因（例如 ' + blank.slice(0, 3).join('、') + '），產出後這些列的原因會是空白。\n\n按「確定」仍要產出，按「取消」回去補填。'))) return;
+        }
+        list.forEach(p => {
+            let comm = "";
+            if (isY) {
+                if (tmpl === 'brazil1') comm = "BOM incloud SBB1B58852 for Brazil. no need set up BOM";
+                else if (tmpl === 'brazil2') comm = "BOM incloud SBB1B58851 for Brazil. no need set up BOM";
+                else if (tmpl === 'india1') comm = "BOM incloud SBB1T33034 for india. no need set up BOM";
+                else if (tmpl === 'default' && p.length >= 5 && p[4] === 'S' && /^\d+$/.test(p.slice(-2))) comm = "AVC can't support SPB's Need. we won't build BOM";
+                else if (tmpl === 'custom') comm = bomCustomReasons4.get(p) || document.getElementById('bomCustomText').value.trim();
+            }
+            d.push([p, comm, verStr, "AVC"]);
+        });
+        exportExcelWithStyles(d, `ODMBOM_${verStr}`, {}, 'xlsx');
+        if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+
+    // layout（選填）：hiddenCols 要隱藏的欄號、redCols 要標紅字的欄號（含表頭），只用於 xlsx。
+    // personal：看報表類套用維護者偏好格式（Comic Sans MS 10、表頭淺黃 #FFFFCC），比照 8️⃣ 待貼入；
+    // 上傳公司系統用的檔（ODMBOM、MTMNumber、Download_Part 等）不傳，維持原格式。
+    const PERSONAL_REPORT = { personal: true };
+    function exportExcelWithStyles(data, baseName, styles = {}, forceFmt = null, layout = {}) {
+        const fmt = forceFmt || document.getElementById('fileFormat').value;
+        const hiddenCols = new Set(layout.hiddenCols || []), redCols = new Set(layout.redCols || []);
+        const baseFont = layout.personal ? { name: 'Comic Sans MS', sz: 10 } : null;
+
+        if (fmt === 'xlsx') {
+            const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(data);
+            const sBase = { border: { top:{style:"thin"}, bottom:{style:"thin"}, left:{style:"thin"}, right:{style:"thin"} }, ...(baseFont ? { font: baseFont } : {}) };
+            const sHeader = { ...sBase, fill: { fgColor: { rgb: layout.personal ? "FFFFCC" : "D9D9D9" } }, font: { ...(baseFont || {}), bold: true } };
+            const sYellow = { fill: { fgColor: { rgb: "FFFACD" } }, ...sBase };
+            const sGray = { fill: { fgColor: { rgb: "EFEFEF" } }, ...sBase };
+
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                let currentStyle = (R === 0) ? sHeader : sBase;
+                if (styles[R] === 'yellow') currentStyle = sYellow;
+                if (styles[R] === 'gray') currentStyle = sGray;
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell_ref = XLSX.utils.encode_cell({r:R, c:C});
+                    if (!ws[cell_ref]) continue;
+                    ws[cell_ref].s = redCols.has(C) ? { ...currentStyle, font: { ...(currentStyle.font || {}), color: { rgb: "FF0000" } } } : currentStyle;
+                }
+            }
+            // 每欄都要給寬度：只寫 hidden 不給寬度時，Excel 會把其他欄當寬度 0，整份看起來空白（F027 v2.17.6）。
+            if (hiddenCols.size) ws['!cols'] = Array.from({ length: range.e.c + 1 }, (_, C) => {
+                const len = Math.max(...data.map(r => String(r[C] == null ? '' : r[C]).length));
+                const wch = Math.min(50, Math.max(8, len + 2));
+                return hiddenCols.has(C) ? { hidden: true, wch } : { wch };
+            });
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            XLSX.writeFile(wb, makeFilename(baseName, 'xlsx'));
+        } else {
+            const csv = data.map(r => r.join(",")).join("\n") + "\n";
+            const b = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(b); link.download = makeFilename(baseName, 'csv'); link.click();
+        }
+    }
+
+    function generateReport1() {
+        exportExcelWithStyles([["MTM/PART"], ...getPNList().map(p=>[p])], "Download_Part", {}, 'xlsx');
+        if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+    function generateReport2() {
+        exportExcelWithStyles([["MTM Number"], ...getPNList().map(p=>[p]), ["#EOF"]], "MTMNumber", {}, 'xlsx');
+        if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+    function toggleBomInputs() { document.getElementById('bomInputs').style.display = document.getElementById('verY').checked ? 'block' : 'none'; }
+    function toggleBomCustomInput() {
+        const on = document.getElementById('bomTemplate').value === 'custom';
+        document.getElementById('bomCustomBox').style.display = on ? 'block' : 'none';
+        if (on) renderBomCustomTable4();
+    }
+
+    // 2026-09-29 F010：選「5. 自定義」時，每個料號可各自填原因。
+    // 沒另外填的料號沿用「共用原因」；改料號清單時用料號對應保留已填內容。
+    const bomCustomReasons4 = new Map(); // PN -> 個別原因
+    function escHtml4(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function uniquePNs4() {
+        return [...new Set(getPNList())];
+    }
+    function renderBomCustomTable4() {
+        const box = document.getElementById('bomCustomTable');
+        if (!box || document.getElementById('bomTemplate').value !== 'custom') return;
+        const list = uniquePNs4();
+        if (!list.length) {
+            box.innerHTML = '<div class="bom-custom-empty">⬆️ 還沒有料號：請先在上方「步驟一」貼上料號，這裡會自動列出每一筆。</div>';
+            return;
+        }
+        const shared = document.getElementById('bomCustomText').value.trim();
+        const ph = shared ? escHtml4('（空白＝用共用原因：' + shared + '）') : '（空白＝用共用原因）';
+        box.innerHTML = '<table class="bom-custom-table"><thead><tr><th>#</th><th>料號</th><th>這筆的原因</th></tr></thead><tbody>' +
+            list.map((pn, i) => '<tr><td>' + (i + 1) + '</td><td>' + escHtml4(pn) + '</td><td><input type="text" data-idx="' + i + '" value="' +
+                escHtml4(bomCustomReasons4.get(pn) || '') + '" placeholder="' + ph + '" oninput="setBomReason4(' + i + ', this.value)" onpaste="pasteBomReasons4(event, ' + i + ')"></td></tr>').join('') +
+            '</tbody></table>';
+    }
+    function setBomReason4(idx, value) {
+        const pn = uniquePNs4()[idx];
+        if (!pn) return;
+        const v = String(value || '').trim();
+        if (v) bomCustomReasons4.set(pn, v); else bomCustomReasons4.delete(pn);
+    }
+    // 從 Excel 貼一整欄：從貼上的那格開始往下依序填；只有一行就當一般貼上。
+    function pasteBomReasons4(e, startIdx) {
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const lines = String(text || '').replace(/\r/g, '').replace(/\n+$/, '').split('\n');
+        if (lines.length < 2) return;
+        e.preventDefault();
+        const list = uniquePNs4();
+        lines.forEach((line, k) => {
+            const pn = list[startIdx + k];
+            if (!pn) return;
+            const v = line.split('\t')[0].trim();
+            if (v) bomCustomReasons4.set(pn, v); else bomCustomReasons4.delete(pn);
+        });
+        renderBomCustomTable4();
+        const extra = startIdx + lines.length - list.length;
+        if (extra > 0) alert('貼上的原因比料號多 ' + extra + ' 行，多出來的沒有填入，請確認有沒有對齊。');
+    }
+
+    // 2026-10-16 F027：mode='chgdate' 只留 Change Type＝ChgDate 的列，
+    // D/E/G（Child Part／Qty／Substitute Relationship）隱藏，另加原表 AL、AS～AW 日期欄並標紅字。
+    const REPORT5_HEAD = ["Lenovo EC/Doc Number","Lenovo EC/Doc Name","MTM/Part","Child Part","Qty","Change Type","Substitute Relationship","Name","basic_name","EC Description","disposition"];
+    const REPORT5_CHGDATE_EXTRA = ["LastModified","EOW Date","GA Date","AnnoucementDate","Withdrawal Date","Qualification Date"];
+    const REPORT5_CHGDATE_HIDDEN = ["Child Part","Qty","Substitute Relationship"];
+    function buildMergeReport5(headers, rows, mode) {
+        const isChgDate = mode === 'chgdate';
+        const head = isChgDate ? REPORT5_HEAD.concat(REPORT5_CHGDATE_EXTRA) : REPORT5_HEAD;
+        const map = head.map(t => headers.indexOf(t));
+        const ctIdx = headers.indexOf("Change Type"), cpIdx = headers.indexOf("Child Part");
+        const res = [head], sty = {};
+        rows.forEach(w => {
+            const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
+            if(!ct || ct === "none") return;
+            if(isChgDate && ct !== "chgdate") return;
+            if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
+            res.push(map.map(i => i === -1 ? "" : (w[i]||"").trim()));
+        });
+        const layout = isChgDate ? {
+            hiddenCols: REPORT5_CHGDATE_HIDDEN.map(t => head.indexOf(t)),
+            redCols: REPORT5_CHGDATE_EXTRA.map(t => head.indexOf(t)),
+            missing: REPORT5_CHGDATE_EXTRA.filter(t => headers.indexOf(t) === -1)
+        } : {};
+        return { data: res, styles: sty, layout };
+    }
+    async function processMergeReport5() {
+        const r = await readAndMergeCSVs('csvFiles5'); if(!r) return;
+        const mode = document.getElementById('report5Mode').value;
+        const { data: res, styles: sty, layout } = buildMergeReport5(r.headers, r.rows, mode);
+        if (mode === 'chgdate' && res.length < 2) {
+            document.getElementById('btnDL5').style.display = 'none';
+            return alert('這批 Flatfile 沒有 Change Type＝ChgDate 的列，沒有可產出的 ChgDate 報表。');
+        }
+        cacheRep5 = res; cacheStyle5 = sty; cacheLayout5 = layout;
+        if (mode === 'chgdate') {
+            const hidden = new Set(layout.hiddenCols);
+            renderPreview(res.map(row => row.filter((_, c) => !hidden.has(c))), sty);
+            if (layout.missing.length) alert('提醒：Flatfile 找不到這些欄位，報表中會是空白：' + layout.missing.join('、'));
+        } else {
+            renderPreview(res, sty);
+        }
+        document.getElementById('btnDL5').style.display = 'inline-flex';
+    }
+    function downloadMergedReport5() {
+        if (cacheLayout5 && cacheLayout5.redCols) exportExcelWithStyles(cacheRep5, "合併報表_ChgDate", cacheStyle5, 'xlsx', { ...cacheLayout5, ...PERSONAL_REPORT });
+        else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, PERSONAL_REPORT);
+        if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+
+    async function processMergeReport6() {
+        const r = await readAndMergeCSVs('csvFiles6'); if(!r) return;
+        const ctIdx = r.headers.indexOf("Change Type"), cpIdx = r.headers.indexOf("Child Part");
+        const res = [r.headers], sty = {};
+        r.rows.forEach(w => {
+            const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
+            if(!ct) sty[res.length] = 'gray';
+            else if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
+            res.push(w.map(c => (c||"").trim()));
+        });
+        cacheRep6 = res; cacheStyle6 = sty; renderPreview(res, sty);
+        document.getElementById('btnDL6').style.display = 'inline-flex';
+    }
+    function downloadMergedReport6() {
+        exportExcelWithStyles(cacheRep6, "EC 檔案合併 (丟入 PIM_MTM)", cacheStyle6, null, PERSONAL_REPORT);
+        if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+
+    async function readAndMergeCSVs(id){
+        const f = document.getElementById(id).files; if(!f.length) return null;
+        showLoading(true); let rows = [], heads = [];
+        for(let i=0; i<f.length; i++){
+            const t = await f[i].text(), ls = t.split(/\r?\n/);
+            if(ls.length){
+                const d = ls[0].includes('\t') ? '\t' : ',';
+                const h = ls[0].split(d).map(x => x.trim().replace(/^"|"$/g,''));
+                if(i===0) heads = h;
+                ls.slice(1).forEach(l => { if(l.trim()) rows.push(l.split(d).map(x => x.trim().replace(/^"|"$/g,''))); });
+            }
+        }
+        showLoading(false); return {headers:heads, rows:rows};
+    }
+
+    function renderPreview(data, styles, is3 = false) {
+        const cont = document.getElementById('previewContent'); cont.innerHTML = "";
+        document.getElementById('rep3CopyControls').style.display = is3 ? 'flex' : 'none';
+        const table = document.createElement('table');
+        data.slice(0, 100).forEach((r, i) => {
+            const tr = document.createElement('tr');
+            if(styles[i]) tr.className = 'highlight-' + styles[i];
+            r.forEach(c => { const td = document.createElement(i===0?'th':'td'); td.textContent = c; tr.appendChild(td); });
+            table.appendChild(tr);
+        });
+        cont.appendChild(table);
+        document.getElementById('previewArea').style.display = 'block';
+    }
+
+    function downloadTemplate1() { exportExcelWithStyles([["MTM/PART"]], "T1", {}, 'xlsx'); }
+    function downloadTemplate2() { exportExcelWithStyles([["MTM Number"], ["#EOF"]], "T2", {}, 'xlsx'); }
+
+    // ================= 7️⃣ SPB / FactSheet 快篩=================
+    // 邏輯移植自 ClaudeAutomation\lenovo-ec-tracker\spb-factsheet-precheck.js：
+    // 頂層列篩選（Child Part 必空、Change Type 須為有效值）與 SPB 判定（第5碼=S）
+    // 刻意保持跟 Node 版一致；目前跟 Node 版一樣「只要是 SPB 就查 FactSheet，
+    // 不分 Change Type 是不是 New」——這是已知、尚未決定要不要修的規則落差，
+    // 修的話兩邊要一起改，這裡先不要自己先改讓兩邊變得不一致。
+    const VALID_CHANGE_TYPES_7 = new Set(['new', 'chgbom', 'chgdate', 'chgdes', 'chgrcd']);
+
+    function isSpbMtm7(mtm) { return mtm.length >= 5 && mtm[4].toUpperCase() === 'S'; }
+
+    async function readFactSheetPNs7(files) {
+        const pnSet = new Set();
+        for (let i = 0; i < files.length; i++) {
+            const buf = await files[i].arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+            rows.forEach(r => {
+                const pn = String(r['PN'] || '').trim();
+                if (pn) pnSet.add(pn);
+            });
+        }
+        return pnSet;
+    }
+
+    // 2026-09-22 May 反映：選錯檔案想重選時，除了直接再次點「選擇檔案」換掉
+    // （這樣本來就不用整頁重整），還想要能整個清空回「未選擇」的狀態，之前沒有
+    // 對應按鈕、只能整頁重整（連帶重新觸發PN資料Pull，1萬6千多筆很慢）。純前端
+    // input.value='' 清空即可，不用重整頁面；順便清掉舊的快篩結果與下載按鈕，
+    // 避免清空檔案後畫面上還留著跟目前選擇不符的舊結果可以下載。
+    function clearFileInput7(id) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+        cacheMissingFactSheet7 = [];
+        cacheUploadList7 = [];
+        const btn = document.getElementById('btnDL7');
+        if (btn) btn.style.display = 'none';
+        const summary = document.getElementById('precheck7Summary');
+        if (summary) summary.innerHTML = '';
+    }
+
+    async function processSpbPrecheck() {
+        dbg('===== 快篩開始 =====');
+        const csvInput = document.getElementById('csvFiles7');
+        dbg('①已選檔案數: ' + csvInput.files.length + (csvInput.files.length ? '（' + [...csvInput.files].map(f=>f.name).join('、') + '）' : ''));
+        if (!csvInput.files.length) { dbg('沒有選擇 Flatfile CSV，中止', true); return alert('請先選擇 Flatfile CSV'); }
+        const fsFiles = document.getElementById('factSheetFiles7').files;
+        dbg('②已選檔案數: ' + fsFiles.length + (fsFiles.length ? '（' + [...fsFiles].map(f=>f.name).join('、') + '）' : '（未選，將略過 FactSheet 比對）'));
+
+        showLoading(true);
+        try {
+            const merged = await readAndMergeCSVs('csvFiles7');
+            if (!merged) { dbg('readAndMergeCSVs 回傳 null', true); return; }
+            dbg('讀到的表頭 (' + merged.headers.length + ' 欄): ' + merged.headers.join(' | '));
+            dbg('讀到的資料列數: ' + merged.rows.length);
+            const factSheetPNs = fsFiles.length ? await readFactSheetPNs7(fsFiles) : new Set();
+            dbg('FactSheet PN 對照表筆數: ' + factSheetPNs.size);
+
+            const mtmIdx = merged.headers.indexOf('MTM/Part');
+            const cpIdx = merged.headers.indexOf('Child Part');
+            const ctIdx = merged.headers.indexOf('Change Type');
+            dbg('欄位索引 → MTM/Part=' + mtmIdx + ', Child Part=' + cpIdx + ', Change Type=' + ctIdx);
+            if (mtmIdx === -1 || cpIdx === -1 || ctIdx === -1) {
+                dbg('缺少必要欄位，中止', true);
+                alert('CSV 表頭缺少 MTM/Part、Child Part 或 Change Type 欄位，請確認是不是 Lenovo Flatfile 原始檔\n\n實際讀到的表頭：\n' + merged.headers.join(' | '));
+                return;
+            }
+
+            const seen = new Map();
+            merged.rows.forEach(w => {
+                const mtmPart = (w[mtmIdx] || '').trim();
+                const childPart = (w[cpIdx] || '').trim();
+                const changeType = (w[ctIdx] || '').trim();
+                if (!mtmPart || childPart || !VALID_CHANGE_TYPES_7.has(changeType.toLowerCase())) return;
+                if (seen.has(mtmPart)) return;
+                const isSpb = isSpbMtm7(mtmPart);
+                seen.set(mtmPart, { isSpb, hasFactSheet: isSpb ? factSheetPNs.has(mtmPart) : null });
+            });
+
+            const rows = [...seen.entries()].map(([mtmPart, info]) => ({
+                mtmPart,
+                type: info.isSpb ? 'SPB' : '正常L10',
+                status: info.isSpb ? (info.hasFactSheet ? '已有' : '缺，需下載') : '不需要',
+            }));
+
+            dbg('篩選後頂層 MTM 筆數: ' + rows.length);
+            if (rows.length === 0) {
+                dbg('篩選後 0 筆，可能是 CSV 格式或 Change Type 值跟預期不同', true);
+                if (merged.rows.length) dbg('第一列原始資料範例: ' + JSON.stringify(merged.rows[0]));
+                document.getElementById('precheck7Summary').innerHTML = '<span style="color:var(--danger-color);">篩選後 0 筆符合條件，往下捲可看紅色除錯視窗。</span>';
+                return;
+            }
+            dbg('✅ 篩選成功，準備顯示表格');
+
+            cacheMissingFactSheet7 = rows.filter(r => r.status === '缺，需下載').map(r => r.mtmPart);
+            // 2026-09-23 May 確認：客人網站 FactSheet 上傳現在可以接受正常L10＋SPB 混在一起，
+            // 只會回傳符合 SPB MTM 的 FactSheet，不再擋非 SPB 料號；因此下載檔改為
+            // 「全部頂層 MTM」（已去重），同一份可直接上傳產出 Single BOM 與 FactSheet。
+            // 預覽表格仍保留 MTM種類／FactSheet狀態，方便看哪些 SPB 還缺。
+            cacheUploadList7 = rows.map(r => r.mtmPart);
+
+            const data = [['MTM/PART', 'MTM種類', 'FactSheet狀態']];
+            const styles = {};
+            rows.forEach((r, i) => {
+                data.push([r.mtmPart, r.type, r.status]);
+                if (r.status === '缺，需下載') styles[i + 1] = 'yellow';
+            });
+            renderPreview(data, styles);
+
+            const spbCount = rows.filter(r => r.type === 'SPB').length;
+            const summary = document.getElementById('precheck7Summary');
+            const btnDL7 = document.getElementById('btnDL7');
+            if (!fsFiles.length) {
+                summary.innerHTML = `共 ${rows.length} 筆頂層 MTM，SPB ${spbCount} 筆、正常L10 ${rows.length - spbCount} 筆。<br><span style="color:#e67e22;">尚未選擇 FactSheet 檔案，無法判斷 SPB 是否已有 FactSheet（下表 SPB 先全部列為「缺」）。</span><br><span style="color:#555;">💾 下載上傳清單＝全部 ${rows.length} 筆頂層 MTM（正常L10＋SPB），同一份可上傳客人網站產出 Single BOM 與 FactSheet。</span>`;
+                btnDL7.style.display = 'inline-flex';
+            } else if (cacheMissingFactSheet7.length) {
+                summary.innerHTML = `共 ${rows.length} 筆頂層 MTM，SPB ${spbCount} 筆、正常L10 ${rows.length - spbCount} 筆。<br><b style="color:var(--danger-color);">⚠ ${cacheMissingFactSheet7.length} 筆 SPB 缺 FactSheet，需先去 Lenovo 補下載。</b><br><span style="color:#555;">💾 下載上傳清單＝全部 ${rows.length} 筆頂層 MTM（正常L10＋SPB），同一份可上傳客人網站產出 Single BOM 與 FactSheet。</span>`;
+                btnDL7.style.display = 'inline-flex';
+            } else {
+                summary.innerHTML = `共 ${rows.length} 筆頂層 MTM，SPB ${spbCount} 筆、正常L10 ${rows.length - spbCount} 筆。<br><span style="color:var(--success-color);">✅ 所有 SPB 都已有對應 FactSheet。</span><br><span style="color:#555;">💾 下載上傳清單＝全部 ${rows.length} 筆頂層 MTM（正常L10＋SPB），同一份可上傳客人網站產出 Single BOM 與 FactSheet。</span>`;
+                btnDL7.style.display = 'inline-flex';
+            }
+        } catch (err) {
+            dbg('❌ 發生錯誤: ' + (err && err.message ? err.message : err), true);
+            if (err && err.stack) dbg(err.stack, true);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function downloadMissingFactSheetList() {
+        if (!cacheUploadList7.length) return alert('沒有可下載的頂層 MTM，請先按「快篩預覽」');
+        exportExcelWithStyles([['MTM/PART'], ...cacheUploadList7.map(pn => [pn])], 'SingleBOM_FactSheet上傳清單', {}, 'xlsx');
+        if (document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+
+    // ================= 8️⃣ EC Tracking 待貼入報表=================
+    // 邏輯移植自 ClaudeAutomation\lenovo-ec-tracker\build-staging-report.js 的
+    // buildRows()，欄位/規則逐條比對來源程式碼，不是憑印象重寫。
+    // 已知刻意的差異（跟 May 討論過、Node 版尚未決定要不要跟進）：
+    //   - FactSheet 查詢改成「isSpb && isNew」才查（Node 版目前是只要 isSpb 就查，
+    //     不分 Change Type 是不是 New，這是 Node 版一個已知但尚未修的規則落差）。
+    // 其餘規則（頂層列篩選、POR EC No 尾碼正規化、Disposition 顯示/驗證備註、
+    // Change Type 空白但有 ECN No 仍納入）都照 Node 版原樣搬。
+    let cacheStaging8 = null; // {rows, styleRows}
+    // 2026-09-22 新增：下載時要產出「EC report Summary」分頁，需要 projectMap／
+    // projectConflicts 才能重算「類型」欄；產出報表當下順手快取，跟 cacheStaging8
+    // 一起在下次「產出」時被覆蓋，不需要另外清除。
+    let cacheStaging8Meta = null; // { projectMap, projectConflicts }
+
+    async function parseFlatfileObjRows8(csvInput) {
+        const files = document.getElementById(csvInput).files;
+        const allRows = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            let text = await file.text();
+            text = text.replace(/^﻿/, '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+            if (!lines.length) continue;
+            const delim = lines[0].includes('\t') ? '\t' : ',';
+            const headers = lines[0].split(delim).map(h => h.trim().replace(/^"|"$/g, ''));
+            // POR EC 檔名尾碼：欄位是 12576195POR，檔名是 12576195POR_AA_...，要保留 _AA
+            // 2026-09-29 May 確認（F011／F012）：單字母尾碼（如 11189498POR_W_...、
+            // 0011970548POR_U_...）也要保留，比照兩碼尾碼的 POR 處理。
+            const porMatch = file.name.match(/^(\d+POR_[A-Za-z0-9]{1,2})(?:_|$)/i);
+            const sourcePorEcNo = porMatch ? porMatch[1] : '';
+            // 0012／0013 系列（CTO Single BOM 類）檔名尾碼：欄位是 0013033660，
+            // 檔名是 0013033660_A_...，要保留 _A。2026-09-22 用92,920列歷史資料驗證過範圍：
+            // 0012/0013 系列歷史上幾乎100%都有這種單字母後綴，2000/4000/30000 系列完全沒有，
+            // 所以刻意只放寬到這兩個前綴，不做成「任何檔名有_字母都補」的廣泛規則。
+            const seriesMatch = file.name.match(/^((?:0012|0013)\d+)_([A-Za-z]+)(?:_|$)/);
+            const sourceSeriesEcNo = seriesMatch ? (seriesMatch[1] + '_' + seriesMatch[2]) : '';
+            for (let li = 1; li < lines.length; li++) {
+                const cells = lines[li].split(delim).map(c => c.trim().replace(/^"|"$/g, ''));
+                const row = {};
+                headers.forEach((h, ci) => { row[h] = cells[ci] !== undefined ? cells[ci] : ''; });
+                row.__sourcePorEcNo = sourcePorEcNo;
+                row.__sourceSeriesEcNo = sourceSeriesEcNo;
+                allRows.push(row);
+            }
+        }
+        return allRows;
+    }
+
+    async function loadCountryDbMap8() {
+        const url = document.getElementById('gasUrl').value.trim();
+        // 2026-09-22 May 反映實測時遇到「Unexpected token '<' ... is not valid JSON」
+        // 的錯誤——GAS Apps Script 偶爾冷啟動或忙碌時會回傳HTML錯誤頁而不是JSON，
+        // 原本用單次 fetch()+resp.json() 沒有重試，直接把難懂的JSON解析錯誤丟出來。
+        // 改用既有的 fetchPnJsonWithRetry()（PN Database那邊本來就在用，重試4次、
+        // 遞增等待），順便換成更清楚的錯誤訊息。
+        const data = await fetchPnJsonWithRetry(url + '?sheet=CountryDB&t=' + Date.now(), { cache: 'no-store' });
+        if (!Array.isArray(data) || data.length < 2) throw new Error('CountryDB 雲端資料格式不正確或無資料');
+        const map = new Map(); // code -> {region, chinese}；同代碼後面出現的覆蓋前面的，跟 Node 版 loadCcTable 一致
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const code = String(row[0] || '').trim();
+            if (!code) continue;
+            map.set(code, { region: String(row[1] || '').trim(), chinese: String(row[5] || '').trim() });
+        }
+        return map;
+    }
+
+    // 2026-09-22 Codex review(QA-005/QA-006)：抽出成獨立函式，buildStagingRows8()
+    // 跟 buildNotificationSummary8() 共用同一套「CTOSBB_中間4碼」解析規則，避免
+    // Summary那邊各自寫一份、忘記套用CTO解析（原本是直接mtm.slice(0,4)，CTO料號
+    // 會拿到「CTOS」查不到）。尾碼要求精確符合「CTO1WW」，比對過896筆歷史
+    // CTOSBB_料號100%相符，跟Node版 resolveMtmPrefix() 邏輯一致。
+    function resolveMtmPrefix8(mtm) {
+        const ctoSbbMatch = mtm.match(/^CTOSBB_([A-Z0-9]{4})CTO1WW$/i);
+        return (ctoSbbMatch ? ctoSbbMatch[1] : mtm.slice(0, 4)).toUpperCase();
+    }
+
+    // 主表「確認者」公式裡，抓 SE 名字時把「.」「_」「-」之後的部分砍掉
+    // （例如 CustomDB 裡 "Shenghui_li-黎生輝" 取成 "Shenghui"）。
+    function truncateNameAtDelimiter8(name) {
+        const s = String(name || '');
+        if (!s) return '';
+        const idxs = ['.', '_', '-'].map(ch => { const i = s.indexOf(ch); return i === -1 ? Infinity : i; });
+        const idx = Math.min(...idxs);
+        return idx === Infinity ? s : s.slice(0, idx);
+    }
+
+    async function loadProjectMap8() {
+        const url = document.getElementById('gasUrl').value.trim();
+        // 2026-09-22 同 loadCountryDbMap8()：改用 fetchPnJsonWithRetry() 加重試，
+        // 避免GAS冷啟動/忙碌時回傳HTML錯誤頁導致難懂的JSON解析錯誤。
+        const data = await fetchPnJsonWithRetry(url + '?sheet=CustomDB&t=' + Date.now(), { cache: 'no-store' });
+        if (!Array.isArray(data) || data.length < 2) throw new Error('CustomDB 雲端資料格式不正確或無資料');
+        const map = new Map(); // MTM前4碼 -> Project
+        const seMap = new Map(); // Project -> SE（已依主表公式規則砍過名字後綴）
+        const conflicts = new Map();
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const prefix = String(row[0] || '').trim().toUpperCase();
+            const project = String(row[1] || '').trim();
+            const se = String(row[6] || '').trim(); // CustomDB 第7欄＝SE，跟主表 Project R&R簡表 F欄對應
+            if (!prefix || !project) continue;
+            if (map.has(prefix) && map.get(prefix) !== project) {
+                const list = conflicts.get(prefix) || [map.get(prefix)];
+                if (!list.includes(project)) list.push(project);
+                conflicts.set(prefix, list);
+            }
+            map.set(prefix, project);
+            if (se && !seMap.has(project)) seMap.set(project, truncateNameAtDelimiter8(se));
+        }
+        return { map, conflicts, seMap };
+    }
+
+    async function loadFactSheetMap8(files) {
+        const map = new Map(); // PN -> {crmCountry, salesGeo}
+        for (let i = 0; i < files.length; i++) {
+            const buf = await files[i].arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+            rows.forEach(r => {
+                const pn = String(r['PN'] || '').trim();
+                if (pn) map.set(pn, { crmCountry: String(r['CRM Country'] || '').trim(), salesGeo: String(r['Sales GEO'] || '').trim() });
+            });
+        }
+        return map;
+    }
+
+    // 完整料號備援：未選檔時唯讀拉取雲端；選檔時沿用使用者指定來源。
+    // 每次產出重新讀取，不依賴首頁萬用查詢的快取或是否曾開啟。
+    async function loadPnProjectMap8(file) {
+        let rows;
+        if (file) {
+            const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+            const name = wb.SheetNames.includes('PN_Project_Map') ? 'PN_Project_Map' : wb.SheetNames[0];
+            rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+        } else {
+            const url = document.getElementById('gasUrl').value.trim();
+            if (!url) throw new Error('請先設定 Google Script URL，才能讀取 PN_Project_Map');
+            rows = await fetchPnJsonWithRetry(url + '?sheet=PN_Project_Map&t=' + Date.now(), { cache: 'no-store' });
+        }
+        if (!Array.isArray(rows) || !Array.isArray(rows[0])) {
+            throw new Error('PN_Project_Map 格式不正確，請確認雲端資料或上傳檔案');
+        }
+        const headers = rows[0].map(v => String(v || '').trim());
+        const pnIndex = headers.indexOf('Part Number');
+        const projectIndex = headers.indexOf('Project Name');
+        if (pnIndex < 0 || projectIndex < 0) {
+            throw new Error('PN_Project_Map 缺少 Part Number 或 Project Name 欄位');
+        }
+        const map = new Map();
+        for (const row of rows.slice(1)) {
+            if (!Array.isArray(row)) throw new Error('PN_Project_Map 資料列格式不正確');
+            const pn = String(row[pnIndex] || '').trim().toUpperCase();
+            const project = String(row[projectIndex] || '').trim();
+            if (!pn || !project) continue;
+            if (map.has(pn) && map.get(pn) !== project) {
+                throw new Error('PN_Project_Map 同一料號存在不同 Project Name，請先確認對照表');
+            }
+            map.set(pn, project);
+        }
+        if (!map.size) throw new Error('PN_Project_Map 無有效對照資料，請確認雲端資料或上傳檔案');
+        return map;
+    }
+
+    function todayDateValue8() {
+        const d = new Date();
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    // 2026-10-16 F026：依 PN Database 備註填 Close 時間時，日期固定用台灣日曆日（UTC+8），
+    // 以本機午夜 Date 物件寫入，Excel 保持原生日期型別。
+    function taiwanTodayDateValue8() {
+        const tw = new Date(Date.now() + 8 * 60 * 60 * 1000);
+        return new Date(tw.getUTCFullYear(), tw.getUTCMonth(), tw.getUTCDate());
+    }
+
+    // 2026-10-16 F026（主人核定）：PN Database 備註判斷。只有明確或條件式「不需建立」才算核定結論；
+    // 第一版／補資料／已建立等歷史紀錄、暫停、空白、與不建立互相矛盾的內容一律待確認。
+    function classifyPnDbRemark8(remark) {
+        const text = String(remark || '').replace(/\s+/g, ' ').trim();
+        if (!text) return { kind: 'blank', text };
+        if (/暫停|on\s*-?\s*hold/i.test(text)) return { kind: 'hold', text };
+        const noBuild = /(無須|无须|無需|无需|不需|不須|毋須|不用)\s*建|不建(立|置|BOM|MTM)|不接單/i.test(text);
+        const built = /已建(立|置|BOM|MTM)?|建立成功|已完成/i.test(text);
+        if (noBuild && built) return { kind: 'contradict', text };
+        if (noBuild) return { kind: 'nobuild', text };
+        if (/第一版|補資料|已建|建立成功/.test(text)) return { kind: 'history', text };
+        return { kind: 'other', text };
+    }
+
+    // 同一客戶料號的所有命中列都要看（不取第一筆或最新日期）；全部是相同的不建立原因才結案。
+    function resolvePnDbNoBom8(entries) {
+        if (!entries || !entries.length) return { close: false, hint: 'PN Database 查無此客戶料號' };
+        const kinds = entries.map(e => classifyPnDbRemark8(e.remark));
+        const reasons = [...new Set(kinds.map(k => k.text))];
+        if (kinds.every(k => k.kind === 'nobuild') && reasons.length === 1) return { close: true, reason: reasons[0] };
+        if (entries.length > 1 && reasons.length > 1) return { close: false, hint: `PN Database 同一客戶料號有 ${entries.length} 筆，版本或備註衝突` };
+        const k = kinds[0].kind;
+        const hint = k === 'blank' ? '備註空白'
+            : k === 'hold' ? '備註含暫停／on hold'
+            : k === 'contradict' ? '備註同時寫不需建立與已建立，內容矛盾'
+            : k === 'history' ? '備註為歷史紀錄（第一版／補資料／已建立），不代表本次 EC 完成'
+            : '備註未明確寫不需建立';
+        return { close: false, hint: 'PN Database ' + hint };
+    }
+
+    // 唯讀拉取 PN Database（料號／建立時間／客戶料號／備註）。失敗不中斷報表，回傳 error 讓各列提示待確認。
+    async function loadPnDatabaseNoBom8() {
+        try {
+            const url = document.getElementById('gasUrl').value.trim();
+            if (!url) throw new Error('未設定 Google Script URL');
+            const data = await fetchPnJsonWithRetry(url + '?sheet=' + encodeURIComponent('PN Database') + '&t=' + Date.now(), { cache: 'no-store' });
+            if (!Array.isArray(data) || !Array.isArray(data[0]) || data[0].length < 4) throw new Error('PN Database 雲端資料格式不正確');
+            const map = new Map(); // 客戶料號（大寫、去空白） -> [{ internalPN, remark }]
+            for (const row of data.slice(1)) {
+                if (!Array.isArray(row)) throw new Error('PN Database 資料列格式不正確');
+                const customerPN = String(row[2] || '').trim().toUpperCase();
+                if (!customerPN) continue;
+                if (!map.has(customerPN)) map.set(customerPN, []);
+                map.get(customerPN).push({ internalPN: String(row[0] || '').trim(), remark: String(row[3] || '') });
+            }
+            return { map, error: '' };
+        } catch (err) {
+            return { map: null, error: err && err.message ? err.message : String(err) };
+        }
+    }
+
+    // Flatfile 的 LastModified 原始格式是 yyyy-mm-dd；業務規則文件規定 LNV GETC Open Date
+    // 要讀這欄，Close Date 維持今天日期。無法解析時退回今天日期，並記一筆備註。
+    function parseLastModified8(v) {
+        const s = String(v || '').trim();
+        const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return null;
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    }
+
+    function buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup) {
+        const out = [];
+        const runDateValue = todayDateValue8();
+        // 2026-09-23 May 確認：CTO_ 開頭EC 的 Flatfile 若整份（同一個 EC No 的所有列，含
+        // Child Part 列）Change Type 全部空白，代表沒有 BOM 變更，備註寫
+        // 「No BOM change,EC直接close」。有 BOM 變更的 CTO_EC，下階列會帶 ChgBom/Insert/
+        // Extract。用 52 份歷史 CTO Flatfile 對照主表驗證過：全空白的幾乎都是 No BOM change
+        // （少數例外如下階料號不全），所以仍在 _自動判斷備註 提醒抽看。
+        const ctoEcWithChangeType = new Set();
+        for (const r of flatfileRows) {
+            const ec = String(r['Lenovo EC/Doc Number'] || '').trim().toUpperCase();
+            if (ec.startsWith('CTO') && String(r['Change Type'] || '').trim()) ctoEcWithChangeType.add(ec);
+        }
+        // 2026-09-29 May 確認（F011）：POR EC 整份 Flatfile（同一張 EC 所有列）Change Type
+        // 全部空白時，比照 CTO 備註「No BOM change,EC直接close」，並提醒抽看 EC 內容。
+        const porEcKey8 = (r) => {
+            const raw = String(r['Lenovo EC/Doc Number'] || '').trim();
+            return ((/^\d+POR$/i.test(raw) && r.__sourcePorEcNo) ? String(r.__sourcePorEcNo).trim() : raw).toUpperCase();
+        };
+        const porEcWithChangeType = new Set();
+        for (const r of flatfileRows) {
+            if (String(r['Change Type'] || '').trim()) porEcWithChangeType.add(porEcKey8(r));
+        }
+
+        for (const r of flatfileRows) {
+            const mtmPart = String(r['MTM/Part'] || '').trim();
+            const childPart = String(r['Child Part'] || '').trim();
+            const changeType = String(r['Change Type'] || '').trim();
+            const rawLnvEcnNo = String(r['Lenovo EC/Doc Number'] || '').trim();
+            let lnvEcnNo = rawLnvEcnNo;
+            if (/^\d+POR$/i.test(rawLnvEcnNo) && r.__sourcePorEcNo) {
+                lnvEcnNo = String(r.__sourcePorEcNo).trim();
+            } else if (/^(0012|0013)/.test(rawLnvEcnNo) && r.__sourceSeriesEcNo && String(r.__sourceSeriesEcNo).startsWith(rawLnvEcnNo + '_')) {
+                lnvEcnNo = String(r.__sourceSeriesEcNo).trim();
+            }
+
+            if (!mtmPart) continue;
+            if (childPart) continue;
+            if (!changeType && !lnvEcnNo) continue;
+
+            const isSpb = mtmPart.length >= 5 && mtmPart[4].toUpperCase() === 'S';
+            const isNew = changeType === 'New';
+            const dispositionCode = String(r['disposition'] || '').trim();
+            const isPorEc = /^\d+POR_[A-Za-z0-9]{1,2}$/i.test(lnvEcnNo);
+            const isPorNoBomChange = isPorEc && !porEcWithChangeType.has(porEcKey8(r));
+            const is600SeriesEc = /^600/.test(lnvEcnNo);
+            // 2026-09-23 May 確認：CTO_ 開頭EC 的 Disposition code 固定填「---」，
+            // 確認者改查 Project 對應 SE（2026-09-29 F014，見下方確認者規則）。
+            const isCtoEc = lnvEcnNo.toUpperCase().startsWith('CTO');
+            const isCtoNoBomChange = isCtoEc && !ctoEcWithChangeType.has(lnvEcnNo.toUpperCase());
+            const dispositionDisplay = isCtoEc ? '---' : (isPorEc || is600SeriesEc) ? '19/22/99' : dispositionCode;
+            // 2026-09-22 May 確認：CTOSBB_ 開頭的 MTM/Part（如 CTOSBB_F0JNCTO1WW）
+            // 編碼原則是把真正的MTM前4碼放在「CTOSBB_」跟「CTO」中間，不是取字面前4碼
+            // （那樣會拿到「CTOS」查不到任何Project）。歷史資料驗證過準確率約94%
+            // （896筆裡845筆吻合，其餘因同一張CTO_EC可能包含不同專案SBB而不吻合），
+            // 詳見 build-staging-report.js 同一天的對應修改與 WORK-LOG。實際解析邏輯
+            // 抽到 resolveMtmPrefix8()，跟 buildNotificationSummary8() 共用（QA-006）。
+            const ctoSbbMatch = /^CTOSBB_[A-Z0-9]{4}CTO1WW$/i.test(mtmPart);
+            const mtmPrefix = resolveMtmPrefix8(mtmPart);
+            let mtmFamily = projectMap.get(mtmPrefix) || '';
+            let mtmFamilyFromPnMap = false;
+            if (!mtmFamily && pnProjectMap && pnProjectMap.size) {
+                const viaPn = pnProjectMap.get(mtmPart.toUpperCase());
+                if (viaPn) { mtmFamily = viaPn; mtmFamilyFromPnMap = true; }
+            }
+
+            let M = '', N = '', O = '', P = '', note = '';
+
+            if (isCtoEc) {
+                note = isCtoNoBomChange
+                    ? 'CTO EC 整份 Flatfile 無 Change Type，判斷為 No BOM change，建議抽看 EC 內容確認'
+                    : 'CTO EC 有 BOM 變更（ChgBom/Insert/Extract），備註需人工填寫實際變更內容';
+            } else if (!changeType && isPorNoBomChange) {
+                note = 'POR EC 整份 Flatfile 無 Change Type，判斷為 No BOM change，建議抽看 EC 內容確認';
+            } else if (!changeType) {
+                note = 'Change Type 空白，需人工確認；未導入 EIP';
+            } else if (!mtmFamily) {
+                const conflicts = projectConflicts.get(mtmPrefix);
+                const pnMapHint = (pnProjectMap && pnProjectMap.size) ? '（PN_Project_Map 也查無此料號）' : '（PN_Project_Map 無可用對照資料）';
+                note = conflicts
+                    ? `Project R&R簡表中「${mtmPrefix}」對應多個 Project：${conflicts.join(' / ')}，請人工確認`
+                    : `Project R&R簡表查無 MTM 前4碼「${mtmPrefix}」${pnMapHint}，請人工確認`;
+            } else if (mtmFamilyFromPnMap) {
+                note = `MTM Family 是用 PN_Project_Map 完整料號查到的（前4碼「${mtmPrefix}」對不到），SE 查詢可能因 Project 名稱寫法不同而對不到，請留意`;
+            }
+
+            const dispositionNote = isCtoEc ? ''
+                : isSpb
+                ? (dispositionCode === '99' ? '' : `SPB MTM Disposition code 應為 99，來源為「${dispositionCode || '空白'}」，需比對 EC 內容`)
+                : (new Set(['19', '22', '99']).has(dispositionCode) ? '' : `非 SPB MTM Disposition code 僅接受 19/22/99，來源為「${dispositionCode || '空白'}」，需人工確認`);
+            if (dispositionNote) note = [note, dispositionNote].filter(Boolean).join('；');
+
+            // 【與 Node 版差異】這裡改成 isSpb && isNew 才查 FactSheet，
+            // Node 版目前是只要 isSpb 就查（尚未決定要不要跟進，見上方註解）。
+            if (isSpb && isNew) {
+                const fs_ = factSheetMap.get(mtmPart);
+                if (fs_) {
+                    M = fs_.crmCountry || '';
+                    P = fs_.salesGeo || '';
+                } else {
+                    note = 'SPB MTM 待查 FactSheet（本次上傳的 FactSheet 找不到此 PN）';
+                }
+            } else if (!isSpb && isNew) {
+                M = mtmPart.slice(-2);
+            } else if (isSpb && changeType && !isCtoEc) {
+                // 2026-09-29 May 確認（F008）：非 New 的 SPB 仍不自動帶國別（規則不變），
+                // 但不能靜靜留白讓人以為漏資料——在 _自動判斷備註 提醒人工填，
+                // FactSheet 查得到時附上參考值，只寫備註、不填正式欄位。
+                const fsRef = factSheetMap.get(mtmPart);
+                const fsHint = !factSheetMap.size ? '本次未上傳 FactSheet，請人工確認'
+                    : fsRef ? `FactSheet 參考：${fsRef.crmCountry || '空白'}／${fsRef.salesGeo || '空白'}，需要時請人工填入 MTM後2碼／國別中文／Sales GEO`
+                    : 'FactSheet 也查無此料號，請人工確認';
+                note = [note, `SPB MTM Change Type 為「${changeType}」（非 New），依規則未自動帶國別；${fsHint}`].filter(Boolean).join('；');
+            }
+
+            if (M) {
+                const cc = ccMap.get(M);
+                if (cc) {
+                    O = cc.chinese || '';
+                    if (!P) P = cc.region || '';
+                } else if (!note && !P) {
+                    note = `CountryDB 查無代碼「${M}」，無法確認 Sales GEO`;
+                }
+            }
+            if (P) N = P === 'Western Europe' ? '西歐' : '非西歐';
+
+            const openDateParsed = parseLastModified8(r['LastModified']);
+            if (!openDateParsed) {
+                note = [note, 'Flatfile 缺 LastModified 或格式異常，Open Date 暫用今天日期，請人工確認'].filter(Boolean).join('；');
+            }
+
+            // 確認者：POR/600/30000-SPB/2000 這4條是從主表2026-09-14試驗中的公式逐字解出來的，
+            // 100%照公式邏輯。0000/0012/4000/0013 這4條不是解公式來的——是 2026-09-21 用
+            // 9萬2千多列已填過確認者的歷史資料反推出來的統計規律（確認者是否等於Creater，
+            // 依ECN No前綴分組後高度一致），May 確認後才擴大進來，信心程度跟前4條不完全一樣，
+            // 遇到例外個案要留意。
+            //   POR型／600開頭／0000開頭／30000開頭+SPB(第5碼S) → 跟 Creater 一樣
+            //   2000／0012／4000／0013 開頭 → 查 Project R&R簡表(CustomDB) 對應 Project 的 SE，
+            //     砍掉 ./_/- 後綴
+            //   其餘（沒對到以上任何一條）→ 空白，人工判斷
+            const ecnUpper = lnvEcnNo.toUpperCase();
+            const isSpb30000Ec = ecnUpper.startsWith('30000') && mtmPart.length >= 5 && mtmPart[4].toUpperCase() === 'S';
+            const SAME_AS_CREATER_PREFIXES = ['0000', '600'];
+            const SE_LOOKUP_PREFIXES = ['0012', '4000', '2000', '0013'];
+            const isSameAsCreaterPrefix = SAME_AS_CREATER_PREFIXES.some(p => ecnUpper.startsWith(p));
+            const isSeLookupPrefix = SE_LOOKUP_PREFIXES.some(p => ecnUpper.startsWith(p));
+            let confirmerName = '';
+            // 2026-09-22 Codex review(QA-003)：原本 ecnUpper.includes('POR') 會誤配任何
+            // 位置含"POR"子字串的ECN，改用上面已算好的精確格式 isPorEc（跟Node版一致）。
+            if (isPorEc || isSameAsCreaterPrefix || isSpb30000Ec) {
+                confirmerName = createrName;
+            } else if (isSeLookupPrefix) {
+                confirmerName = (seMap && seMap.get(mtmFamily)) || '';
+                if (!confirmerName && mtmFamily) {
+                    note = [note, `Project R&R簡表(CustomDB)查無「${mtmFamily}」對應的 SE，確認者留空`].filter(Boolean).join('；');
+                }
+            } else if (isCtoEc) {
+                // 2026-09-29 May 確認（F014）：CTO_ 開頭EC 確認者改查 Project R&R簡表(CustomDB)
+                // 對應 MTM Family 的 SE（取代 2026-09-23「固定等於 Creater」）；查不到 SE 時留空提醒。
+                // MTM Family已用上面 ctoSbbMatch 邏輯自動判斷，但準確率約94%，要提醒人工複核，
+                // 不能跟一般MTM同等信任。
+                confirmerName = (seMap && mtmFamily && seMap.get(mtmFamily)) || '';
+                if (!confirmerName && mtmFamily) {
+                    note = [note, `Project R&R簡表(CustomDB)查無「${mtmFamily}」對應的 SE，確認者留空`].filter(Boolean).join('；');
+                }
+                // 2026-09-22 May 發現：CTO_ 開頭EC底下不是每一列的MTM/PART都是CTOSBB_
+                // 格式——多層BOM攤平後，裸SBB料號也會自己變成後續列的MTM/PART，備註
+                // 文字不該假設是CTOSBB_格式。
+                const ctoRowDesc = ctoSbbMatch ? 'CTOSBB_料號' : 'CTO_開頭EC底下的料號';
+                note = [note, mtmFamily
+                    ? `CTO類別EC（${ctoRowDesc}），MTM Family依CTO PN編碼慣例自動判斷為「${mtmFamily}」，同一張CTO_EC可能包含不同專案的SBB，準確率約94%，建議人工複核`
+                    : `CTO類別EC（${ctoRowDesc}），MTM Family 查無對應 Project，請人工確認`].filter(Boolean).join('；');
+            }
+
+            let remark8 = [
+                changeType === 'ChgDate' ? 'change date,EC直接close'
+                    : changeType === 'ChgDes' ? 'Change description ,EC直接close'
+                    : changeType === 'Chgrcd' ? 'change record,EC直接close'
+                    : (!changeType && (isCtoNoBomChange || isPorNoBomChange)) ? 'No BOM change,EC直接close' : '',
+                (isSpb && mtmPrefix === '12LM') ? '第5碼S尾碼數字無需修改BOM' : '',
+            ].filter(Boolean).join('；');
+            // 2026-10-16 F026（主人核定）：Close 時間會空白的列（非 New、非 EC直接close），用 MTM/PART 精確比對
+            // PN Database「客戶料號」。所有命中列都明確寫相同的不建立原因 → 原因追加到「備註」（保留既有內容、不重複）、
+            // Close 時間填台灣當天；其他情況（查無、空白、暫停、歷史紀錄、衝突、讀取失敗）維持空白並提示待確認。
+            let pnDbCloseDate8 = null;
+            if (!isNew && !remark8.includes('EC直接close') && pnDbLookup) {
+                if (pnDbLookup.error || !pnDbLookup.map) {
+                    note = [note, `PN Database 讀取失敗（${pnDbLookup.error || '無資料'}），未判斷是否不需建BOM，「(GETC/ECR Close 時間)」維持空白待確認`].filter(Boolean).join('；');
+                } else {
+                    const pnDb8 = resolvePnDbNoBom8(pnDbLookup.map.get(mtmPart.toUpperCase()));
+                    if (pnDb8.close) {
+                        if (!remark8.includes(pnDb8.reason)) remark8 = [remark8, pnDb8.reason].filter(Boolean).join('；');
+                        pnDbCloseDate8 = taiwanTodayDateValue8();
+                        note = [note, '依 PN Database 備註判定不需建立，已帶入備註並填今天（台灣日期）'].filter(Boolean).join('；');
+                    } else {
+                        note = [note, `${pnDb8.hint}，「(GETC/ECR Close 時間)」維持空白待確認`].filter(Boolean).join('；');
+                    }
+                }
+            }
+            // 2026-09-29 May 確認（F013）：Change Type 不是 New（如 ChgBom）而且沒有自動備註的列，
+            // 正式「備註」維持留白（實際變更內容要人工寫），但下載時該格標黃，並在
+            // _自動判斷備註 提醒；CTO EC 有 BOM 變更的列原本就有提醒文字，一併標黃。
+            if (!remark8 && changeType && changeType !== 'New' && !isCtoEc) {
+                note = [note, `Change Type 為「${changeType}」，「備註」需人工填寫實際變更內容（已標黃）`].filter(Boolean).join('；');
+            }
+
+            // 2026-10-01 確認（F022）：「(GETC/ECR Close 時間)」主表填日期。Change Type＝New 的列
+            // 填產表當天，但要等公司自動建 BOM 流程完成、確認 BOM 建立成功才算數，所以下載時標黃
+            // 並在 _自動判斷備註 提醒；備註為「…EC直接close」的列（ChgDate／ChgDes／Chgrcd／
+            // No BOM change）不用等建 BOM，直接填當天、不標黃。其他列維持空白由人工判斷。
+            const isEcDirectClose8 = remark8.includes('EC直接close');
+            const closeTimeValue8 = (isNew || isEcDirectClose8) ? runDateValue : (pnDbCloseDate8 || '');
+            if (isNew) {
+                note = [note, '「(GETC/ECR Close 時間)」暫填今天（已標黃），請等公司自動建 BOM 流程完成、確認 BOM 建立成功後再貼主表；失敗請清空或改日期'].filter(Boolean).join('；');
+            }
+
+            out.push({
+                'LNV ECN No': lnvEcnNo,
+                'Title': r['Lenovo EC/Doc Name'] || '',
+                'MTM/PART': mtmPart,
+                'MTM Family': mtmFamily,
+                'Disposition code': dispositionDisplay,
+                'LNV GETC Open Date': openDateParsed || runDateValue,
+                'LNV GETC Close Date': runDateValue,
+                'ECR No': 'NA',
+                'Creater': createrName,
+                '確認者': confirmerName,
+                '(GETC/ECR Close 時間)': closeTimeValue8,
+                // 「備註」是真的會貼進85,000列正式主表、永久保留的欄位，跟下面 QA 專用、
+                // 貼主表前要刪掉的 `_自動判斷備註` 是兩回事。文字對照過歷史資料修正：
+                // ChgDate 用歷史上實際出現859次的「change date,EC直接close」（小寫、
+                // 半形逗號，May 手動打的既有慣例），不是系統欄位值的大小寫「ChgDate」。
+                // 2026-09-22 再次檢查發現 ChgDes／Chgrcd 並非共用同一句備註：Chgrcd
+                // 對應歷史上出現117次的「change record,EC直接close」，ChgDes 歷史上
+                // 查無固定備註（是 May 新指定的規則），改用「Change description
+                // ,EC直接close」（逗號前有空格，May 指定用字）。「不用修改BOM」這條
+                // 規則跟Family名稱無關，是跟MTM前4碼「12LM」綁定（統計顯示帶這條備註的
+                // 292列裡有290列是12LM前綴，橫跨「Neo Tiny/Thinkclient」與「Tiny Neo2」
+                // 兩種Family標籤；同樣SPB=true、第5碼=S的13B9/13C5前綴（Tiny Neo2主力，
+                // 4,774列）反而0筆有這條備註，只能用MTM前綴判斷，不能用Family名稱）。
+                // 2026-09-22 Codex review(QA-07)：CTO解析出的12LM前綴不會誤觸這條規則——
+                // isSpb是看mtmPart原始字串第5碼，CTOSBB_xxxxCTO1WW這個字面格式的第5碼
+                // 固定是「B」，不可能是S，兩條規則不會同時成立，是結構性保證，不需要
+                // 額外測試案例。
+                '備註': remark8,
+                'MTM後2碼': M,
+                '西歐/非西歐/出中國': N,
+                '國別中文': O,
+                'Sales GEO': P,
+                'Status': '',
+                '預期天數': '',
+                'SPB MTM與否': isSpb ? 'V' : '',
+                'Upload': '',
+                '_ChangeType（僅供核對，貼主表前刪除）': changeType,
+                '_自動判斷備註': note,
+            });
+        }
+        return out;
+    }
+
+    // 同 clearFileInput7()：純前端清空，不用重整頁面，順便清掉舊的產出結果跟
+    // 下載按鈕，避免清空檔案後還留著跟目前選擇不符的舊結果可以下載。
+    function clearFileInput8(id) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+        cacheStaging8 = null;
+        cacheStaging8Meta = null;
+        const btn = document.getElementById('btnDL8');
+        if (btn) btn.style.display = 'none';
+        const summary = document.getElementById('staging8Summary');
+        if (summary) summary.innerHTML = '';
+    }
+
+    async function processStagingReport8() {
+        dbg('===== 8️⃣ 產出待貼入報表 開始 =====');
+        const csvInput = document.getElementById('csvFiles8');
+        if (!csvInput.files.length) return alert('請先選擇 Flatfile CSV');
+        const fsFiles = document.getElementById('factSheetFiles8').files;
+        const pnMapFile = document.getElementById('pnProjectMapFile8').files[0] || null;
+        const summary = document.getElementById('staging8Summary');
+        const btnDL8 = document.getElementById('btnDL8');
+        btnDL8.style.display = 'none';
+        cacheStaging8 = [];
+        cacheStaging8Meta = {};
+        summary.textContent = '正在讀取對照表與處理資料…';
+
+        showLoading(true, '讀取雲端對照表中...');
+        try {
+            dbg('①Flatfile 檔案數: ' + csvInput.files.length);
+            dbg('②FactSheet 檔案數: ' + fsFiles.length);
+            dbg('③PN_Project_Map 檔案: ' + (pnMapFile ? pnMapFile.name : '未選，改讀雲端 PN_Project_Map'));
+
+            const flatfileRows = await parseFlatfileObjRows8('csvFiles8');
+            dbg('Flatfile 合併後總列數: ' + flatfileRows.length);
+
+            dbg('拉取雲端 CountryDB...');
+            const ccMap = await loadCountryDbMap8();
+            dbg('CountryDB 筆數: ' + ccMap.size);
+
+            dbg('拉取雲端 CustomDB (Project R&R)...');
+            const { map: projectMap, conflicts: projectConflicts, seMap } = await loadProjectMap8();
+            dbg('CustomDB 筆數: ' + projectMap.size + '，衝突: ' + projectConflicts.size);
+
+            const factSheetMap = fsFiles.length ? await loadFactSheetMap8(fsFiles) : new Map();
+            dbg('FactSheet 對照筆數: ' + factSheetMap.size);
+
+            const pnProjectMap = await loadPnProjectMap8(pnMapFile);
+            dbg('PN_Project_Map 備援筆數: ' + pnProjectMap.size);
+
+            dbg('拉取雲端 PN Database（判斷不需建BOM）...');
+            const pnDbLookup = await loadPnDatabaseNoBom8();
+            dbg(pnDbLookup.error ? 'PN Database 讀取失敗，相關列保留空白待確認：' + pnDbLookup.error : 'PN Database 客戶料號筆數: ' + pnDbLookup.map.size, !!pnDbLookup.error);
+
+            const createrName = document.getElementById('creater8').value;
+            const rows = buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup);
+            dbg('產出列數: ' + rows.length);
+
+            if (!rows.length) {
+                dbg('產出 0 列，請確認 Flatfile 內容', true);
+                summary.innerHTML = '<span style="color:var(--danger-color);">產出 0 列，請檢查除錯視窗確認 Flatfile 格式是否正確。</span>';
+                return;
+            }
+
+            cacheStaging8 = rows;
+            cacheStaging8Meta = { projectMap, projectConflicts };
+
+            const newCount = rows.filter(r => r['_ChangeType（僅供核對，貼主表前刪除）'] === 'New').length;
+            const needNoteCount = rows.filter(r => r['_自動判斷備註']).length;
+            const pnDbClosedCount = rows.filter(r => String(r['_自動判斷備註'] || '').includes('依 PN Database 備註判定不需建立')).length;
+            summary.innerHTML = `共 ${rows.length} 列（New ${newCount} 筆）。` +
+                (pnDbLookup.error ? '<br><b style="color:var(--danger-color);">⚠ PN Database 讀取失敗，未自動判斷不需建BOM，Close 時間空白的列請人工確認。</b>'
+                    : (pnDbClosedCount ? `<br>依 PN Database 備註判定不需建立：${pnDbClosedCount} 列（已帶入備註並填今天）。` : '')) +
+                (needNoteCount ? `<br><b style="color:var(--danger-color);">⚠ ${needNoteCount} 列有備註需要人工確認（缺 FactSheet／Project 對不到／Disposition 異常等），下載後看「_自動判斷備註」欄。</b>` : '<br><span style="color:var(--success-color);">✅ 沒有列需要額外人工確認。</span>');
+            btnDL8.style.display = 'inline-flex';
+            dbg('✅ 處理完成');
+        } catch (err) {
+            summary.textContent = '處理失敗，未產出報表：' + (err && err.message ? err.message : String(err));
+            dbg('❌ 發生錯誤: ' + (err && err.message ? err.message : err), true);
+            if (err && err.stack) dbg(err.stack, true);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 2026-09-29 F016：原本用 localStorage 存當天流水號，但本工具以 data: 網址嵌在 iframe，
+    // 瀏覽器不給用 localStorage，每次都退回 -1。同事選擇改用下載時間（時分）當尾碼：
+    // EC_Tracking_待貼入_YYYY-MM-DD-HHmm.xlsx，不需儲存、不會重複（同一分鐘內重複下載由瀏覽器自動加 (1)）。
+    function nextStaging8Filename() {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const dateStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        return `EC_Tracking_待貼入_${dateStr}-${pad(d.getHours())}${pad(d.getMinutes())}.xlsx`;
+    }
+
+    // 2026-09-22 從 Node 版 build-staging-report.js 的 projectNameForEmail()／
+    // emailDateStr()／buildEmailSubject()／buildNotificationSummary() 逐一移植，
+    // 文字與判斷邏輯跟 Node 版一致（另一個並行 session 同日在 Node 版新增的
+    // 「類型」欄三分支判斷，這裡一起補上，避免網頁版跟 CLI 版報表類型標示不同）。
+    function projectNameForEmail8(project) {
+        const normalized = String(project || '').trim();
+        const compactNames = new Map([
+            ['NEO55q Gen6', 'Neo55qGen6'],
+            ['Neo55q Gen6', 'Neo55qGen6'],
+            ['Neo50q G7', 'Neo50qG7'],
+            ['Neo50q G6', 'Neo50qG6'],
+        ]);
+        return compactNames.get(normalized) || normalized;
+    }
+
+    function emailDateStr8() {
+        const d = new Date();
+        return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // 2026-09-29 F007／F009：Excel 單一儲存格最多 32,767 字，超過時 xlsx 寫檔會直接
+    // 丟錯、下載無聲失敗。New 料號 2,700 筆以上時「MTM清單」就會超過，這裡在逗號處
+    // 截斷並附上說明，完整清單仍在「待貼入」工作表。
+    function fitExcelList8(items, sep, suffixFn, limit = 32767) {
+        const full = items.join(sep);
+        if (full.length <= limit) return { text: full, shown: items.length, truncated: false };
+        const room = limit - suffixFn(items.length, items.length).length;
+        let len = 0, shown = 0;
+        for (const it of items) {
+            const add = (shown ? sep.length : 0) + it.length;
+            if (len + add > room) break;
+            len += add; shown++;
+        }
+        return { text: items.slice(0, shown).join(sep) + suffixFn(shown, items.length), shown, truncated: true };
+    }
+
+    function buildEmailSubject8(summaryRows) {
+        const projects = [...new Set(summaryRows.map(row => projectNameForEmail8(row['Project Name'])).filter(Boolean))];
+        return `【EC通知】${projects.join('&')}_NEW SPB & MTM BOM( EC NO_如郵件所示)_${emailDateStr8()}`;
+    }
+
+    // 「類型」欄不整批寫死 NEW SPB MTM BOM：同一個 Project 群組裡如果混了
+    // 「SPB MTM與否」=V 跟空白兩種列，標「NEW & SPB MTM BOM」；全部都是 V 才標
+    // 「NEW SPB MTM BOM」；全部都不是 V 則標「NEW MTM BOM」。
+    function buildNotificationSummary8(detailRows, projectMap, projectConflicts) {
+        const grouped = new Map();
+        for (const row of detailRows) {
+            if (row['_ChangeType（僅供核對，貼主表前刪除）'] !== 'New') continue;
+            const mtm = String(row['MTM/PART'] || '').trim();
+            const mtPrefix = resolveMtmPrefix8(mtm);
+            const project = String(row['MTM Family'] || '').trim() || projectMap.get(mtPrefix) || '待人工確認';
+            const excluded = row['備註'] ? 1 : 0;
+            const isSpb = row['SPB MTM與否'] === 'V';
+            // 2026-09-22 May 確認（回應Codex QA-002）：這個Project群組如果有任何一列的
+            // MTM Family是CTO_猜出來的（約94%準確率），要在Summary標記出來，避免同一張
+            // CTO_EC被拆進多個Project群組時，看起來每個都是正常、已確認好的資料。
+            const isCtoGuess = String(row['_自動判斷備註'] || '').includes('MTM Family依CTO PN編碼慣例自動判斷');
+
+            if (!grouped.has(project)) {
+                grouped.set(project, { total: 0, excluded: 0, mtms: [], notes: [], hasSpb: false, hasNonSpb: false, hasCtoGuess: false });
+            }
+            const item = grouped.get(project);
+            item.total += 1;
+            item.excluded += excluded;
+            item.mtms.push(mtm);
+            if (isSpb) item.hasSpb = true; else item.hasNonSpb = true;
+            if (isCtoGuess) item.hasCtoGuess = true;
+            if (project === '待人工確認') {
+                const conflicts = projectConflicts.get(mtPrefix);
+                item.notes.push(conflicts
+                    ? `${mtPrefix} 對應多個 Project：${conflicts.join(' / ')}`
+                    : `Project R&R簡表查無 ${mtPrefix}`);
+            }
+        }
+
+        return [...grouped.entries()].map(([project, item]) => {
+            let type;
+            if (item.hasSpb && item.hasNonSpb) type = 'NEW & SPB MTM BOM';
+            else if (item.hasSpb) type = 'NEW SPB MTM BOM';
+            else type = 'NEW MTM BOM';
+            const mtmList = fitExcelList8(item.mtms, ', ', (shown, total) => ` …（共 ${total} 筆，只列前 ${shown} 筆；完整清單見「待貼入」工作表）`);
+            return {
+                'Project Name': project,
+                '異動': '新增',
+                '數量': item.total,
+                '類型': type,
+                'EIP導入數': Math.max(0, item.total - item.excluded),
+                'EIP排除數': item.excluded,
+                'MTM清單': mtmList.text,
+                '備註': fitExcelList8([
+                    mtmList.truncated ? `MTM清單共 ${item.mtms.length} 筆，超過 Excel 單格上限，只列前 ${mtmList.shown} 筆` : '',
+                    item.excluded ? '含排除清單項目；詳見「待貼入」工作表備註' : '',
+                    item.hasCtoGuess ? '含CTO_猜測Family(準確率約94%)，建議複核' : '',
+                    ...new Set(item.notes),
+                ].filter(Boolean), '；', () => '…（備註過長已截斷）').text,
+            };
+        });
+    }
+
+    function downloadStagingReport8() {
+        // 2026-09-29 F007／F009：onclick 沒有接住例外，寫檔失敗時畫面完全沒反應。
+        try {
+            downloadStagingReport8Core();
+        } catch (err) {
+            const msg = err && err.message ? err.message : String(err);
+            dbg('❌ 下載 Excel 失敗: ' + msg, true);
+            if (err && err.stack) dbg(err.stack, true);
+            alert('下載 Excel 失敗：' + msg + '\n請截圖除錯視窗回報。');
+        }
+    }
+
+    function downloadStagingReport8Core() {
+        if (!cacheStaging8 || !cacheStaging8.length) return alert('請先產出報表');
+        const headers = Object.keys(cacheStaging8[0]);
+        const dateCols = new Set(['LNV GETC Open Date', 'LNV GETC Close Date', '(GETC/ECR Close 時間)']);
+        const centerCols8 = new Set(['ECR No', 'Creater', '確認者']);
+        const porOr600Rows = new Set();
+        // 2026-09-22 May 確認（回應Codex QA-002）：CTO_ EC的MTM Family是猜的
+        // （約94%準確率），用橘色標記提醒複核，不改變欄位值本身，用跟POR/600
+        // 黃色警示不同的顏色區分兩種不同性質的提醒。
+        const ctoFamilyGuessRows = new Set();
+        const manualRemarkRows = new Set(); // F013：備註需人工填寫的列，備註格標黃
+        const closeTimePendingRows = new Set(); // F022：Close 時間暫填今天、待自動化 BOM 確認的列，該格標黃
+        cacheStaging8.forEach((r, i) => {
+            const autoNote = String(r['_自動判斷備註'] || '');
+            if (autoNote.includes('「(GETC/ECR Close 時間)」暫填今天')) closeTimePendingRows.add(i);
+            if (!r['備註'] && (autoNote.includes('「備註」需人工填寫') || autoNote.includes('備註需人工填寫實際變更內容'))) manualRemarkRows.add(i);
+            const ecn = String(r['LNV ECN No'] || '');
+            if (/^\d+POR_[A-Za-z0-9]{1,2}$/i.test(ecn) || /^600/.test(ecn)) porOr600Rows.add(i);
+            if (String(r['_自動判斷備註'] || '').includes('MTM Family依CTO PN編碼慣例自動判斷')) ctoFamilyGuessRows.add(i);
+        });
+
+        const aoa = [headers, ...cacheStaging8.map(r => headers.map(h => r[h]))];
+        const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+        const font = { name: 'Comic Sans MS', sz: 10 };
+        const border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        // 確認者欄不再用「=Creater」這種簡單公式——實際規則是條件式的
+        // （POR/600/SPB-30000才等於Creater，2000開頭查SE，其餘空白），
+        // 已經在 buildStagingRows8() 算成正確的值了，這裡當一般欄位寫入即可。
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const ref = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[ref]) continue;
+                const isHeader = R === 0;
+                const colName = headers[C];
+                const style = { font, border };
+                if (isHeader) { style.fill = { fgColor: { rgb: 'FFFFCC' } }; style.font = { ...font, bold: true }; }
+                if (!isHeader && dateCols.has(colName)) { style.numFmt = 'yyyy/mm/dd'; }
+                if (!isHeader && colName === 'Disposition code' && porOr600Rows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                if (!isHeader && colName === 'MTM Family' && ctoFamilyGuessRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFC000' } }; }
+                if (!isHeader && colName === '備註' && manualRemarkRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                if (!isHeader && colName === '(GETC/ECR Close 時間)' && closeTimePendingRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                // 2026-10-16 主人指定：H／I／J（ECR No／Creater／確認者）資料格水平置中，只改對齊。
+                if (!isHeader && centerCols8.has(colName)) { style.alignment = { horizontal: 'center' }; }
+                ws[ref].s = style;
+            }
+        }
+        ws['!cols'] = headers.map(h => ({ wch: (h.includes('Date') ? 18 : Math.max(12, Math.min(30, h.length + 4))) }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '待貼入');
+
+        // 2026-09-22 新增「EC report Summary」分頁，跟 Node 版 build-staging-report.js
+        // 的輸出對齊（欄位、類型三分支判斷、郵件主旨列全部一致）。
+        const summaryRows = buildNotificationSummary8(cacheStaging8, cacheStaging8Meta.projectMap, cacheStaging8Meta.projectConflicts);
+        const summaryHeaders = ['Project Name', '異動', '數量', '類型', 'EIP導入數', 'EIP排除數', 'MTM清單', '備註'];
+        const summaryAoa = [summaryHeaders, ...summaryRows.map(r => summaryHeaders.map(h => r[h]))];
+        const summaryWs = XLSX.utils.aoa_to_sheet(summaryAoa);
+        const summaryRange = XLSX.utils.decode_range(summaryWs['!ref']);
+        for (let R = summaryRange.s.r; R <= summaryRange.e.r; ++R) {
+            for (let C = summaryRange.s.c; C <= summaryRange.e.c; ++C) {
+                const ref = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!summaryWs[ref]) continue;
+                const isHeader = R === 0;
+                const style = { font, border };
+                if (isHeader) { style.fill = { fgColor: { rgb: 'FFFFCC' } }; style.font = { ...font, bold: true }; }
+                // 數量欄（第3欄，index 2）維持數值型別，只用格式顯示「個」，可加總／篩選。
+                if (!isHeader && C === 2) style.numFmt = '0"個"';
+                // 2026-09-22 May 確認（回應Codex QA-002）：Project Name欄（index 0）
+                // 如果這個群組含CTO_猜測Family，橘色標記提醒複核（跟待貼入表同一個
+                // 顏色FFC000），判斷依據是備註欄（index 7）是否含特定文字。
+                if (!isHeader && C === 0 && summaryRows[R - 1] && String(summaryRows[R - 1]['備註'] || '').includes('含CTO_猜測Family')) {
+                    style.fill = { fgColor: { rgb: 'FFC000' } };
+                }
+                summaryWs[ref].s = style;
+            }
+        }
+        summaryWs['!cols'] = [
+            { wch: 24 }, { wch: 8 }, { wch: 8 }, { wch: 24 },
+            { wch: 12 }, { wch: 12 }, { wch: 55 }, { wch: 45 },
+        ];
+        const subjectRowIndex = summaryRows.length + 3;
+        XLSX.utils.sheet_add_aoa(summaryWs, [['郵件主旨', buildEmailSubject8(summaryRows)]], { origin: `A${subjectRowIndex}` });
+        for (const c of [0, 1]) {
+            const subjectRef = XLSX.utils.encode_cell({ r: subjectRowIndex - 1, c });
+            if (summaryWs[subjectRef]) summaryWs[subjectRef].s = { font, border };
+        }
+        summaryWs['!merges'] = [...(summaryWs['!merges'] || []), {
+            s: { r: subjectRowIndex - 1, c: 1 },
+            e: { r: subjectRowIndex - 1, c: 7 },
+        }];
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'EC report Summary');
+
+        XLSX.writeFile(wb, nextStaging8Filename());
+    }
+</script>
+</body>
+</html>

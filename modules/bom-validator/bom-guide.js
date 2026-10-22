@@ -1,8 +1,8 @@
 (function(global){
   const content={
-    version:'v2.17.14',
+    version:'v2.17.15',
     title:'BOM 轉檔與安檢操作 SOP',
-    updated:'2026-10-21',
+    updated:'2026-10-22',
     optimizations:[
       '「異常檢測報告」每一筆問題都有「建議處理方式」，第 9 列另有本次 BLOCKER／WARNING 筆數與涉及頁籤摘要；「拨杆／撥杆」統一轉為「撥桿」。',
       '處理失敗時按鈕會顯示「處理失敗，請按『重新選檔』」並停用，請重新選檔後再執行；成功才會顯示「已完成」。',

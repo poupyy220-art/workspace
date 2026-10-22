@@ -3,7 +3,8 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8').replace(/\r\n/g, '\n');
-const pn = Buffer.from(html.match(/src="data:text\/html;charset=utf-8;base64,([^"]+)"/)[1], 'base64').toString('utf8');
+// PN 報表工具自 v2.17.15 起為獨立檔（原 index.html 內嵌 base64）。
+const pn = fs.readFileSync(path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
 function extract(src, name, indent) {
   const start = src.search(new RegExp('^' + indent + '(?:async )?function ' + name + '\\(', 'm'));
   const end = src.indexOf('\n' + indent + '}', start) + indent.length + 2;

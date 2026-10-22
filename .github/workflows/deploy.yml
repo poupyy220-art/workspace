@@ -10,6 +10,7 @@ on:
       - 'modules/bom-validator/**'
       - 'modules/attendance-tool/**'
       - 'modules/pn-import/**'
+      - 'modules/pn-report/**'
       - 'wrangler.jsonc'
 
 jobs:
@@ -38,6 +39,8 @@ jobs:
           cp modules/bom-validator/vendor/opencc-js/cn2t.js preview-dist/modules/bom-validator/vendor/opencc-js/cn2t.js
           cp modules/bom-validator/vendor/opencc-js/LICENSE preview-dist/modules/bom-validator/vendor/opencc-js/LICENSE
           cp modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md preview-dist/modules/bom-validator/vendor/opencc-js/THIRD_PARTY_LICENSES.md
+          mkdir -p preview-dist/modules/pn-report
+          cp modules/pn-report/index.html preview-dist/modules/pn-report/index.html
           mkdir -p preview-dist/modules/pn-import/scripts preview-dist/modules/pn-import/vendor
           cp modules/pn-import/index.html preview-dist/modules/pn-import/index.html
           for file in app.js check-report.js remote-store.js rules.js ui.js xlsx-io.js; do

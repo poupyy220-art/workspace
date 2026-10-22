@@ -8,7 +8,8 @@ const path = require('node:path');
 // 另加 LastModified、EOW Date、GA Date、AnnoucementDate、Withdrawal Date、Qualification Date 並標紅字。
 // 一般格式輸出維持原樣。
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-const pn = Buffer.from(html.match(/src="data:text\/html;charset=utf-8;base64,([^"]+)"/)[1], 'base64').toString('utf8');
+// PN 報表工具自 v2.17.15 起為獨立檔（原 index.html 內嵌 base64）。
+const pn = fs.readFileSync(path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
 function extract(name) {
   const start = pn.search(new RegExp('    function ' + name + '\\('));
   const end = pn.indexOf('\n    }', start) + 6;
