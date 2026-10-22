@@ -6,7 +6,8 @@ const path = require('node:path');
 // 2026-09-29 F016：PN 工具以 data: 網址嵌在 iframe，瀏覽器不給用 localStorage，
 // 原本存在 localStorage 的流水號每次都退回 -1。改用下載時間（時分）當尾碼，不需儲存、不會重複。
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-const pn = Buffer.from(html.match(/src="data:text\/html;charset=utf-8;base64,([^"]+)"/)[1], 'base64').toString('utf8');
+// PN 報表工具自 v2.17.15 起為獨立檔（原 index.html 內嵌 base64）。
+const pn = fs.readFileSync(path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
 function extract(name) {
   const start = pn.search(new RegExp('    function ' + name + '\\('));
   const end = pn.indexOf('\n    }', start) + 6;
