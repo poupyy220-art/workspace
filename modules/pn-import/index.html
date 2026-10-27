@@ -61,6 +61,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:360px;
 .spec{margin:14px 0 4px;padding:14px 16px;border:1px solid var(--bad);border-radius:10px;background:var(--bad-soft)}
 .spec h3{margin:0 0 4px;font-size:16px}
 .spec input[type=text]{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:420px}
+.spec-batch{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.spec-batch select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 #specList{display:grid;gap:8px;margin:8px 0 12px}
 #specList label{display:flex;gap:10px;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
 #specList input[type=checkbox]{width:18px;height:18px;accent-color:var(--brand)}
@@ -98,8 +100,9 @@ footer{color:var(--sub);font-size:13px;text-align:center;padding:0 22px 30px}
 
 <section class="card" id="card3"><h2><span class="num">3</span>檢查結果與下載</h2>
 <p id="status" role="status">等待選擇檔案。</p>
-<div id="specPanel" class="spec" hidden><h3>待確認／待補值的欄位</h3><p class="hint">以下列缺少欄位而被擋住。「規格」可勾選「允許留白」或直接填值；「產品分類／細項產品別／市場分類」可選預設組合或自行輸入。按「全選」可一次勾選全部，填完按「套用並重新檢查」。確認人與日期必填，會記在自動補值紀錄裡。</p>
+<div id="specPanel" class="spec" hidden><h3>待確認／待補值的欄位</h3><p class="hint">以下列缺少欄位而被擋住。「規格」可勾選「允許留白」或直接填值；「產品分類／細項產品別／市場分類」可選預設組合或自行輸入，缺分類的列多且同一種組合時可用上方「一次套用到以上全部」免得逐列挑選。按「全選」可一次勾選全部，填完按「套用並重新檢查」。確認人與日期必填，會記在自動補值紀錄裡。</p>
 <label class="field" style="margin-bottom:8px"><span><input id="specSelectAll" type="checkbox" style="width:auto;margin-right:6px">全選以下列</span></label>
+<div class="spec-batch" id="specBatch" hidden><span>一次套用到全部缺「產品分類／細項產品別／市場分類」的列：</span><select id="specBatchPreset"><option value="">選預設組合…</option></select><button id="specBatchApply" type="button" class="small">套用到以上全部並勾選</button></div>
 <div id="specList"></div><label class="field"><span>確認人與日期</span><input id="specConfirmer" type="text" placeholder="例如：王小明 10/07 確認可留白" autocomplete="off"></label><p id="specMsg" class="hint" role="alert"></p><button id="specApply" type="button" class="primary">套用並重新檢查</button></div>
 <div class="actions"><button id="export" class="primary" disabled>下載匯入草稿</button><button id="excelReport" disabled>下載異常檢查與補值報表</button><button id="report" disabled>下載原始 JSON 紀錄</button></div>
 <small class="hint">有阻擋問題時匯入草稿不能下載；請看異常檢查報表的「問題摘要」與「異常報表」。報表前三頁是檢查結果；檢查通過時第四頁「匯入草稿」是對照用副本（匯入公司系統請用單獨下載的草稿）；後面保留原始分頁，問題格只加 Excel 備註，不改原有格式。</small>
