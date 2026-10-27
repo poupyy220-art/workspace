@@ -80,10 +80,14 @@
  // 待確認／待補值清單：檢查完成後依明細自動列出。規格可勾「允許留白」或直接填值；
  // 產品分類／細項產品別／市場分類可選預設組合或自行輸入；「全選」方便列數多時一次勾選。
  const panel=$('specPanel'),specList=$('specList'),specMsg=$('specMsg'),selectAll=$('specSelectAll');
+ const batchWrap=$('specBatch'),batchPreset=$('specBatchPreset');
  const PRESET_LABEL=p=>`產品分類＝${p.產品分類}／細項產品別＝${p.細項產品別}／市場分類＝${p.市場分類}`;
+ if(batchPreset&&!batchPreset.dataset.filled){CLASSIFY_PRESETS.forEach((p,i)=>batchPreset.append(new Option(PRESET_LABEL(p),String(i))));batchPreset.dataset.filled='1'}
  function refreshSpec(){
   const items=reportBtn.disabled?[]:fillCandidates($('details').textContent);
   specList.replaceChildren();specMsg.textContent='';panel.hidden=!items.length;selectAll.checked=false;
+  const hasClassifyRows=items.some(it=>it.fields.some(f=>f!=='規格'));
+  if(batchWrap){batchWrap.hidden=!hasClassifyRows;if(!hasClassifyRows)batchPreset.value=''}
   for(const it of items){
    const row=document.createElement('div');row.className='spec-row';row.dataset.sheet=it.sheet;row.dataset.row=String(it.row);
    const head=document.createElement('label');const rowBox=document.createElement('input');rowBox.type='checkbox';rowBox.className='spec-row-pick';
@@ -105,6 +109,17 @@
   }
  }
  selectAll.addEventListener('change',()=>{for(const b of specList.querySelectorAll('.spec-row-pick'))b.checked=selectAll.checked});
+ // 一次套用到全部缺「產品分類／細項產品別／市場分類」的列：填每列既有的分類欄位並勾選該列；不動「規格」欄（通常各列值不同，不適合套同一個預設組合）。
+ $('specBatchApply')?.addEventListener('click',()=>{
+  if(!batchPreset.value){specMsg.textContent='請先選一個預設組合，再套用到全部。';return}
+  const p=CLASSIFY_PRESETS[Number(batchPreset.value)];let n=0;
+  for(const row of specList.querySelectorAll('.spec-row')){
+   const sel=row.querySelector('.spec-preset');if(!sel)continue;
+   for(const inp of row.querySelectorAll('input[type=text][data-field]'))if(p[inp.dataset.field]!==undefined)inp.value=p[inp.dataset.field];
+   row.querySelector('.spec-row-pick').checked=true;n++;
+  }
+  specMsg.textContent=n?`已套用到 ${n} 列，請確認後填「確認人與日期」再按「套用並重新檢查」。`:'目前沒有缺分類欄位的列。';
+ });
  $('specApply').addEventListener('click',()=>{
   const fillEntries=[],blankPicks=[];
   for(const row of specList.querySelectorAll('.spec-row')){
