@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.17.15</title>
+<title>料號管理中心 v2.17.16</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -133,7 +133,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.17.15 · 整合工具平台</div>
+    <div class="logo-sub">v2.17.16 · 整合工具平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -160,11 +160,11 @@ body{display:flex;background:#f0f4f8;}
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.15</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.16</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.17.15 · 2026-10-22<br>
+    v2.17.16 · 2026-10-28<br>
     🕒 出勤表填寫<br>
     維護：料號管理員
   </div>
@@ -177,7 +177,7 @@ body{display:flex;background:#f0f4f8;}
   <div id="topbar">
     <button id="hamburgerBtn" type="button" aria-label="開啟導航選單" onclick="toggleMobileSidebar()">☰</button>
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.17.15</div>
+    <div class="topbar-right">料號管理中心 v2.17.16</div>
   </div>
   <div id="content">
 
@@ -188,12 +188,13 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.17.15</span>
-          <span class="announce-date">2026-10-22</span>
+          <span class="announce-ver">v2.17.16</span>
+          <span class="announce-date">2026-10-28</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
-        <ul class="announce-list"><li><span class="announce-fix">UX</span> 🔍 PN 報表自動化改為獨立頁面載入（modules/pn-report），左側選單、畫面位置與所有報表功能不變。</li><li><span class="announce-fix">SAFE</span> 工具內容與原版逐位元組相同，只改載入方式；首頁體積減少約 18 萬字元。</li></ul>
+        <ul class="announce-list"><li><span class="announce-fix">FIX</span> PN V36.14 8️⃣ EC Tracking 待貼入報表：Change Type＝ChgRcd 的列現在會正確填入——「備註」自動帶「change record,EC直接close」、「(GETC/ECR Close 時間)」填產表當天。之前因程式比對字串大小寫寫錯（Chgrcd）導致 ChgRcd 列備註與 Close 時間都空白，已修正。ChgDate／ChgDes／No BOM change 規則不變。</li></ul>
         <!-- 歷史版本 -->
+<div><span class="announce-ver">v2.17.15</span><span class="announce-date">2026-10-22</span><ul class="announce-list"><li><span class="announce-fix">UX</span> 🔍 PN 報表自動化改為獨立頁面載入（modules/pn-report），左側選單、畫面位置與所有報表功能不變。</li><li><span class="announce-fix">SAFE</span> 工具內容與原版逐位元組相同，只改載入方式；首頁體積減少約 18 萬字元。</li></ul></div>
 <div><span class="announce-ver">v2.17.14</span><span class="announce-date">2026-10-21</span><ul class="announce-list"><li><span class="announce-fix">FIX</span> PN 申請匯入草稿：支援「新舊／新旧」欄名，避免已有 NEW／OLD 卻誤報缺少來源欄位。</li><li><span class="announce-fix">SAFE</span> 明填狀態、重複欄位阻擋與 Class Code 人工提醒規則保留。</li></ul></div>
 <div><span class="announce-ver">v2.17.13</span><span class="announce-date">2026-10-21</span>        <ul class="announce-list"><li><span class="announce-fix">FIX</span> PN 申請匯入草稿：RD 明填 NEW 時，即使已有料號仍保留 NEW 與新料欄位，不再強制改成 OLD。</li><li><span class="announce-fix">SAFE</span> 狀態空白才依料號推定；OLD、替代、H 父件及衝突阻擋規則保留。</li></ul>
 </div>
@@ -265,7 +266,7 @@ body{display:flex;background:#f0f4f8;}
           <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
             <div style="margin-bottom:4px;"><span class="announce-ver">v2.16.18</span><span class="announce-date" style="margin-left:6px;">2026-10-01</span></div>
             <ul class="announce-list" style="margin-top:4px;">
-          <li><span class="announce-new">🆕 NEW</span> PN V36.14 8️⃣ EC Tracking 待貼入報表：「(GETC/ECR Close 時間)」現在會自動填產表當天日期——Change Type＝New 的列填今天並標黃，「_自動判斷備註」提醒等公司自動建 BOM 流程完成、確認 BOM 建立成功後再貼主表（失敗請清空或改日期）；備註為「…EC直接close」的列（ChgDate／ChgDes／Chgrcd／No BOM change）也直接填今天、不標黃；其他列維持空白。</li>
+          <li><span class="announce-new">🆕 NEW</span> PN V36.14 8️⃣ EC Tracking 待貼入報表：「(GETC/ECR Close 時間)」現在會自動填產表當天日期——Change Type＝New 的列填今天並標黃，「_自動判斷備註」提醒等公司自動建 BOM 流程完成、確認 BOM 建立成功後再貼主表（失敗請清空或改日期）；備註為「…EC直接close」的列（ChgDate／ChgDes／ChgRcd／No BOM change）也直接填今天、不標黃；其他列維持空白。</li>
             </ul>
           </div>
           <div style="margin-top:8px;border-top:1px solid #fde68a;padding-top:8px;">
@@ -587,7 +588,7 @@ body{display:flex;background:#f0f4f8;}
         <span>已完成缺少資料補回、錯誤資料修正及完全重複資料清理；欄位差異資料暫視為通過。</span>
         <a class="audit-link" href="https://docs.google.com/spreadsheets/d/10swnGtBmwiTrl5APxI2hXqV7RaQM5aiNBRCcA48etjQ/edit" target="_blank" rel="noopener noreferrer">查看稽核報表 ↗</a>
       </div>
-      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261022-1"
+      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261028-1"
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups"></iframe>
     </div>
 
@@ -1534,6 +1535,7 @@ function getDefaultPartNo() {
 
     <!-- 測試清單 -->
     <div id="page-testplan" class="page">
+<p>v2.17.16：8️⃣ 待貼入報表 ChgRcd 列備註與 Close 時間修正（舊碼大小寫 Chgrcd 誤判，未填值）。</p>
 <p>v2.17.15：PN 報表自動化改獨立頁載入；工具內容逐位元組一致、1～8 號報表與 PN 相關回歸。</p>
 <p>v2.17.14：PN 短欄名新舊／新旧辨識、保留 NEW／OLD、重複狀態欄阻擋回歸。</p>
 <p>v2.17.13：PN 明填 NEW 且有料號時保留新料欄位；空白狀態、OLD、替代、H 父件與狀態衝突回歸。</p>
@@ -1562,7 +1564,7 @@ var TITLES = {
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.2', spb:'🔀 SPB vs L10 v3.0',
   pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', pnimport:'📝 PN 申請匯入草稿', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.17.15',
+  testplan:'📋 測試清單 v2.17.16',
   docs:'📄 說明文件 v2.6'
 };
 
