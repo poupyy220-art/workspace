@@ -1867,7 +1867,7 @@
             let remark8 = [
                 changeType === 'ChgDate' ? 'change date,EC直接close'
                     : changeType === 'ChgDes' ? 'Change description ,EC直接close'
-                    : changeType === 'Chgrcd' ? 'change record,EC直接close'
+                    : changeType === 'ChgRcd' ? 'change record,EC直接close'
                     : (!changeType && (isCtoNoBomChange || isPorNoBomChange)) ? 'No BOM change,EC直接close' : '',
                 (isSpb && mtmPrefix === '12LM') ? '第5碼S尾碼數字無需修改BOM' : '',
             ].filter(Boolean).join('；');
@@ -1898,7 +1898,7 @@
 
             // 2026-10-01 確認（F022）：「(GETC/ECR Close 時間)」主表填日期。Change Type＝New 的列
             // 填產表當天，但要等公司自動建 BOM 流程完成、確認 BOM 建立成功才算數，所以下載時標黃
-            // 並在 _自動判斷備註 提醒；備註為「…EC直接close」的列（ChgDate／ChgDes／Chgrcd／
+            // 並在 _自動判斷備註 提醒；備註為「…EC直接close」的列（ChgDate／ChgDes／ChgRcd／
             // No BOM change）不用等建 BOM，直接填當天、不標黃。其他列維持空白由人工判斷。
             const isEcDirectClose8 = remark8.includes('EC直接close');
             const closeTimeValue8 = (isNew || isEcDirectClose8) ? runDateValue : (pnDbCloseDate8 || '');
@@ -1922,8 +1922,11 @@
                 // 貼主表前要刪掉的 `_自動判斷備註` 是兩回事。文字對照過歷史資料修正：
                 // ChgDate 用歷史上實際出現859次的「change date,EC直接close」（小寫、
                 // 半形逗號，May 手動打的既有慣例），不是系統欄位值的大小寫「ChgDate」。
-                // 2026-09-22 再次檢查發現 ChgDes／Chgrcd 並非共用同一句備註：Chgrcd
+                // 2026-09-22 再次檢查發現 ChgDes／ChgRcd 並非共用同一句備註：ChgRcd
                 // 對應歷史上出現117次的「change record,EC直接close」，ChgDes 歷史上
+                // 2026-10-28 FIX：Change Type 系統值是「ChgRcd」（Chg+大寫Rcd），舊碼誤寫
+                // 成「Chgrcd」導致嚴格比對永遠不中，備註與 Close 時間都沒填；對齊 ChgDate／
+                // ChgDes 的精確大小寫。
                 // 查無固定備註（是 May 新指定的規則），改用「Change description
                 // ,EC直接close」（逗號前有空格，May 指定用字）。「不用修改BOM」這條
                 // 規則跟Family名稱無關，是跟MTM前4碼「12LM」綁定（統計顯示帶這條備註的

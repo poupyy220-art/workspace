@@ -4,7 +4,7 @@ const { context, extract } = require('./ec-tracking-pn-map-regression.cjs');
 
 // 2026-10-01 確認（F022）：「(GETC/ECR Close 時間)」Change Type＝New 的列填產表當天日期，
 // 但要等公司自動建 BOM 流程完成、確認建立成功才能貼主表 → 該格標黃、_自動判斷備註 提醒；
-// 備註為「…EC直接close」的列（ChgDate／ChgDes／Chgrcd／No BOM change）也填當天，不標黃；其他列維持空白。
+// 備註為「…EC直接close」的列（ChgDate／ChgDes／ChgRcd／No BOM change）也填當天，不標黃；其他列維持空白。
 function run() {
   let checks = 0;
   const check = (v, msg) => { assert(v, msg); checks++; };
@@ -22,8 +22,9 @@ function run() {
   check(isToday(date[COL]) && !note(date).includes('自動建 BOM'), 'ChgDate → today, no reminder');
   const [des] = build([row('200008976212', '13AATEST', 'ChgDes')]);
   check(isToday(des[COL]), 'ChgDes → today');
-  const [rcd] = build([row('200008976212', '13AATEST', 'Chgrcd')]);
-  check(isToday(rcd[COL]), 'Chgrcd → today');
+  const [rcd] = build([row('200008976212', '13AATEST', 'ChgRcd')]);
+  check(isToday(rcd[COL]), 'ChgRcd → today');
+  check(rcd['備註'] === 'change record,EC直接close', 'ChgRcd remark filled: ' + rcd['備註']);
   const cto = build([row('CTO_1', '13AATEST', ''), row('CTO_1', '13AATEST', '', '22', 'TESTCHILD')]);
   check(cto[0]['備註'] === 'No BOM change,EC直接close' && isToday(cto[0][COL]), 'No BOM change → today');
   const [chg] = build([row('200008976212', '13AATEST', 'ChgBom')]);
