@@ -1232,6 +1232,16 @@
     // 另開欄）。pnDbMap 為 loadPnDatabaseNoBom8() 的「客戶料號（大寫去空白）→[{internalPN,remark}]」Map；
     // pnDbMap 為 null（讀取失敗）時整欄留白，由呼叫端顯示警告。
     const SPB_PN_COL = "SPB AVC PN最新版本";
+    // 2026-11-02：ChgDate 待貼入的雲端讀取重試（與新站同步）。新站唯讀守門把雲端讀取改成單次、
+    // 35s abort、不重試，偶發 abort 會讓待貼入分頁變錯誤列；在呼叫端自行重試幾次（遞增等待）。
+    async function retryRead5(fn, attempts = 4) {
+        let lastErr;
+        for (let i = 1; i <= attempts; i++) {
+            try { return await fn(); }
+            catch (e) { lastErr = e; if (i < attempts) await new Promise(r => setTimeout(r, 600 * i)); }
+        }
+        throw lastErr;
+    }
     function spbLatestPNCell(pnDbMap, mtm) {
         if (!pnDbMap || !pnDbMap.get) return '';
         const key = String(mtm == null ? '' : mtm).trim().toUpperCase();
@@ -1291,18 +1301,22 @@
             // 2026-11-02 功能C：同時算好「待貼入(ChgDate)」列，跟 8️⃣ 共用 buildStagingRows8（只取
             // Change Type=ChgDate 的列），下載時會寫進同一個 Excel 的第二分頁。雲端讀取失敗不擋主報表，
             // 下載時第二分頁改顯示錯誤提示列。
+            // 2026-11-02 修（與新站同步）：ChgDate 列不是 New，國別欄（CountryDB）用不到 → 省一次雲端讀取；
+            // 只讀 MTM Family 需要的 CustomDB + PN_Project_Map，並加重試避免偶發 abort。
+            showLoading(true, '讀取雲端對照表、產生待貼入(ChgDate)…');
             try {
                 const flatObjRows = (await parseFlatfileObjRows8('csvFiles5'))
                     .filter(row => String(row['Change Type'] || '').trim().toLowerCase() === 'chgdate');
-                const ccMap = await loadCountryDbMap8();
-                const { map: projectMap, conflicts: projectConflicts, seMap } = await loadProjectMap8();
-                const pnProjectMap = await loadPnProjectMap8(null);
+                const { map: projectMap, conflicts: projectConflicts, seMap } = await retryRead5(() => loadProjectMap8());
+                const pnProjectMap = await retryRead5(() => loadPnProjectMap8(null));
                 const createrName = document.getElementById('creater8').value;
-                cacheChgDateStaging5 = buildStagingRows8(flatObjRows, ccMap, projectMap, projectConflicts, new Map(), createrName, seMap, pnProjectMap, pnDb);
+                cacheChgDateStaging5 = buildStagingRows8(flatObjRows, new Map(), projectMap, projectConflicts, new Map(), createrName, seMap, pnProjectMap, pnDb);
                 if (!cacheChgDateStaging5.length) cacheChgDateStaging5Error = '待貼入(ChgDate) 產出 0 列，請確認 Flatfile 內容。';
             } catch (err) {
                 cacheChgDateStaging5 = null;
                 cacheChgDateStaging5Error = (err && err.message) ? err.message : String(err);
+            } finally {
+                showLoading(false);
             }
         } else {
             renderPreview(res, sty);
