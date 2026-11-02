@@ -41,7 +41,7 @@ function run() {
     alert: (m) => alerts.push(m), dbg: (m) => logs.push(m), XLSX: mockXlsx(written) };
   vm.createContext(ctx);
   const names = ['resolveMtmPrefix8', 'fitExcelList8', 'nextStaging8Filename', 'projectNameForEmail8', 'emailDateStr8',
-    'buildEmailSubject8', 'buildNotificationSummary8', 'downloadStagingReport8', 'downloadStagingReport8Core'];
+    'buildEmailSubject8', 'buildNotificationSummary8', 'buildStagingWorksheet8', 'downloadStagingReport8', 'downloadStagingReport8Core'];
   vm.runInContext('var cacheStaging8 = null, cacheStaging8Meta = null;\n' + names.map(n => extract(n)).join('\n'), ctx);
 
   const row = (mtm) => ({ 'LNV ECN No': '200000000001', 'MTM/PART': mtm, 'MTM Family': 'Big Project', 'Disposition code': '22',

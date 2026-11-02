@@ -45,7 +45,7 @@ function run() {
       writeFile: (wb) => { written = wb; } } };
   vm.createContext(dctx);
   vm.runInContext('var cacheStaging8 = null, cacheStaging8Meta = null;\n' + ['resolveMtmPrefix8', 'fitExcelList8', 'nextStaging8Filename', 'projectNameForEmail8', 'emailDateStr8',
-    'buildEmailSubject8', 'buildNotificationSummary8', 'downloadStagingReport8', 'downloadStagingReport8Core'].map(n => extract(n)).join('\n'), dctx);
+    'buildEmailSubject8', 'buildNotificationSummary8', 'buildStagingWorksheet8', 'downloadStagingReport8', 'downloadStagingReport8Core'].map(n => extract(n)).join('\n'), dctx);
   dctx.cacheStaging8 = rows; dctx.cacheStaging8Meta = { projectMap: new Map(), projectConflicts: new Map() };
   dctx.downloadStagingReport8();
   const ws = written.s['待貼入'];
