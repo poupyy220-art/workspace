@@ -16,10 +16,13 @@ const checks = [];
 const check = (name, fn) => { fn(); checks.push(name); };
 
 // ---- data: buildStagingRows8 overrides ----
-const ctx = {};
+// 傳入宿主的 Date/Map/Set，讓 sandbox 內建立的 Date 與測試端同一個 realm（instanceof Date 才成立）。
+const ctx = { Date, Map, Set, String, Number, console };
 vm.runInNewContext([
-  extractFn(html, 'resolveMtmPrefix8'), extractFn(html, 'todayDateValue8'),
-  extractFn(html, 'parseLastModified8'), extractFn(html, 'spbLatestPNCell'),
+  extractFn(html, 'todayDateValue8'), extractFn(html, 'taiwanTodayDateValue8'),
+  extractFn(html, 'parseLastModified8'), extractFn(html, 'resolveMtmPrefix8'),
+  extractFn(html, 'classifyPnDbRemark8'), extractFn(html, 'resolvePnDbNoBom8'),
+  extractFn(html, 'spbLatestPNCell'),
   extractFn(html, 'buildStagingRows8'), 'this.buildStagingRows8 = buildStagingRows8;',
 ].join('\n'), ctx);
 const projectMap = new Map([['12LM', 'Tiny Neo'], ['12LN', 'Tiny Neo B']]);
@@ -27,11 +30,22 @@ const build = (mtm, ct) => ctx.buildStagingRows8(
   [{ 'Lenovo EC/Doc Number': 'E1', 'MTM/Part': mtm, 'Child Part': '', 'Change Type': ct, disposition: '99' }],
   new Map(), projectMap, new Map(), new Map(), 'May', new Map([['Tiny Neo', 'SE_X'], ['Tiny Neo B', 'SE_Y']]), new Map(), { map: null, error: '' })[0];
 
-check('ChgBom + SPB → 確認者 Ido、Close 時間 confirming', () => {
-  const r = build('12LMS0001W', 'ChgBom'); // 第5碼 S = SPB
+check('ChgBom + SPB（無不需建BOM）→ 確認者 Ido、Close 時間 confirming', () => {
+  const r = build('12LMS0001W', 'ChgBom'); // 第5碼 S = SPB；pnDbLookup=null → 無不需建BOM
   assert.equal(r['確認者'], 'Ido');
   assert.equal(r['(GETC/ECR Close 時間)'], 'confirming');
   assert.ok(String(r['_自動判斷備註']).includes('Ido'));
+});
+check('例外：ChgBom + SPB 且主檔判不需建BOM → 維持今天 close、確認者仍 Ido', () => {
+  // 帶入 PN Database「不需建BOM」→ 走 close 今天分支；功能D 例外應維持今天、不改 confirming
+  const r = ctx.buildStagingRows8(
+    [{ 'Lenovo EC/Doc Number': 'E1', 'MTM/Part': '12LMS0001W', 'Child Part': '', 'Change Type': 'ChgBom', disposition: '99' }],
+    new Map(), projectMap, new Map(), new Map(), 'May', new Map(),
+    new Map(), { map: new Map([['12LMS0001W', [{ internalPN: 'X', remark: '不需建BOM' }]]]), error: '' })[0];
+  assert.notEqual(r['(GETC/ECR Close 時間)'], 'confirming');
+  assert.ok(r['(GETC/ECR Close 時間)'] instanceof Date);
+  assert.equal(r['確認者'], 'Ido');
+  assert.ok(String(r['_自動判斷備註']).includes('仍需發信告知 Ido'));
 });
 check('ChgBom 非 SPB → 不套用（確認者非 Ido、Close 非 confirming）', () => {
   const r = build('12LN0001WW', 'ChgBom'); // 第5碼 0 = 非 SPB

@@ -2006,13 +2006,18 @@
                 note = [note, '「(GETC/ECR Close 時間)」暫填今天（已標黃），請等公司自動建 BOM 流程完成、確認 BOM 建立成功後再貼主表；失敗請清空或改日期'].filter(Boolean).join('；');
             }
 
-            // 2026-11-02 功能D（主人拍板）：Change Type=ChgBom 且該列為 SPB MTM 時，確認者固定「Ido」、
-            // (GETC/ECR Close 時間) 放文字「confirming」（下載時由 buildStagingWorksheet8 標紅字＋水平置中）。
-            // 只套用在 ChgBom＋SPB 列；沿用系統值大小寫精確比對（同 ChgDate／ChgRcd 慣例），不改大小寫比對。
+            // 2026-11-02 功能D（主人拍板）：Change Type=ChgBom 且該列為 SPB MTM 時，確認者固定「Ido」。
+            // (GETC/ECR Close 時間) 原則上放文字「confirming」（下載時由 buildStagingWorksheet8 標紅字＋
+            // 水平置中）。沿用系統值大小寫精確比對（同 ChgDate／ChgRcd 慣例），不改大小寫比對。
+            // 例外（2026-11-02 主人確認）：若此列已被 PN Database 備註判定「不需建BOM→今天 close」
+            // （closeTimeValue8 已是日期），尊重主檔維持今天 close、不改成 confirming；確認者仍固定 Ido，
+            // Ido 仍需收信知悉。
             const isChgBomSpb = changeType === 'ChgBom' && isSpb;
             const confirmerValue8 = isChgBomSpb ? 'Ido' : confirmerName;
-            const closeTimeOut8 = isChgBomSpb ? 'confirming' : closeTimeValue8;
-            if (isChgBomSpb) note = [note, 'ChgBom 的 SPB MTM：確認者固定 Ido、Close 時間暫置「confirming」待 Ido 確認'].filter(Boolean).join('；');
+            const closeTimeOut8 = isChgBomSpb ? (closeTimeValue8 || 'confirming') : closeTimeValue8;
+            if (isChgBomSpb) note = [note, closeTimeValue8
+                ? 'ChgBom 的 SPB MTM：確認者固定 Ido；此列已依主檔判定不需建BOM、維持今天 close，仍需發信告知 Ido'
+                : 'ChgBom 的 SPB MTM：確認者固定 Ido、Close 時間暫置「confirming」待 Ido 確認'].filter(Boolean).join('；');
 
             out.push({
                 'LNV ECN No': lnvEcnNo,

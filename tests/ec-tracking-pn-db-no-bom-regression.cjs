@@ -91,9 +91,9 @@ async function run() {
   // 既有備註保留、追加在後（備註欄不受功能D影響）
   const spb = build([{ ...row('12LMS0TEST'), 'Change Type': 'ChgBom', disposition: '99' }], { map: new Map([['12LMS0TEST', [{ internalPN: 'X', remark: '不需建BOM' }]]]) })[0];
   check(spb['備註'] === '第5碼S尾碼數字無需修改BOM；不需建BOM', 'keeps existing remark: ' + spb['備註']);
-  // 2026-11-02 功能D：此列為 ChgBom＋SPB（12LMS→第5碼S），Close 時間改放「confirming」、確認者固定 Ido，
-  // 覆寫原本「不需建BOM→填今天」的結果（主人拍板：ChgBom 的 SPB 一律待 Ido confirming）。
-  check(spb[COL] === 'confirming' && spb['確認者'] === 'Ido', 'ChgBom+SPB → confirming / Ido (feature D)');
+  // 2026-11-02 功能D 例外（主人確認(B)）：此列為 ChgBom＋SPB，但已被 PN Database 判定「不需建BOM→
+  // 今天 close」→ 尊重主檔維持今天 close（不改 confirming）；確認者仍固定 Ido（Ido 仍需收信知悉）。
+  check(spb[COL] instanceof Date && isToday(spb[COL]) && spb['確認者'] === 'Ido', 'ChgBom+SPB+不需建BOM → 今天 close / Ido (feature D exception)');
 
   // 讀取失敗：不中斷、保留原值並提示
   const failed = context(async () => { throw Error('connection failed'); });
