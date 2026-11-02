@@ -11,7 +11,7 @@ function extract(name) {
   assert(start >= 0 && end > start, name);
   return pn.slice(start, end);
 }
-const names = ['loadPnProjectMap8','todayDateValue8','parseLastModified8','resolveMtmPrefix8','buildStagingRows8','processStagingReport8'];
+const names = ['loadPnProjectMap8','todayDateValue8','parseLastModified8','resolveMtmPrefix8','spbLatestPNCell','buildStagingRows8','processStagingReport8'];
 function context(fetcher) {
   const elements = {gasUrl:{value:'https://example.invalid/exec'},csvFiles8:{files:[{}]},factSheetFiles8:{files:[]},pnProjectMapFile8:{files:[]},staging8Summary:{},btnDL8:{style:{}},creater8:{value:'TEST'}};
   const ctx = {Map,Date,console,document:{getElementById:id=>elements[id]},fetchPnJsonWithRetry:fetcher,

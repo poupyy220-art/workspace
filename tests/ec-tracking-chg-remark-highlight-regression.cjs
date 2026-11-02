@@ -39,7 +39,7 @@ function run() {
       writeFile: (wb) => { written = wb; } } };
   vm.createContext(dctx);
   vm.runInContext('var cacheStaging8 = null, cacheStaging8Meta = null;\n' + ['resolveMtmPrefix8', 'fitExcelList8', 'nextStaging8Filename', 'projectNameForEmail8', 'emailDateStr8',
-    'buildEmailSubject8', 'buildNotificationSummary8', 'downloadStagingReport8', 'downloadStagingReport8Core'].map(n => extract(n)).join('\n'), dctx);
+    'buildEmailSubject8', 'buildNotificationSummary8', 'buildStagingWorksheet8', 'downloadStagingReport8', 'downloadStagingReport8Core'].map(n => extract(n)).join('\n'), dctx);
   // decode_range 要回傳真實範圍
   dctx.XLSX.utils.decode_range = function () { return { s: { r: 0, c: 0 }, e: { r: this.__last.__n - 1, c: this.__last.__c - 1 } }; };
   const origAoa = dctx.XLSX.utils.aoa_to_sheet;

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PN 報表自動化系統 (V36.14 時區修復版)</title>
+    <title>PN 報表自動化系統 (V36.15 時區修復版)</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js"></script>
 
     <style>
@@ -120,7 +120,7 @@
 </div>
 
 <div class="container">
-    <h1>☁️ PN 報表自動化系統 (V36.14 時區修復版)</h1>
+    <h1>☁️ PN 報表自動化系統 (V36.15 時區修復版)</h1>
 
     <div class="cloud-config">
         <div class="cloud-row">
@@ -382,6 +382,9 @@
     const INVALID_KEYWORDS = ["無效", "作廢", "停用", "INVALID", "OBSOLETE", "CANCEL", "歷史"];
     let cacheRep3=[];
     let cacheRep5=null, cacheStyle5=null, cacheLayout5=null, cacheRep6=null, cacheStyle6=null;
+    // 2026-11-02 功能C：ChgDate 模式額外算好的「待貼入(ChgDate)」列（沿用 8️⃣ buildStagingRows8），
+    // 跟合併報表一起寫進同一個 Excel 的第二分頁；cacheChgDateStaging5Error 非空時第二分頁改放錯誤提示列。
+    let cacheChgDateStaging5 = null, cacheChgDateStaging5Error = '';
     let cacheMissingFactSheet7 = [];
     let cacheUploadList7 = [];
 
@@ -1223,10 +1226,34 @@
     const REPORT5_HEAD = ["Lenovo EC/Doc Number","Lenovo EC/Doc Name","MTM/Part","Child Part","Qty","Change Type","Substitute Relationship","Name","basic_name","EC Description","disposition"];
     const REPORT5_CHGDATE_EXTRA = ["LastModified","EOW Date","GA Date","AnnoucementDate","Withdrawal Date","Qualification Date"];
     const REPORT5_CHGDATE_HIDDEN = ["Child Part","Qty","Substitute Relationship"];
-    function buildMergeReport5(headers, rows, mode) {
+    // 2026-11-02：把「EC 受限制物料分析器」的 SPB 最新 PN 演算法（latestPN）移植過來，供 5️⃣／6️⃣／8️⃣
+    // 各新增一欄。以「完整客戶料號（完整 MTM）」在 PN Database 查同系列數字最高版本 PN；查無／不同系列／
+    // 最高版並列時，單欄輸出改以原因字串呈現（本工具 Excel 輸出不支援儲存格註解，故原因寫同格而非留白＋
+    // 另開欄）。pnDbMap 為 loadPnDatabaseNoBom8() 的「客戶料號（大寫去空白）→[{internalPN,remark}]」Map；
+    // pnDbMap 為 null（讀取失敗）時整欄留白，由呼叫端顯示警告。
+    const SPB_PN_COL = "SPB AVC PN最新版本";
+    function spbLatestPNCell(pnDbMap, mtm) {
+        if (!pnDbMap || !pnDbMap.get) return '';
+        const key = String(mtm == null ? '' : mtm).trim().toUpperCase();
+        if (!key) return '';
+        const entries = pnDbMap.get(key);
+        const values = [...new Set((entries || []).map(e => String(e.internalPN || '').trim()).filter(Boolean))];
+        if (!values.length) return 'PN Database 找不到對應料號';
+        if (values.length === 1) return values[0];
+        const versions = values.map(pn => ({ pn, m: pn.match(/^(.*)-(\d+)$/) }));
+        if (versions.some(v => !v.m) || new Set(versions.map(v => v.m[1].toUpperCase())).size !== 1)
+            return 'PN Database 有不同系列或無法判定版本，請確認';
+        versions.sort((a, b) => Number(b.m[2]) - Number(a.m[2]));
+        if (Number(versions[0].m[2]) === Number(versions[1].m[2]))
+            return 'PN Database 最高版本重複且料號不同，請確認';
+        return versions[0].pn;
+    }
+    function buildMergeReport5(headers, rows, mode, pnDbMap) {
         const isChgDate = mode === 'chgdate';
-        const head = isChgDate ? REPORT5_HEAD.concat(REPORT5_CHGDATE_EXTRA) : REPORT5_HEAD;
-        const map = head.map(t => headers.indexOf(t));
+        const baseHead = isChgDate ? REPORT5_HEAD.concat(REPORT5_CHGDATE_EXTRA) : REPORT5_HEAD;
+        const head = baseHead.concat(SPB_PN_COL);
+        const map = baseHead.map(t => headers.indexOf(t));
+        const mtmIdx = headers.indexOf("MTM/Part");
         const ctIdx = headers.indexOf("Change Type"), cpIdx = headers.indexOf("Child Part");
         const res = [head], sty = {};
         rows.forEach(w => {
@@ -1234,7 +1261,9 @@
             if(!ct || ct === "none") return;
             if(isChgDate && ct !== "chgdate") return;
             if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
-            res.push(map.map(i => i === -1 ? "" : (w[i]||"").trim()));
+            const cells = map.map(i => i === -1 ? "" : (w[i]||"").trim());
+            cells.push(spbLatestPNCell(pnDbMap, mtmIdx === -1 ? "" : w[mtmIdx]));
+            res.push(cells);
         });
         const layout = isChgDate ? {
             hiddenCols: REPORT5_CHGDATE_HIDDEN.map(t => head.indexOf(t)),
@@ -1246,37 +1275,108 @@
     async function processMergeReport5() {
         const r = await readAndMergeCSVs('csvFiles5'); if(!r) return;
         const mode = document.getElementById('report5Mode').value;
-        const { data: res, styles: sty, layout } = buildMergeReport5(r.headers, r.rows, mode);
+        const pnDb = await loadPnDatabaseNoBom8();
+        const { data: res, styles: sty, layout } = buildMergeReport5(r.headers, r.rows, mode, pnDb.map);
+        if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
         if (mode === 'chgdate' && res.length < 2) {
             document.getElementById('btnDL5').style.display = 'none';
             return alert('這批 Flatfile 沒有 Change Type＝ChgDate 的列，沒有可產出的 ChgDate 報表。');
         }
         cacheRep5 = res; cacheStyle5 = sty; cacheLayout5 = layout;
+        cacheChgDateStaging5 = null; cacheChgDateStaging5Error = '';
         if (mode === 'chgdate') {
             const hidden = new Set(layout.hiddenCols);
             renderPreview(res.map(row => row.filter((_, c) => !hidden.has(c))), sty);
             if (layout.missing.length) alert('提醒：Flatfile 找不到這些欄位，報表中會是空白：' + layout.missing.join('、'));
+            // 2026-11-02 功能C：同時算好「待貼入(ChgDate)」列，跟 8️⃣ 共用 buildStagingRows8（只取
+            // Change Type=ChgDate 的列），下載時會寫進同一個 Excel 的第二分頁。雲端讀取失敗不擋主報表，
+            // 下載時第二分頁改顯示錯誤提示列。
+            try {
+                const flatObjRows = (await parseFlatfileObjRows8('csvFiles5'))
+                    .filter(row => String(row['Change Type'] || '').trim().toLowerCase() === 'chgdate');
+                const ccMap = await loadCountryDbMap8();
+                const { map: projectMap, conflicts: projectConflicts, seMap } = await loadProjectMap8();
+                const pnProjectMap = await loadPnProjectMap8(null);
+                const createrName = document.getElementById('creater8').value;
+                cacheChgDateStaging5 = buildStagingRows8(flatObjRows, ccMap, projectMap, projectConflicts, new Map(), createrName, seMap, pnProjectMap, pnDb);
+                if (!cacheChgDateStaging5.length) cacheChgDateStaging5Error = '待貼入(ChgDate) 產出 0 列，請確認 Flatfile 內容。';
+            } catch (err) {
+                cacheChgDateStaging5 = null;
+                cacheChgDateStaging5Error = (err && err.message) ? err.message : String(err);
+            }
         } else {
             renderPreview(res, sty);
         }
         document.getElementById('btnDL5').style.display = 'inline-flex';
     }
     function downloadMergedReport5() {
-        if (cacheLayout5 && cacheLayout5.redCols) exportExcelWithStyles(cacheRep5, "合併報表_ChgDate", cacheStyle5, 'xlsx', { ...cacheLayout5, ...PERSONAL_REPORT });
+        if (cacheLayout5 && cacheLayout5.redCols) downloadChgDateWorkbook5();
         else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, PERSONAL_REPORT);
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
+    }
+    // 2026-11-02 功能C：ChgDate 模式下載改成 2 分頁 Excel——Sheet1「合併報表_ChgDate」維持原樣式
+    // （沿用 exportExcelWithStyles 的 xlsx 樣式邏輯，但要跟 Sheet2 共用同一個 workbook，不能各自
+    // writeFile 兩次），Sheet2「待貼入(ChgDate)」沿用 8️⃣ 的 buildStagingWorksheet8()。
+    function buildChgDateMergeSheet(data, styles, layout) {
+        const hiddenCols = new Set(layout.hiddenCols || []), redCols = new Set(layout.redCols || []);
+        const baseFont = layout.personal ? { name: 'Comic Sans MS', sz: 10 } : null;
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const sBase = { border: { top:{style:"thin"}, bottom:{style:"thin"}, left:{style:"thin"}, right:{style:"thin"} }, ...(baseFont ? { font: baseFont } : {}) };
+        const sHeader = { ...sBase, fill: { fgColor: { rgb: layout.personal ? "FFFFCC" : "D9D9D9" } }, font: { ...(baseFont || {}), bold: true } };
+        const sYellow = { fill: { fgColor: { rgb: "FFFACD" } }, ...sBase };
+        const sGray = { fill: { fgColor: { rgb: "EFEFEF" } }, ...sBase };
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            let currentStyle = (R === 0) ? sHeader : sBase;
+            if (styles[R] === 'yellow') currentStyle = sYellow;
+            if (styles[R] === 'gray') currentStyle = sGray;
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cell_ref = XLSX.utils.encode_cell({r:R, c:C});
+                if (!ws[cell_ref]) continue;
+                ws[cell_ref].s = redCols.has(C) ? { ...currentStyle, font: { ...(currentStyle.font || {}), color: { rgb: "FF0000" } } } : currentStyle;
+            }
+        }
+        if (hiddenCols.size) ws['!cols'] = Array.from({ length: range.e.c + 1 }, (_, C) => {
+            const len = Math.max(...data.map(r => String(r[C] == null ? '' : r[C]).length));
+            const wch = Math.min(50, Math.max(8, len + 2));
+            return hiddenCols.has(C) ? { hidden: true, wch } : { wch };
+        });
+        return ws;
+    }
+    function downloadChgDateWorkbook5() {
+        const wb = XLSX.utils.book_new();
+        const ws1 = buildChgDateMergeSheet(cacheRep5, cacheStyle5, { ...cacheLayout5, ...PERSONAL_REPORT });
+        XLSX.utils.book_append_sheet(wb, ws1, "合併報表_ChgDate");
+        const font = { name: 'Comic Sans MS', sz: 10 }, border = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} };
+        let ws2;
+        if (cacheChgDateStaging5 && cacheChgDateStaging5.length) {
+            ws2 = buildStagingWorksheet8(cacheChgDateStaging5);
+        } else {
+            ws2 = XLSX.utils.aoa_to_sheet([
+                ['提醒'],
+                [cacheChgDateStaging5Error || '待貼入(ChgDate) 尚未產出，請重新「處理預覽」後再下載。'],
+            ]);
+            ws2['A1'].s = { font: { ...font, bold: true }, border, fill: { fgColor: { rgb: 'FFFF00' } } };
+            ws2['A2'].s = { font, border };
+            ws2['!cols'] = [{ wch: 80 }];
+        }
+        XLSX.utils.book_append_sheet(wb, ws2, "待貼入(ChgDate)");
+        XLSX.writeFile(wb, makeFilename("合併報表_ChgDate", 'xlsx'));
     }
 
     async function processMergeReport6() {
         const r = await readAndMergeCSVs('csvFiles6'); if(!r) return;
         const ctIdx = r.headers.indexOf("Change Type"), cpIdx = r.headers.indexOf("Child Part");
-        const res = [r.headers], sty = {};
+        const mtmIdx = r.headers.indexOf("MTM/Part");
+        const pnDb = await loadPnDatabaseNoBom8();
+        const res = [r.headers.concat(SPB_PN_COL)], sty = {};
         r.rows.forEach(w => {
             const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
             if(!ct) sty[res.length] = 'gray';
             else if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
-            res.push(w.map(c => (c||"").trim()));
+            res.push([...w.map(c => (c||"").trim()), spbLatestPNCell(pnDb.map, mtmIdx === -1 ? "" : w[mtmIdx])]);
         });
+        if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
         cacheRep6 = res; cacheStyle6 = sty; renderPreview(res, sty);
         document.getElementById('btnDL6').style.display = 'inline-flex';
     }
@@ -1906,6 +2006,14 @@
                 note = [note, '「(GETC/ECR Close 時間)」暫填今天（已標黃），請等公司自動建 BOM 流程完成、確認 BOM 建立成功後再貼主表；失敗請清空或改日期'].filter(Boolean).join('；');
             }
 
+            // 2026-11-02 功能D（主人拍板）：Change Type=ChgBom 且該列為 SPB MTM 時，確認者固定「Ido」、
+            // (GETC/ECR Close 時間) 放文字「confirming」（下載時由 buildStagingWorksheet8 標紅字＋水平置中）。
+            // 只套用在 ChgBom＋SPB 列；沿用系統值大小寫精確比對（同 ChgDate／ChgRcd 慣例），不改大小寫比對。
+            const isChgBomSpb = changeType === 'ChgBom' && isSpb;
+            const confirmerValue8 = isChgBomSpb ? 'Ido' : confirmerName;
+            const closeTimeOut8 = isChgBomSpb ? 'confirming' : closeTimeValue8;
+            if (isChgBomSpb) note = [note, 'ChgBom 的 SPB MTM：確認者固定 Ido、Close 時間暫置「confirming」待 Ido 確認'].filter(Boolean).join('；');
+
             out.push({
                 'LNV ECN No': lnvEcnNo,
                 'Title': r['Lenovo EC/Doc Name'] || '',
@@ -1916,8 +2024,8 @@
                 'LNV GETC Close Date': runDateValue,
                 'ECR No': 'NA',
                 'Creater': createrName,
-                '確認者': confirmerName,
-                '(GETC/ECR Close 時間)': closeTimeValue8,
+                '確認者': confirmerValue8,
+                '(GETC/ECR Close 時間)': closeTimeOut8,
                 // 「備註」是真的會貼進85,000列正式主表、永久保留的欄位，跟下面 QA 專用、
                 // 貼主表前要刪掉的 `_自動判斷備註` 是兩回事。文字對照過歷史資料修正：
                 // ChgDate 用歷史上實際出現859次的「change date,EC直接close」（小寫、
@@ -1948,6 +2056,9 @@
                 'Upload': '',
                 '_ChangeType（僅供核對，貼主表前刪除）': changeType,
                 '_自動判斷備註': note,
+                // 2026-11-02：SPB 最新 PN（移植自 EC 分析器 latestPN）。放在 QA 欄之後、整份最後一欄，
+                // 屬「貼主表前刪除」的參考欄，不佔用正式主表欄位、不擾動貼上對齊。
+                'SPB AVC PN最新版本': spbLatestPNCell(pnDbLookup && pnDbLookup.map ? pnDbLookup.map : null, mtmPart),
             });
         }
         return out;
@@ -2146,6 +2257,56 @@
         });
     }
 
+    // 2026-11-02：把「待貼入」工作表的建構＋樣式抽成共用函式，讓 8️⃣ 待貼入下載與 5️⃣ ChgDate
+    // 的「同檔待貼入分頁」共用同一份欄位與格式（Comic Sans 10、表頭 FFFFCC、日期格式、
+    // POR/600／CTO Family 猜測／備註待填／Close 時間暫填的標黃/標橘）。rows 為 buildStagingRows8 產出。
+    function buildStagingWorksheet8(rows) {
+        const headers = Object.keys(rows[0]);
+        const dateCols = new Set(['LNV GETC Open Date', 'LNV GETC Close Date', '(GETC/ECR Close 時間)']);
+        const centerCols8 = new Set(['ECR No', 'Creater', '確認者']);
+        const porOr600Rows = new Set();
+        const ctoFamilyGuessRows = new Set();
+        const manualRemarkRows = new Set();
+        const closeTimePendingRows = new Set();
+        rows.forEach((r, i) => {
+            const autoNote = String(r['_自動判斷備註'] || '');
+            if (autoNote.includes('「(GETC/ECR Close 時間)」暫填今天')) closeTimePendingRows.add(i);
+            if (!r['備註'] && (autoNote.includes('「備註」需人工填寫') || autoNote.includes('備註需人工填寫實際變更內容'))) manualRemarkRows.add(i);
+            const ecn = String(r['LNV ECN No'] || '');
+            if (/^\d+POR_[A-Za-z0-9]{1,2}$/i.test(ecn) || /^600/.test(ecn)) porOr600Rows.add(i);
+            if (String(r['_自動判斷備註'] || '').includes('MTM Family依CTO PN編碼慣例自動判斷')) ctoFamilyGuessRows.add(i);
+        });
+        const aoa = [headers, ...rows.map(r => headers.map(h => r[h]))];
+        const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+        const font = { name: 'Comic Sans MS', sz: 10 };
+        const border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const ref = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[ref]) continue;
+                const isHeader = R === 0;
+                const colName = headers[C];
+                const style = { font, border };
+                if (isHeader) { style.fill = { fgColor: { rgb: 'FFFFCC' } }; style.font = { ...font, bold: true }; }
+                if (!isHeader && dateCols.has(colName)) { style.numFmt = 'yyyy/mm/dd'; }
+                if (!isHeader && colName === 'Disposition code' && porOr600Rows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                if (!isHeader && colName === 'MTM Family' && ctoFamilyGuessRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFC000' } }; }
+                if (!isHeader && colName === '備註' && manualRemarkRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                if (!isHeader && colName === '(GETC/ECR Close 時間)' && closeTimePendingRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                // 2026-11-02 功能D：Close 時間格值為「confirming／pending」時，紅字＋水平置中。
+                if (!isHeader && colName === '(GETC/ECR Close 時間)') {
+                    const v = String(ws[ref].v == null ? '' : ws[ref].v).trim().toLowerCase();
+                    if (v === 'confirming' || v === 'pending') { style.font = { ...font, color: { rgb: 'FF0000' } }; style.alignment = { horizontal: 'center' }; }
+                }
+                if (!isHeader && centerCols8.has(colName)) { style.alignment = { horizontal: 'center' }; }
+                ws[ref].s = style;
+            }
+        }
+        ws['!cols'] = headers.map(h => ({ wch: (h.includes('Date') ? 18 : Math.max(12, Math.min(30, h.length + 4))) }));
+        return ws;
+    }
+
     function downloadStagingReport8() {
         // 2026-09-29 F007／F009：onclick 沒有接住例外，寫檔失敗時畫面完全沒反應。
         try {
@@ -2160,52 +2321,10 @@
 
     function downloadStagingReport8Core() {
         if (!cacheStaging8 || !cacheStaging8.length) return alert('請先產出報表');
-        const headers = Object.keys(cacheStaging8[0]);
-        const dateCols = new Set(['LNV GETC Open Date', 'LNV GETC Close Date', '(GETC/ECR Close 時間)']);
-        const centerCols8 = new Set(['ECR No', 'Creater', '確認者']);
-        const porOr600Rows = new Set();
-        // 2026-09-22 May 確認（回應Codex QA-002）：CTO_ EC的MTM Family是猜的
-        // （約94%準確率），用橘色標記提醒複核，不改變欄位值本身，用跟POR/600
-        // 黃色警示不同的顏色區分兩種不同性質的提醒。
-        const ctoFamilyGuessRows = new Set();
-        const manualRemarkRows = new Set(); // F013：備註需人工填寫的列，備註格標黃
-        const closeTimePendingRows = new Set(); // F022：Close 時間暫填今天、待自動化 BOM 確認的列，該格標黃
-        cacheStaging8.forEach((r, i) => {
-            const autoNote = String(r['_自動判斷備註'] || '');
-            if (autoNote.includes('「(GETC/ECR Close 時間)」暫填今天')) closeTimePendingRows.add(i);
-            if (!r['備註'] && (autoNote.includes('「備註」需人工填寫') || autoNote.includes('備註需人工填寫實際變更內容'))) manualRemarkRows.add(i);
-            const ecn = String(r['LNV ECN No'] || '');
-            if (/^\d+POR_[A-Za-z0-9]{1,2}$/i.test(ecn) || /^600/.test(ecn)) porOr600Rows.add(i);
-            if (String(r['_自動判斷備註'] || '').includes('MTM Family依CTO PN編碼慣例自動判斷')) ctoFamilyGuessRows.add(i);
-        });
-
-        const aoa = [headers, ...cacheStaging8.map(r => headers.map(h => r[h]))];
-        const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+        // 2026-11-02：待貼入工作表改用共用的 buildStagingWorksheet8()（與 ChgDate 同檔待貼入分頁共用）。
         const font = { name: 'Comic Sans MS', sz: 10 };
         const border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        // 確認者欄不再用「=Creater」這種簡單公式——實際規則是條件式的
-        // （POR/600/SPB-30000才等於Creater，2000開頭查SE，其餘空白），
-        // 已經在 buildStagingRows8() 算成正確的值了，這裡當一般欄位寫入即可。
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const ref = XLSX.utils.encode_cell({ r: R, c: C });
-                if (!ws[ref]) continue;
-                const isHeader = R === 0;
-                const colName = headers[C];
-                const style = { font, border };
-                if (isHeader) { style.fill = { fgColor: { rgb: 'FFFFCC' } }; style.font = { ...font, bold: true }; }
-                if (!isHeader && dateCols.has(colName)) { style.numFmt = 'yyyy/mm/dd'; }
-                if (!isHeader && colName === 'Disposition code' && porOr600Rows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
-                if (!isHeader && colName === 'MTM Family' && ctoFamilyGuessRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFC000' } }; }
-                if (!isHeader && colName === '備註' && manualRemarkRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
-                if (!isHeader && colName === '(GETC/ECR Close 時間)' && closeTimePendingRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
-                // 2026-10-16 主人指定：H／I／J（ECR No／Creater／確認者）資料格水平置中，只改對齊。
-                if (!isHeader && centerCols8.has(colName)) { style.alignment = { horizontal: 'center' }; }
-                ws[ref].s = style;
-            }
-        }
-        ws['!cols'] = headers.map(h => ({ wch: (h.includes('Date') ? 18 : Math.max(12, Math.min(30, h.length + 4))) }));
+        const ws = buildStagingWorksheet8(cacheStaging8);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, '待貼入');
 

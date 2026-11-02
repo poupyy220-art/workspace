@@ -42,31 +42,46 @@ function run() {
 
   const ctx = { Set, Array, Object };
   vm.createContext(ctx);
-  ['REPORT5_HEAD', 'REPORT5_CHGDATE_EXTRA', 'REPORT5_CHGDATE_HIDDEN'].forEach((n) => vm.runInContext(extractConst(n), ctx));
+  ['REPORT5_HEAD', 'REPORT5_CHGDATE_EXTRA', 'REPORT5_CHGDATE_HIDDEN', 'SPB_PN_COL'].forEach((n) => vm.runInContext(extractConst(n), ctx));
+  // 2026-11-02：buildMergeReport5 新增末欄「SPB AVC PN最新版本」，依賴 spbLatestPNCell helper，一起載入。
+  vm.runInContext(extract('spbLatestPNCell'), ctx);
   vm.runInContext(extract('buildMergeReport5'), ctx);
+  // 客戶料號→內部料號：MTM-A 兩版取最高；其餘查無
+  const pnMap = new Map([['MTM-A', [{ internalPN: 'SYN-002' }, { internalPN: 'SYN-010' }]]]);
 
-  // 一般格式：維持原本 11 欄、排除 none／空白，New 頂層列標黃
-  const all = ctx.buildMergeReport5(HEADERS, ROWS, 'all');
-  check(all.data[0].length === 11, 'all: 11 columns');
+  // 一般格式：11 欄 + 末欄 SPB，排除 none／空白，New 頂層列標黃
+  const all = ctx.buildMergeReport5(HEADERS, ROWS, 'all', pnMap);
+  check(all.data[0].length === 12, 'all: 11 + SPB column');
+  check(all.data[0][11] === ctx.SPB_PN_COL, 'all: last column is SPB latest PN');
   check(all.data.length === 5, 'all: header + 4 rows (none excluded)');
   check(all.styles[2] === 'yellow', 'all: New top-level row yellow');
   check(!all.layout.redCols && !all.layout.hiddenCols, 'all: no extra layout');
+  // MTM-A → SYN-010；MTM-B/C/D 查無 → 原因字串（同格呈現）
+  check(all.data.find((r) => r[0] === 'EC1')[11] === 'SYN-010', 'all: SPB latest PN resolved');
+  check(all.data.find((r) => r[0] === 'EC2')[11].includes('找不到'), 'all: SPB not-found reason in cell');
 
   // ChgDate 格式：大小寫不拘只留 ChgDate 列
-  const cd = ctx.buildMergeReport5(HEADERS, ROWS, 'chgdate');
+  const cd = ctx.buildMergeReport5(HEADERS, ROWS, 'chgdate', pnMap);
   const head = cd.data[0];
-  check(head.length === 17, 'chgdate: 11 + 6 columns');
+  check(head.length === 18, 'chgdate: 11 + 6 + SPB columns');
+  check(head[17] === ctx.SPB_PN_COL, 'chgdate: last column is SPB latest PN');
   check(cd.data.length === 3, 'chgdate: header + 2 ChgDate rows');
   check(cd.data.slice(1).every((r) => r[head.indexOf('Change Type')].toLowerCase() === 'chgdate'), 'chgdate: only ChgDate rows');
-  check(JSON.stringify(head.slice(11)) === JSON.stringify(['LastModified', 'EOW Date', 'GA Date', 'AnnoucementDate', 'Withdrawal Date', 'Qualification Date']), 'chgdate: extra columns order');
+  check(JSON.stringify(head.slice(11, 17)) === JSON.stringify(['LastModified', 'EOW Date', 'GA Date', 'AnnoucementDate', 'Withdrawal Date', 'Qualification Date']), 'chgdate: extra columns order');
   check(JSON.stringify(Array.from(cd.layout.hiddenCols)) === JSON.stringify([3, 4, 6]), 'chgdate: hide D/E/G');
   check(JSON.stringify(Array.from(cd.layout.redCols)) === JSON.stringify([11, 12, 13, 14, 15, 16]), 'chgdate: red date columns');
+  check(!cd.layout.hiddenCols.includes(17) && !cd.layout.redCols.includes(17), 'chgdate: SPB column neither hidden nor red');
   check(cd.data[1][head.indexOf('EOW Date')] === '2026-10-15', 'chgdate: EOW Date value kept');
+  check(cd.data[1][17] === 'SYN-010', 'chgdate: SPB latest PN resolved on MTM-A row');
   check(cd.data[2][head.indexOf('Withdrawal Date')] === '2027-01-01', 'chgdate: Withdrawal Date value kept');
   check(cd.layout.missing.length === 0, 'chgdate: no missing columns');
 
+  // 無 pnDbMap（讀取失敗/未提供）時，SPB 欄整欄留白、不丟錯
+  const noMap = ctx.buildMergeReport5(HEADERS, ROWS, 'chgdate');
+  check(noMap.data[0][noMap.data[0].length - 1] === ctx.SPB_PN_COL && noMap.data[1][noMap.data[1].length - 1] === '', 'chgdate: null map blanks SPB column');
+
   // 缺欄位時回報 missing，不會丟錯
-  const partial = ctx.buildMergeReport5(HEADERS.slice(0, 13), ROWS.map((r) => r.slice(0, 13)), 'chgdate');
+  const partial = ctx.buildMergeReport5(HEADERS.slice(0, 13), ROWS.map((r) => r.slice(0, 13)), 'chgdate', pnMap);
   check(partial.layout.missing.length === 6, 'chgdate: missing date columns reported');
   check(partial.data[1][11] === '', 'chgdate: missing column blank');
 
@@ -95,7 +110,7 @@ function run() {
   vm.runInContext(extract('exportExcelWithStyles'), ectx);
   ectx.exportExcelWithStyles(cd.data, 'x', cd.styles, 'xlsx', cd.layout);
   const cols = captured['!cols'];
-  check(cols && cols.length === 17, 'export: !cols set');
+  check(cols && cols.length === 18, 'export: !cols set');
   check(cols[3].hidden && cols[4].hidden && cols[6].hidden && !cols[5].hidden, 'export: D/E/G hidden only');
   // v2.17.6 修正：沒給寬度的欄 Excel 會當寬度 0、整份看起來空白，每欄都要有寬度
   check(cols.every((c) => c.wch >= 8 && c.wch <= 50), 'export: every column has a visible width');
@@ -120,7 +135,10 @@ function run() {
   check(captured['A3'].s.fill.fgColor.rgb === 'FFFACD' && f('A3').name === 'Comic Sans MS', 'personal: row highlight kept with Comic Sans');
 
   // 看報表類有套、上傳公司系統用的檔沒套
-  ['合併報表_ChgDate', '合併報表 (篩選 + 隱藏)', 'EC 檔案合併 (丟入 PIM_MTM)', 'EC_Note_2026'].forEach((n) =>
+  // 2026-11-02 功能C：合併報表_ChgDate 下載改成 2 分頁（downloadChgDateWorkbook5），個人格式由
+  // buildChgDateMergeSheet 以 { ...cacheLayout5, ...PERSONAL_REPORT } 套用，不再走 exportExcelWithStyles。
+  check(/buildChgDateMergeSheet\(cacheRep5, cacheStyle5, \{ \.\.\.cacheLayout5, \.\.\.PERSONAL_REPORT \}\)/.test(pn), 'personal applied: 合併報表_ChgDate (2-sheet)');
+  ['合併報表 (篩選 + 隱藏)', 'EC 檔案合併 (丟入 PIM_MTM)', 'EC_Note_2026'].forEach((n) =>
     check(new RegExp('exportExcelWithStyles\\([^\\n]*"' + n.replace(/[()+]/g, '\\$&') + '"[^\\n]*PERSONAL_REPORT').test(pn), 'personal applied: ' + n));
   ['ODMBOM_', 'Download_Part', 'MTMNumber', 'SingleBOM_FactSheet上傳清單'].forEach((n) =>
     check(!new RegExp('exportExcelWithStyles\\([^\\n]*' + n + '[^\\n]*PERSONAL_REPORT').test(pn), 'upload file untouched: ' + n));

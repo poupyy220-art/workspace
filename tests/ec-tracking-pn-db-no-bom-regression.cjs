@@ -9,7 +9,7 @@ const { extract } = require('./ec-tracking-pn-map-regression.cjs');
 const COL = '(GETC/ECR Close 時間)';
 const NOTE = '_自動判斷備註';
 const names = ['todayDateValue8', 'taiwanTodayDateValue8', 'parseLastModified8', 'resolveMtmPrefix8',
-  'classifyPnDbRemark8', 'resolvePnDbNoBom8', 'loadPnDatabaseNoBom8', 'buildStagingRows8'];
+  'classifyPnDbRemark8', 'resolvePnDbNoBom8', 'loadPnDatabaseNoBom8', 'spbLatestPNCell', 'buildStagingRows8'];
 
 function context(fetcher) {
   const ctx = { Map, Set, Date, String, console, document: { getElementById: () => ({ value: 'https://example.invalid/exec' }) },
@@ -88,9 +88,12 @@ async function run() {
   const cd = one('TESTAA01WW', loaded, 'ChgDate');
   check(cd['備註'] === 'change date,EC直接close' && !cd[NOTE].includes('PN Database'), 'direct-close keeps own remark');
 
-  // 既有備註保留、追加在後
+  // 既有備註保留、追加在後（備註欄不受功能D影響）
   const spb = build([{ ...row('12LMS0TEST'), 'Change Type': 'ChgBom', disposition: '99' }], { map: new Map([['12LMS0TEST', [{ internalPN: 'X', remark: '不需建BOM' }]]]) })[0];
-  check(spb['備註'] === '第5碼S尾碼數字無需修改BOM；不需建BOM' && isToday(spb[COL]), 'keeps existing remark: ' + spb['備註']);
+  check(spb['備註'] === '第5碼S尾碼數字無需修改BOM；不需建BOM', 'keeps existing remark: ' + spb['備註']);
+  // 2026-11-02 功能D：此列為 ChgBom＋SPB（12LMS→第5碼S），Close 時間改放「confirming」、確認者固定 Ido，
+  // 覆寫原本「不需建BOM→填今天」的結果（主人拍板：ChgBom 的 SPB 一律待 Ido confirming）。
+  check(spb[COL] === 'confirming' && spb['確認者'] === 'Ido', 'ChgBom+SPB → confirming / Ido (feature D)');
 
   // 讀取失敗：不中斷、保留原值並提示
   const failed = context(async () => { throw Error('connection failed'); });
