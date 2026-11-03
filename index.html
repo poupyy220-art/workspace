@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.17.20</title>
+<title>料號管理中心 v2.17.21</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -133,7 +133,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.17.20 · 整合工具平台</div>
+    <div class="logo-sub">v2.17.21 · 整合工具平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -161,11 +161,11 @@ body{display:flex;background:#f0f4f8;}
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.20</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.21</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.17.20 · 2026-11-03<br>
+    v2.17.21 · 2026-11-03<br>
     🕒 出勤表填寫<br>
     維護：料號管理員
   </div>
@@ -178,7 +178,7 @@ body{display:flex;background:#f0f4f8;}
   <div id="topbar">
     <button id="hamburgerBtn" type="button" aria-label="開啟導航選單" onclick="toggleMobileSidebar()">☰</button>
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.17.20</div>
+    <div class="topbar-right">料號管理中心 v2.17.21</div>
   </div>
   <div id="content">
 
@@ -189,14 +189,15 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.17.20</span>
+          <span class="announce-ver">v2.17.21</span>
           <span class="announce-date">2026-11-03</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
-        <ul class="announce-list">
-          <li><span class="announce-fix">FIX</span> 「SPB AVC PN最新版本」判定（PN 報表 5️⃣6️⃣8️⃣ 與 EC 受限制物料分析器共用規則）：同一客戶料號對到「原始料號」與「原始料號-NNN」時，把原始當第 0 版、取最新版（例 13GQS0QS00 與 13GQS0QS00-001 → 帶 13GQS0QS00-001），不再誤判成「不同系列」。不同前綴料號才算不同系列。</li>
-        </ul>
+        <ul class="announce-list"><li><span class="announce-fix">FIX</span> 第8步支援 ChgBom/UPC 等複合變更類型，SPB MTM 正確套用 BOM 變更確認者與待確認狀態。</li></ul>
         <!-- 歷史版本 -->
+<div><span class="announce-ver">v2.17.20</span><span class="announce-date">2026-11-03</span><ul class="announce-list">
+          <li><span class="announce-fix">FIX</span> 「SPB AVC PN最新版本」判定（PN 報表 5️⃣6️⃣8️⃣ 與 EC 受限制物料分析器共用規則）：同一客戶料號對到「原始料號」與「原始料號-NNN」時，把原始當第 0 版、取最新版（例 13GQS0QS00 與 13GQS0QS00-001 → 帶 13GQS0QS00-001），不再誤判成「不同系列」。不同前綴料號才算不同系列。</li>
+        </ul></div>
 <div><span class="announce-ver">v2.17.19</span><span class="announce-date">2026-11-03</span><ul class="announce-list"><li><span class="announce-fix">NEW</span> 新增獨立「BOM 排除與待貼入更新」工具，支援完整 MTM 排除及手動清單。</li><li><span class="announce-fix">SAFE</span> 新建／變更 BOM 分開對帳，待確認不當成功，未對應 PN 經確認後保留，全部檔案在本機處理。</li></ul></div>
 <div><span class="announce-ver">v2.17.18</span><span class="announce-date">2026-11-02</span><ul class="announce-list"><li><span class="announce-fix">FIX</span> 5️⃣ ChgDate 下載的「待貼入(ChgDate)」分頁：讀取雲端對照更穩定——省去用不到的國別對照、必要對照加重試，並加上「處理中」提示；避免偶發讀取中止讓第二分頁變成錯誤列。產出內容不變。</li></ul></div>
 <div><span class="announce-ver">v2.17.17</span><span class="announce-date">2026-11-02</span><ul class="announce-list"><li><span class="announce-new">NEW</span> PN V36.15 — 5️⃣ 合併報表、6️⃣ EC 檔案合併、8️⃣ 待貼入報表各新增「SPB AVC PN最新版本」欄（以完整客戶料號查 PN Database 同系列數字最高版本 PN）。</li><li><span class="announce-new">NEW</span> 5️⃣ ChgDate 下載時同一 Excel 多一個「待貼入(ChgDate)」分頁。</li><li><span class="announce-new">NEW</span> 8️⃣ ChgBom 且 SPB MTM 的列確認者固定「Ido」、Close 時間標紅字「confirming」並置中。</li></ul></div>
@@ -596,7 +597,7 @@ body{display:flex;background:#f0f4f8;}
         <span>已完成缺少資料補回、錯誤資料修正及完全重複資料清理；欄位差異資料暫視為通過。</span>
         <a class="audit-link" href="https://docs.google.com/spreadsheets/d/10swnGtBmwiTrl5APxI2hXqV7RaQM5aiNBRCcA48etjQ/edit" target="_blank" rel="noopener noreferrer">查看稽核報表 ↗</a>
       </div>
-      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261103-1"
+      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261103-confirmer21"
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups"></iframe>
     </div>
 
@@ -1577,7 +1578,7 @@ var TITLES = {
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.2', spb:'🔀 SPB vs L10 v3.0',
   bommtm:'🧩 BOM 排除與待貼入更新', pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', pnimport:'📝 PN 申請匯入草稿', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.17.20',
+  testplan:'📋 測試清單 v2.17.21',
   docs:'📄 說明文件 v2.6'
 };
 
