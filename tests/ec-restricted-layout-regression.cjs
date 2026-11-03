@@ -41,16 +41,18 @@ async function run() {
   check(comb.getRow(1).values.slice(1,4).join('|')==='順序|Status|PIC','A/B/C ordering');
   check(comb.rowCount===7,'filtered data count');
   check(comb.getCell('I2').value===2 && typeof comb.getCell('I2').value==='number','native Qty');
-  check(comb.getCell('C2').value==='Test Other SE' && comb.getCell('Q2').value.includes('94%'),'combine names/notes');
+  check(comb.getCell('C2').value==='Test Other SE' && comb.getCell('S2').value.includes('94%'),'combine names/notes');
+  // 2026-11-03 任務2：Combine EC 在 SPB AVC PN最新版本(P) 後新增「建立判定」(Q)、「建立判定原因」(R)，備註移至 S。
+  check(comb.getCell('Q1').value==='建立判定' && comb.getCell('R1').value==='建立判定原因' && comb.getCell('S1').value==='備註','create verdict columns');
   check(comb.getCell('C3').value==='Test SE' && comb.getCell('C4').value==='ido_su-蘇震','normal SE and fixed SPB Ido');
-  check(!comb.getCell('Q3').value && comb.getCell('Q6').value.includes('找不到 CTO'),'unmatched CTO disclosed');
+  check(!comb.getCell('S3').value && comb.getCell('S6').value.includes('找不到 CTO'),'unmatched CTO disclosed');
   check(comb.pageSetup.fitToWidth===1 && comb.pageSetup.fitToHeight===0 && comb.pageSetup.orientation==='landscape','one page wide, all rows retained');
   check(comb.views[0].zoomScale===100 && comb.views[0].ySplit===1,'user zoom and frozen header');
-  check(comb.autoFilter==='A1:Q7' && sum.autoFilter==='A1:H6','filters cover actual data without statistics');
+  check(comb.autoFilter==='A1:S7' && sum.autoFilter==='A1:H6','filters cover actual data without statistics');
   check(comb.getColumn(11).hidden && comb.getRow(2).height===16.5,'empty substitutes hidden, user row height');
   for(const s of w.worksheets) for(let r=1;r<=s.rowCount;r++) for(let c=1;c<=s.columnCount;c++) {
     const cell=s.getCell(r,c);
-    check(cell.font.name==='Comic Sans MS' && cell.font.size===(s.name==='Combine EC' && [6,17].includes(c)?8:10),'font with user overrides');
+    check(cell.font.name==='Comic Sans MS' && cell.font.size===(s.name==='Combine EC' && [6,18,19].includes(c)?8:10),'font with user overrides');
     const active = s.name !== 'Summary' || (c <= 8 && r <= 6) || (c >= 10 && r <= 7);
     check(['top','left','bottom','right'].every(side=>active ? cell.border[side]?.style==='thin' : !cell.border?.[side]?.style),'independent table borders');
     if(r===1) check(active ? cell.fill.fgColor.argb==='FFFFFFCC' : cell.fill.pattern==='none','header yellow only in tables');
