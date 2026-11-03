@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.17.23</title>
+<title>料號管理中心 v2.17.24</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -138,7 +138,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.17.23 · 整合工具平台</div>
+    <div class="logo-sub">v2.17.24 · 整合工具平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -166,11 +166,11 @@ body{display:flex;background:#f0f4f8;}
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.23</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.24</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.17.23 · 2026-11-03<br>
+    v2.17.24 · 2026-11-03<br>
     🕒 出勤表填寫<br>
     維護：料號管理員
   </div>
@@ -183,7 +183,7 @@ body{display:flex;background:#f0f4f8;}
   <div id="topbar">
     <button id="hamburgerBtn" type="button" aria-label="開啟導航選單" onclick="toggleMobileSidebar()">☰</button>
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.17.23</div>
+    <div class="topbar-right">料號管理中心 v2.17.24</div>
   </div>
   <div id="content">
 
@@ -194,14 +194,15 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.17.23</span>
+          <span class="announce-ver">v2.17.24</span>
           <span class="announce-date">2026-11-03</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
-        <ul class="announce-list"><li><span class="announce-new">NEW</span> EC 受限制物料分析器的 Combine EC 分頁新增「建立判定」「建立判定原因」兩欄：對 SPB MTM 自動判「明確不用建立／建議建立／待人工確認」並附原因（依 PN Database 備註，保留原始備註；建議建立＝SPB+New+查無；不自動建立或刪除）。</li></ul>
+        <ul class="announce-list"><li><span class="announce-fix">FIX</span> 5️⃣ 合併報表、6️⃣ EC 檔案合併（丟 PIM_MTM）的「Lenovo EC/Doc Number」改與 8️⃣ 待貼入一致：0012／0013 系列依檔名補單字母尾碼（例 0013221166 → 0013221166_A）、POR 補尾碼，避免 EC No 短少。2000／4000 系列不受影響。</li></ul>
         <details class="announce-history">
           <summary>查看歷史更新（保留完整紀錄）</summary>
         <!-- 歷史版本 -->
+<div><span class="announce-ver">v2.17.23</span><span class="announce-date">2026-11-03</span><ul class="announce-list"><li><span class="announce-new">NEW</span> EC 受限制物料分析器 Combine EC 新增「建立判定」「建立判定原因」兩欄。</li></ul></div>
 <div><span class="announce-ver">v2.17.22</span><span class="announce-date">2026-11-03</span><ul class="announce-list"><li><span class="announce-new">NEW</span> 5️⃣ ChgDate 報表納入含日期變更的混合型（ChgBom/Date、Date/Usage），混合列顯示 Child Part／Qty／Substitute Relationship。</li></ul></div>
 <div><span class="announce-ver">v2.17.21</span><span class="announce-date">2026-11-03</span><ul class="announce-list"><li><span class="announce-fix">FIX</span> 第8步支援 ChgBom/UPC 等複合變更類型，SPB MTM 正確套用 BOM 變更確認者與待確認狀態。</li></ul></div>
 <div><span class="announce-ver">v2.17.20</span><span class="announce-date">2026-11-03</span><ul class="announce-list">
@@ -605,7 +606,7 @@ body{display:flex;background:#f0f4f8;}
         <span>已完成缺少資料補回、錯誤資料修正及完全重複資料清理；欄位差異資料暫視為通過。</span>
         <a class="audit-link" href="https://docs.google.com/spreadsheets/d/10swnGtBmwiTrl5APxI2hXqV7RaQM5aiNBRCcA48etjQ/edit" target="_blank" rel="noopener noreferrer">查看稽核報表 ↗</a>
       </div>
-      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261103-chgdatemix22"
+      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261103-ecno24"
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups"></iframe>
     </div>
 
@@ -1586,7 +1587,7 @@ var TITLES = {
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.2', spb:'🔀 SPB vs L10 v3.0',
   bommtm:'🧩 BOM 排除與待貼入更新', pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', pnimport:'📝 PN 申請匯入草稿', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.17.23',
+  testplan:'📋 測試清單 v2.17.24',
   docs:'📄 說明文件 v2.6'
 };
 
