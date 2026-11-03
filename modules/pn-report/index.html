@@ -1250,11 +1250,17 @@
         const values = [...new Set((entries || []).map(e => String(e.internalPN || '').trim()).filter(Boolean))];
         if (!values.length) return 'PN Database 找不到對應料號';
         if (values.length === 1) return values[0];
-        const versions = values.map(pn => ({ pn, m: pn.match(/^(.*)-(\d+)$/) }));
-        if (versions.some(v => !v.m) || new Set(versions.map(v => v.m[1].toUpperCase())).size !== 1)
+        // 2026-11-03 主人更正：沒有「-NNN」尾碼的料號是「第 0 版（原始）」、系列＝它本身；「base-NNN」是第 N 版、
+        // 系列＝base。例：客戶料號對到 13GQS0QS00（v0）與 13GQS0QS00-001（v1）→ 同系列，取最新 13GQS0QS00-001。
+        // 之前把沒尾碼的當「無法判定版本」而誤報不同系列，已修正。
+        const versions = values.map(pn => {
+            const m = pn.match(/^(.*)-(\d+)$/);
+            return m ? { pn, series: m[1].toUpperCase(), ver: Number(m[2]) } : { pn, series: pn.toUpperCase(), ver: 0 };
+        });
+        if (new Set(versions.map(v => v.series)).size !== 1)
             return 'PN Database 有不同系列或無法判定版本，請確認';
-        versions.sort((a, b) => Number(b.m[2]) - Number(a.m[2]));
-        if (Number(versions[0].m[2]) === Number(versions[1].m[2]))
+        versions.sort((a, b) => b.ver - a.ver);
+        if (versions[0].ver === versions[1].ver)
             return 'PN Database 最高版本重複且料號不同，請確認';
         return versions[0].pn;
     }

@@ -29,18 +29,22 @@ const check = (value, msg) => { assert(value, msg); checks++; };
 const KEY = 'ZZZZS001';
 const toMap = (values) => new Map([[KEY, values.map((pn) => ({ internalPN: pn }))]]);
 
-// 與 EC 分析器 ec-business-rules latestPN（ec-regression 已覆蓋）相同的 6 組輸入。
+// 2026-11-03：沒尾碼料號＝第0版（系列＝自己）、base-NNN＝第N版（系列＝base），同系列取最高。
+// expectedPn='' 代表該格應顯示原因字串（查無／不同系列／最高版並列）。
 const CASES = [
-  ['numeric order', ['SYN-002', 'SYN-010', 'SYN-003'], 'SYN-010', false],
-  ['duplicate', ['SYN-001', 'SYN-001'], 'SYN-001', false],
-  ['different series', ['SYN-001', 'OTHER-002'], '', true],
-  ['unversioned ambiguity', ['SYN', 'SYN-002'], '', true],
-  ['numeric tie', ['SYN-01', 'SYN-001'], '', true],
-  ['no match', [], '', true],
+  ['numeric order', ['SYN-002', 'SYN-010', 'SYN-003'], 'SYN-010'],
+  ['duplicate', ['SYN-001', 'SYN-001'], 'SYN-001'],
+  ['different series', ['SYN-001', 'OTHER-002'], ''],
+  ['base(v0) + suffix(v1) 實案 13GQS0QS00', ['13GQS0QS00', '13GQS0QS00-001'], '13GQS0QS00-001'],
+  ['base as v0 vs v2', ['SYN', 'SYN-002'], 'SYN-002'],
+  ['base + multi suffix', ['ABC', 'ABC-001', 'ABC-002'], 'ABC-002'],
+  ['base alone', ['ABCONLY'], 'ABCONLY'],
+  ['numeric tie', ['SYN-01', 'SYN-001'], ''],
+  ['no match', [], ''],
 ];
-for (const [name, values, expectedPn, expectNote] of CASES) {
+for (const [name, values, expectedPn] of CASES) {
   const got = cell(toMap(values), KEY);
-  if (expectNote) check(got && !values.includes(got), 'reason text in cell: ' + name + ' got=' + got);
+  if (expectedPn === '') check(got && !values.includes(got), 'reason text in cell: ' + name + ' got=' + got);
   else check(got === expectedPn, 'resolved pn: ' + name + ' got=' + got);
 }
 check(cell(toMap(['SYN-010']), '  zzzzs001 ') === 'SYN-010', 'case-insensitive + trimmed key');
