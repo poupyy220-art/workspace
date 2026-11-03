@@ -1431,6 +1431,18 @@
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
     }
 
+    // 2026-11-03（主人回報）：5️⃣/6️⃣ 的 EC No 短少檔名尾碼（欄位是 0013221166，實際應為 0013221166_A）。
+    // 8️⃣ 待貼入（parseFlatfileObjRows8）本來就會用「檔名」把 0012/0013 系列補上單字母尾碼（_A…）、POR 補尾碼，
+    // 5️⃣/6️⃣ 用的 readAndMergeCSVs 卻沒做。這裡抽出同一套規則（與 1636 行的 seriesMatch／porMatch 完全一致），
+    // 讓 5️⃣/6️⃣ 的 EC No 跟 8️⃣ 一致。防誤配：只有「欄位值 + _」正好是檔名前綴時才升級。7️⃣ 不看 EC No、不受影響。
+    function ecNoFromFilename(raw, fileName){
+        const r = String(raw == null ? '' : raw).trim(), n = String(fileName || '');
+        const porM = n.match(/^(\d+POR_[A-Za-z0-9]{1,2})(?:_|$)/i);
+        if(/^\d+POR$/i.test(r) && porM) return porM[1];
+        const serM = n.match(/^((?:0012|0013)\d+)_([A-Za-z]+)(?:_|$)/);
+        if(serM){ const s = serM[1] + '_' + serM[2]; if(/^(0012|0013)/.test(r) && s.startsWith(r + '_')) return s; }
+        return r;
+    }
     async function readAndMergeCSVs(id){
         const f = document.getElementById(id).files; if(!f.length) return null;
         showLoading(true); let rows = [], heads = [];
@@ -1440,7 +1452,12 @@
                 const d = ls[0].includes('\t') ? '\t' : ',';
                 const h = ls[0].split(d).map(x => x.trim().replace(/^"|"$/g,''));
                 if(i===0) heads = h;
-                ls.slice(1).forEach(l => { if(l.trim()) rows.push(l.split(d).map(x => x.trim().replace(/^"|"$/g,''))); });
+                const ecIdx = h.indexOf('Lenovo EC/Doc Number');
+                ls.slice(1).forEach(l => { if(l.trim()){
+                    const cells = l.split(d).map(x => x.trim().replace(/^"|"$/g,''));
+                    if(ecIdx !== -1) cells[ecIdx] = ecNoFromFilename(cells[ecIdx], f[i].name);
+                    rows.push(cells);
+                } });
             }
         }
         showLoading(false); return {headers:heads, rows:rows};
