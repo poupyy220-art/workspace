@@ -58,6 +58,25 @@ check('非 ChgBom（ChgDate）+ SPB → 不套用', () => {
   assert.notEqual(r['(GETC/ECR Close 時間)'], 'confirming');
 });
 
+
+// 複合變更類型須匹配完整 token；原始來源細節不放公開測試。
+for (const ct of ['ChgBom/UPC', 'UPC/ChgBom', 'ChgBom / UPC']) {
+  check(ct + ' SPB → Ido / confirming', () => {
+    const r = build('12LMS0001W', ct);
+    assert.equal(r['確認者'], 'Ido');
+    assert.equal(r['(GETC/ECR Close 時間)'], 'confirming');
+  });
+}
+for (const ct of ['UPC','ChgBomExtra','chgbom/UPC']) {
+  check(ct + ' 不誤判 ChgBom', () => assert.notEqual(build('12LMS0001W', ct)['確認者'], 'Ido'));
+}
+check('複合 ChgBom 非 SPB 維持原規則', () => assert.notEqual(build('12LN0001WW','ChgBom/UPC')['確認者'],'Ido'));
+check('複合 ChgBom 保留不需建 BOM 的原生日期', () => {
+  const r = ctx.buildStagingRows8([{'Lenovo EC/Doc Number':'E1','MTM/Part':'12LMS0001W','Child Part':'','Change Type':'ChgBom/UPC',disposition:'99'}], new Map(), projectMap,new Map(),new Map(),'TEST',new Map(),new Map(),{map:new Map([['12LMS0001W',[{internalPN:'SYNTHETIC',remark:'不需建BOM'}]]]),error:''})[0];
+  assert.equal(r['確認者'],'Ido');
+  assert.ok(r['(GETC/ECR Close 時間)'] instanceof Date);
+});
+
 // ---- styling: buildStagingWorksheet8 marks confirming/pending red + center ----
 const wbCtx = {};
 const XLSXStub = {
