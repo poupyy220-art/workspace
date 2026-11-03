@@ -1,6 +1,6 @@
 (function(global){
   const content={
-    version:'v2.17.19',
+    version:'v2.17.20',
     title:'BOM 轉檔與安檢操作 SOP',
     updated:'2026-11-03',
     optimizations:[

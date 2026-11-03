@@ -7,7 +7,9 @@ const pn=(...values)=>values.map(v=>({'客戶料號':'ABCDE123','料號':v}));
 check(latestPN(pn('PN-002','PN-010','PN-003'),'abcde123').pn==='PN-010');
 check(latestPN(pn('PN-001','PN-001'),'ABCDE123').pn==='PN-001');
 check(latestPN(pn('PN-001','OTHER-002'),'ABCDE123').pn==='');
-check(latestPN(pn('PN','PN-002'),'ABCDE123').note.length>0);
+// 2026-11-03：沒尾碼的當第0版、系列＝自己；PN(v0)+PN-002(v2) 同系列 → 取 PN-002（不再回 note）。
+check(latestPN(pn('PN','PN-002'),'ABCDE123').pn==='PN-002');
+check(latestPN(pn('13GQS0QS00','13GQS0QS00-001'),'ABCDE123').pn==='13GQS0QS00-001');
 check(latestPN(pn('PN-01','PN-001'),'ABCDE123').pn==='');
 check(latestPN(pn('PN-001'),'OTHER').pn==='');
 assert.throws(()=>uniqueMapping([{Project:'A',SE:'X',key:'ABCD'},{Project:'B',SE:'X',key:'ABCD'}],'key','ABCD'));checks++;
