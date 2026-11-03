@@ -42,10 +42,10 @@ function run() {
 
   const ctx = { Set, Array, Object };
   vm.createContext(ctx);
-  ['REPORT5_HEAD', 'REPORT5_CHGDATE_EXTRA', 'REPORT5_CHGDATE_HIDDEN', 'SPB_PN_COL'].forEach((n) => vm.runInContext(extractConst(n), ctx));
+  ['REPORT5_HEAD', 'REPORT5_CHGDATE_EXTRA', 'REPORT5_CHGDATE_HIDDEN', 'SPB_PN_COL', 'DATE_TOKENS'].forEach((n) => vm.runInContext(extractConst(n), ctx));
   // 2026-11-02：buildMergeReport5 新增末欄「SPB AVC PN最新版本」，依賴 spbLatestPNCell helper，一起載入。
-  vm.runInContext(extract('spbLatestPNCell'), ctx);
-  vm.runInContext(extract('buildMergeReport5'), ctx);
+  // 2026-11-03：ChgDate 納入混合型，buildMergeReport5 依賴 isChgDateType/isMixedChgDateType（→ chgDateTokens/DATE_TOKENS），一起載入。
+  ['chgDateTokens', 'isChgDateType', 'isMixedChgDateType', 'spbLatestPNCell', 'buildMergeReport5'].forEach((n) => vm.runInContext(extract(n), ctx));
   // 客戶料號→內部料號：MTM-A 兩版取最高；其餘查無
   const pnMap = new Map([['MTM-A', [{ internalPN: 'SYN-002' }, { internalPN: 'SYN-010' }]]]);
 

@@ -281,7 +281,7 @@
                     <option value="all">一般（全部 Change Type）</option>
                     <option value="chgdate">📅 ChgDate 日期變更報表</option>
                 </select>
-                <small style="color:#888; display:block; margin-top:4px;">ChgDate：只留 Change Type＝ChgDate 的列，Child Part／Qty／Substitute Relationship 隱藏，另加 LastModified、EOW Date、GA Date、AnnoucementDate、Withdrawal Date、Qualification Date 並標紅字（固定下載 xlsx）。</small>
+                <small style="color:#888; display:block; margin-top:4px;">ChgDate：留下含日期變更的列——純 ChgDate 以及 ChgBom/Date、Date/Usage 這類「含 Date」的混合型（純 BOM／純 Usage 不收）。整批都是純 ChgDate 時隱藏 Child Part／Qty／Substitute Relationship；有混合列則顯示這三欄（保留 BOM／Usage 資訊）。另加 LastModified、EOW Date、GA Date、AnnoucementDate、Withdrawal Date、Qualification Date 並標紅字（固定下載 xlsx）。</small>
             </div>
             <div class="btn-group">
                 <button onclick="processMergeReport5()" class="btn-dark">🔨 處理預覽</button>
@@ -1264,6 +1264,23 @@
             return 'PN Database 最高版本重複且料號不同，請確認';
         return versions[0].pn;
     }
+    // 2026-11-03 功能（主人指示）：ChgDate 日期變更報表除了純 ChgDate，也要納入「含日期變更的混合類型」
+    // （例如 ChgBom/Date，以及確認後的 日期＋Usage 類型）。判定方式：把 Change Type 以「/」切成 token
+    // （去空白、小寫），只要有任一 token 是日期變更（chgdate 或 date）就納入。用「整個 token 相等」比對、
+    // 不是 includes('date') 子字串——避免 update／validate／candidate 這類含 "date" 子字串卻不是日期變更的值
+    // 被誤收；純 BOM（chgbom）、純 Usage（quantity change 等）不含 date token，不會被收。輸出保留原本 Change
+    // Type；一般報表（mode='all'）維持原邏輯、不受影響。
+    const DATE_TOKENS = new Set(['chgdate', 'date']);
+    function chgDateTokens(ct) {
+        return String(ct == null ? '' : ct).split('/').map(t => t.trim().toLowerCase()).filter(Boolean);
+    }
+    function isChgDateType(ct) {
+        return chgDateTokens(ct).some(t => DATE_TOKENS.has(t));
+    }
+    function isMixedChgDateType(ct) {
+        const toks = chgDateTokens(ct);
+        return toks.some(t => DATE_TOKENS.has(t)) && toks.some(t => !DATE_TOKENS.has(t));
+    }
     function buildMergeReport5(headers, rows, mode, pnDbMap) {
         const isChgDate = mode === 'chgdate';
         const baseHead = isChgDate ? REPORT5_HEAD.concat(REPORT5_CHGDATE_EXTRA) : REPORT5_HEAD;
@@ -1272,17 +1289,22 @@
         const mtmIdx = headers.indexOf("MTM/Part");
         const ctIdx = headers.indexOf("Change Type"), cpIdx = headers.indexOf("Child Part");
         const res = [head], sty = {};
+        let anyMixed = false;
         rows.forEach(w => {
             const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
             if(!ct || ct === "none") return;
-            if(isChgDate && ct !== "chgdate") return;
+            if(isChgDate && !isChgDateType(ct)) return;
+            if(isChgDate && isMixedChgDateType(ct)) anyMixed = true;
             if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
             const cells = map.map(i => i === -1 ? "" : (w[i]||"").trim());
             cells.push(spbLatestPNCell(pnDbMap, mtmIdx === -1 ? "" : w[mtmIdx]));
             res.push(cells);
         });
+        // 2026-11-03：原本 ChgDate 報表固定隱藏 Child Part／Qty／Substitute Relationship（純 ChgDate 這三欄本就空）。
+        // 現在可能收進 ChgBom/Date 等混合列，這三欄對它們有實際內容 → 只要這批有任何混合列就「不隱藏」，
+        // 避免把 BOM／Usage 的重要資訊藏起來（主人指示：不默默刪資訊）。整批都是純 ChgDate 時維持原本隱藏。
         const layout = isChgDate ? {
-            hiddenCols: REPORT5_CHGDATE_HIDDEN.map(t => head.indexOf(t)),
+            hiddenCols: anyMixed ? [] : REPORT5_CHGDATE_HIDDEN.map(t => head.indexOf(t)),
             redCols: REPORT5_CHGDATE_EXTRA.map(t => head.indexOf(t)),
             missing: REPORT5_CHGDATE_EXTRA.filter(t => headers.indexOf(t) === -1)
         } : {};
@@ -1296,7 +1318,7 @@
         if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
         if (mode === 'chgdate' && res.length < 2) {
             document.getElementById('btnDL5').style.display = 'none';
-            return alert('這批 Flatfile 沒有 Change Type＝ChgDate 的列，沒有可產出的 ChgDate 報表。');
+            return alert('這批 Flatfile 沒有含日期變更的列（純 ChgDate 或 ChgBom/Date 這類含 Date 的混合型），沒有可產出的 ChgDate 報表。');
         }
         cacheRep5 = res; cacheStyle5 = sty; cacheLayout5 = layout;
         cacheChgDateStaging5 = null; cacheChgDateStaging5Error = '';
@@ -1311,8 +1333,12 @@
             // 只讀 MTM Family 需要的 CustomDB + PN_Project_Map，並加重試避免偶發 abort。
             showLoading(true, '讀取雲端對照表、產生待貼入(ChgDate)…');
             try {
+                // 2026-11-03：待貼入也跟主報表一致納入「含日期變更的混合型」（isChgDateType），不默默丟掉
+                // ChgBom/Date 等列。這些混合列在 buildStagingRows8 會走既有邏輯：功能D 已於 f95aa91 改成「依 /
+                // 拆分後比對 ChgBom」，所以 ChgBom/Date 的 SPB 列會自動套用 Ido／confirming；其餘混合型走一般處理
+                // （備註需人工填、標黃；非 EC 直接 close），不會被誤標成「change date,EC直接close」。
                 const flatObjRows = (await parseFlatfileObjRows8('csvFiles5'))
-                    .filter(row => String(row['Change Type'] || '').trim().toLowerCase() === 'chgdate');
+                    .filter(row => isChgDateType(row['Change Type']));
                 const { map: projectMap, conflicts: projectConflicts, seMap } = await retryRead5(() => loadProjectMap8());
                 const pnProjectMap = await retryRead5(() => loadPnProjectMap8(null));
                 const createrName = document.getElementById('creater8').value;
