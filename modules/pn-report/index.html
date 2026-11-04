@@ -290,6 +290,7 @@
         </div>
         <div class="card card-blue" style="grid-column: 1 / -1;">
             <h3>6️⃣ _EC 檔案合併 (丟入 PIM_MTM)</h3>
+            <p class="desc">報表最前方新增 PIC、Project；依 EC 受限制物料的 CustomDB 規則判定。PIC 只保留英文名字，多人以逗號連接。</p>
             <input type="file" id="csvFiles6" multiple accept=".csv" style="width: 100%; margin-bottom:10px;">
             <div class="btn-group">
                 <button onclick="processMergeReport6()" class="btn-blue">🔨 處理預覽</button>
@@ -318,6 +319,7 @@
             <div class="btn-group">
                 <button onclick="processSpbPrecheck()" class="btn-secondary">🔨 快篩預覽</button>
                 <button onclick="downloadMissingFactSheetList()" id="btnDL7" style="display:none; background-color:#e67e22;" title="全部頂層 MTM（正常L10＋SPB），同一份可上傳客人網站產出 Single BOM 與 FactSheet">💾 下載上傳清單</button>
+                <button onclick="downloadMtmNumbers7()" id="btnMtm7" style="display:none; background-color:#2471a3;">💾 MTMNumber（下載 POR）</button>
                 <button onclick="toggleDebugPanel()" class="btn-outline btn-mini" style="flex:initial;" title="平常不用點，跑錯結果或畫面怪怪的時候再打開看">🐛 除錯視窗</button>
             </div>
             <div id="precheck7Summary" style="margin-top:10px; font-size:0.85em; color:#555;"></div>
@@ -357,6 +359,7 @@
                 </div>
             </div>
             <div style="font-size:0.78em; color:#888; margin-bottom:10px;">
+                一般單件列若 Change Type 與專案皆空白，會略過；CTO／POR／600 特殊 EC 沿用原規則。Summary 依實際輸出明細統計。<br>
                 MTM Family 跟國別對照會自動從雲端 CustomDB／CountryDB／PN_Project_Map 讀取，不用另外上傳主表。前4碼查不到時，以完整料號查 PN_Project_Map。
                 <b>本版本已修正「FactSheet 只限 Change Type=New 才查」的規則</b>（Node 版 build-staging-report.js 目前還是舊規則，尚未決定要不要一起改）。
                 確認者欄：POR/600/0000開頭/30000開頭SPB → 跟 Creater 一樣；2000/0012/4000/0013開頭、CTO_開頭 → 查 Project 對應的 SE；其餘留空（後4條是用9萬2千多列歷史資料反推的統計規律，非100%解出來的公式）。
@@ -1151,7 +1154,10 @@
             XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
             XLSX.writeFile(wb, makeFilename(baseName, 'xlsx'));
         } else {
-            const csv = data.map(r => r.join(",")).join("\n") + "\n";
+            const csv = data.map(r => r.map(v => {
+                const text = String(v == null ? '' : v);
+                return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+            }).join(',')).join("\n") + "\n";
             const b = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(b); link.download = makeFilename(baseName, 'csv'); link.click();
@@ -1288,7 +1294,7 @@
         const map = baseHead.map(t => headers.indexOf(t));
         const mtmIdx = headers.indexOf("MTM/Part");
         const ctIdx = headers.indexOf("Change Type"), cpIdx = headers.indexOf("Child Part");
-        const res = [head], sty = {};
+        const res = [head], sty = {}, sourceRows = [];
         let anyMixed = false;
         rows.forEach(w => {
             const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
@@ -1299,6 +1305,7 @@
             const cells = map.map(i => i === -1 ? "" : (w[i]||"").trim());
             cells.push(spbLatestPNCell(pnDbMap, mtmIdx === -1 ? "" : w[mtmIdx]));
             res.push(cells);
+            sourceRows.push(Object.fromEntries(headers.map((h, i) => [h, w[i]])));
         });
         // 2026-11-03：原本 ChgDate 報表固定隱藏 Child Part／Qty／Substitute Relationship（純 ChgDate 這三欄本就空）。
         // 現在可能收進 ChgBom/Date 等混合列，這三欄對它們有實際內容 → 只要這批有任何混合列就「不隱藏」，
@@ -1308,13 +1315,70 @@
             redCols: REPORT5_CHGDATE_EXTRA.map(t => head.indexOf(t)),
             missing: REPORT5_CHGDATE_EXTRA.filter(t => headers.indexOf(t) === -1)
         } : {};
-        return { data: res, styles: sty, layout };
+        return { data: res, styles: sty, layout, sourceRows };
     }
+
+    // 與 EC 受限制物料一致：SBB/CTO 優先、SPB 前五碼、MTM 前四碼；衝突停止。
+    function englishPic56(value) {
+        return String(value == null ? '' : value).split(/[,，、;；/\n\r]+/).map(person => {
+            const match = person.trim().match(/^[A-Za-z]+/);
+            return match ? match[0] : '';
+        }).filter(Boolean).join(',');
+    }
+    function resolvePicProject56(row, mapping) {
+        const key = value => String(value == null ? '' : value).trim().toUpperCase();
+        const unique = (field, code) => {
+            const matches = mapping.filter(m => code && key(m[field]) === code);
+            if (!matches.length) return null;
+            if (new Set(matches.map(m => JSON.stringify([String(m.Project || '').trim(), String(m.SE || '').trim()]))).size > 1)
+                throw new Error('CustomDB 對照衝突：' + field + ' = ' + code);
+            return matches[0];
+        };
+        const code = key(row['MTM/Part']);
+        const isSBB = code.startsWith('SBB'), isCTO = code.startsWith('CTO');
+        const map5 = !isSBB && !isCTO ? unique('SPB MTM前5碼', code.slice(0, 5)) : null;
+        const map4 = !isSBB && !isCTO && !map5 ? unique('MTM前4碼', code.slice(0, 4)) : null;
+        const exactCTO = isCTO ? unique('CTO PN', code) : null;
+        const mid = code.match(/^CTOSBB_([A-Z0-9]{4})CTO/);
+        const ctoMap = exactCTO || (isCTO && mid ? unique('MTM前4碼', mid[1]) : null);
+        const matched = map5 || map4 || ctoMap;
+        return [map5 ? 'Ido' : matched ? englishPic56(matched.SE) : '',
+            matched ? String(matched.Project || '').trim() : isSBB ? String(row.Project || '').trim() : '需自行確認'];
+    }
+    async function loadPicProject56() {
+        const url = document.getElementById('gasUrl').value.trim();
+        if (!url) throw new Error('請先設定 Google Script URL，才能讀取 CustomDB');
+        const rows = await fetchPnJsonWithRetry(url + '?sheet=CustomDB&t=' + Date.now(), { cache: 'no-store' });
+        const required = ['MTM前4碼', 'SPB MTM前5碼', 'CTO PN', 'Project', 'SE'];
+        if (!Array.isArray(rows) || rows.length < 2 || !Array.isArray(rows[0]) || !required.every(h => rows[0].includes(h)))
+            throw new Error('CustomDB 缺少資料或必要欄位，本次不產出報表');
+        return rows.slice(1).filter(r => Array.isArray(r) && r.some(v => v !== '' && v != null))
+            .map(r => Object.fromEntries(rows[0].map((h, i) => [h, r[i] == null ? '' : r[i]])));
+    }
+    function prependPicProject56(data, mapping, layout = {}, sourceRows = null) {
+        const headers = data[0];
+        const rows = data.slice(1).map((cells, index) => {
+            const row = sourceRows ? sourceRows[index] : Object.fromEntries(headers.map((h, i) => [h, cells[i]]));
+            return [...resolvePicProject56(row, mapping), ...cells];
+        });
+        return { data: [['PIC', 'Project', ...headers], ...rows], layout: {
+            ...layout,
+            ...(layout.hiddenCols ? { hiddenCols: layout.hiddenCols.map(c => c + 2) } : {}),
+            ...(layout.redCols ? { redCols: layout.redCols.map(c => c + 2) } : {})
+        } };
+    }
+
     async function processMergeReport5() {
+        cacheRep5 = []; cacheChgDateStaging5 = null;
+        document.getElementById('btnDL5').style.display = 'none';
+        try {
         const r = await readAndMergeCSVs('csvFiles5'); if(!r) return;
         const mode = document.getElementById('report5Mode').value;
         const pnDb = await loadPnDatabaseNoBom8();
-        const { data: res, styles: sty, layout } = buildMergeReport5(r.headers, r.rows, mode, pnDb.map);
+        const mapping = await loadPicProject56();
+        const built = buildMergeReport5(r.headers, r.rows, mode, pnDb.map);
+        const { data: res, layout } = prependPicProject56(built.data, mapping, built.layout, built.sourceRows);
+        const sty = built.styles;
         if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
         if (mode === 'chgdate' && res.length < 2) {
             document.getElementById('btnDL5').style.display = 'none';
@@ -1354,8 +1418,10 @@
             renderPreview(res, sty);
         }
         document.getElementById('btnDL5').style.display = 'inline-flex';
+        } catch (err) { cacheRep5 = []; alert(err.message || String(err)); }
     }
     function downloadMergedReport5() {
+        if (cacheRep5.length < 2) return alert('請先處理預覽');
         if (cacheLayout5 && cacheLayout5.redCols) downloadChgDateWorkbook5();
         else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, PERSONAL_REPORT);
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
@@ -1411,6 +1477,9 @@
     }
 
     async function processMergeReport6() {
+        cacheRep6 = [];
+        document.getElementById('btnDL6').style.display = 'none';
+        try {
         const r = await readAndMergeCSVs('csvFiles6'); if(!r) return;
         const ctIdx = r.headers.indexOf("Change Type"), cpIdx = r.headers.indexOf("Child Part");
         const mtmIdx = r.headers.indexOf("MTM/Part");
@@ -1423,10 +1492,12 @@
             res.push([...w.map(c => (c||"").trim()), spbLatestPNCell(pnDb.map, mtmIdx === -1 ? "" : w[mtmIdx])]);
         });
         if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
-        cacheRep6 = res; cacheStyle6 = sty; renderPreview(res, sty);
+        cacheRep6 = prependPicProject56(res, await loadPicProject56()).data; cacheStyle6 = sty; renderPreview(cacheRep6, sty);
         document.getElementById('btnDL6').style.display = 'inline-flex';
+        } catch (err) { cacheRep6 = []; alert(err.message || String(err)); }
     }
     function downloadMergedReport6() {
+        if (cacheRep6.length < 2) return alert('請先處理預覽');
         exportExcelWithStyles(cacheRep6, "EC 檔案合併 (丟入 PIM_MTM)", cacheStyle6, null, PERSONAL_REPORT);
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
     }
@@ -1515,6 +1586,7 @@
         if (el) el.value = '';
         cacheMissingFactSheet7 = [];
         cacheUploadList7 = [];
+        const mtmBtn=document.getElementById('btnMtm7');if(mtmBtn)mtmBtn.style.display='none';
         const btn = document.getElementById('btnDL7');
         if (btn) btn.style.display = 'none';
         const summary = document.getElementById('precheck7Summary');
@@ -1522,6 +1594,8 @@
     }
 
     async function processSpbPrecheck() {
+        cacheUploadList7 = []; cacheMissingFactSheet7 = [];
+        for (const id of ['btnMtm7', 'btnDL7']) { const button = document.getElementById(id); if (button) button.style.display = 'none'; }
         dbg('===== 快篩開始 =====');
         const csvInput = document.getElementById('csvFiles7');
         dbg('①已選檔案數: ' + csvInput.files.length + (csvInput.files.length ? '（' + [...csvInput.files].map(f=>f.name).join('、') + '）' : ''));
@@ -1580,6 +1654,7 @@
             // 「全部頂層 MTM」（已去重），同一份可直接上傳產出 Single BOM 與 FactSheet。
             // 預覽表格仍保留 MTM種類／FactSheet狀態，方便看哪些 SPB 還缺。
             cacheUploadList7 = rows.map(r => r.mtmPart);
+            const mtmButton7=document.getElementById('btnMtm7');if(mtmButton7)mtmButton7.style.display='inline-flex';
 
             const data = [['MTM/PART', 'MTM種類', 'FactSheet狀態']];
             const styles = {};
@@ -1608,6 +1683,12 @@
         } finally {
             showLoading(false);
         }
+    }
+
+    function downloadMtmNumbers7() {
+        if (!cacheUploadList7.length) return alert('請先按快篩預覽');
+        exportExcelWithStyles([['MTM Number'], ...cacheUploadList7.map(pn=>[pn]), ['#EOF']], 'MTMNumber', {}, 'xlsx');
+        if (document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
     }
 
     function downloadMissingFactSheetList() {
@@ -1855,6 +1936,13 @@
 
     function buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup) {
         const out = [];
+        function includeStagingRow8(row) {
+            const change=String(row['_ChangeType（僅供核對，貼主表前刪除）']||'').trim();
+            const project=String(row['MTM Family']||'').trim(),ec=String(row['LNV ECN No']||'').toUpperCase();
+            // 一般 EC 無 ChangeType、無 MTM Family 的單件 PN 不列入待貼入；特殊 EC 原規則保留。
+            return !!change || !!project || /^CTO|^600|^\d+POR(?:_|$)/.test(ec);
+        }
+
         const runDateValue = todayDateValue8();
         // 2026-09-23 May 確認：CTO_ 開頭EC 的 Flatfile 若整份（同一個 EC No 的所有列，含
         // Child Part 列）Change Type 全部空白，代表沒有 BOM 變更，備註寫
@@ -2129,7 +2217,7 @@
                 'SPB AVC PN最新版本': spbLatestPNCell(pnDbLookup && pnDbLookup.map ? pnDbLookup.map : null, mtmPart),
             });
         }
-        return out;
+        return out.filter(includeStagingRow8);
     }
 
     // 同 clearFileInput7()：純前端清空，不用重整頁面，順便清掉舊的產出結果跟
@@ -2277,7 +2365,8 @@
             const mtm = String(row['MTM/PART'] || '').trim();
             const mtPrefix = resolveMtmPrefix8(mtm);
             const project = String(row['MTM Family'] || '').trim() || projectMap.get(mtPrefix) || '待人工確認';
-            const excluded = row['備註'] ? 1 : 0;
+            const summaryRemark8=String(row['備註']||'').replace(/\s+/g,' ').trim();
+            const excluded = /(無須|无须|無需|无需|不需|不須|毋須|不用)\s*建|不建(立|置|BOM|MTM)|不接單/i.test(summaryRemark8) && !/暫停|on\s*-?\s*hold|已建(立|置|BOM|MTM)?|建立成功|已完成/i.test(summaryRemark8) ? 1 : 0;
             const isSpb = row['SPB MTM與否'] === 'V';
             // 2026-09-22 May 確認（回應Codex QA-002）：這個Project群組如果有任何一列的
             // MTM Family是CTO_猜出來的（約94%準確率），要在Summary標記出來，避免同一張
