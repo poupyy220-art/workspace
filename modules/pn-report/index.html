@@ -2452,6 +2452,13 @@
                 if (!isHeader && colName === 'MTM Family' && ctoFamilyGuessRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFC000' } }; }
                 if (!isHeader && colName === '備註' && manualRemarkRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
                 if (!isHeader && colName === '(GETC/ECR Close 時間)' && closeTimePendingRows.has(R - 1)) { style.fill = { fgColor: { rgb: 'FFFF00' } }; }
+                // NEW SPB MTM BOM：依待貼入範例只標示 A:P，覆蓋單格暫填日期底色。
+                const sourceRow = rows[R - 1];
+                if (!isHeader && C < 16 && /^3000/.test(String(sourceRow['LNV ECN No'] || '').trim())
+                    && String(sourceRow['_ChangeType（僅供核對，貼主表前刪除）'] || '').trim().toLowerCase() === 'new'
+                    && String(sourceRow['SPB MTM與否'] || '').trim().toUpperCase() === 'V') {
+                    style.fill = { fgColor: { rgb: 'FFFFCC' } };
+                }
                 // 2026-11-02 功能D：Close 時間格值為「confirming／pending」時，紅字＋水平置中。
                 if (!isHeader && colName === '(GETC/ECR Close 時間)') {
                     const v = String(ws[ref].v == null ? '' : ws[ref].v).trim().toLowerCase();
