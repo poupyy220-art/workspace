@@ -274,6 +274,7 @@
 
         <div class="card card-red" style="grid-column: 1 / -1;">
             <h3>5️⃣ 合併報表 (篩選 + 隱藏)</h3>
+            <p class="desc">PIC／Project：SBB 以完整料號查 PN_Project_Map，再查各專案的 SE；多專案 PIC 保留英文名、去重後以逗號分隔。</p>
             <input type="file" id="csvFiles5" multiple accept=".csv" style="width: 100%; margin-bottom:10px;">
             <div style="margin-bottom:10px; font-size:0.85em; color:#555;">
                 報表格式：
@@ -1356,11 +1357,32 @@
         return rows.slice(1).filter(r => Array.isArray(r) && r.some(v => v !== '' && v != null))
             .map(r => Object.fromEntries(rows[0].map((h, i) => [h, r[i] == null ? '' : r[i]])));
     }
-    function prependPicProject56(data, mapping, layout = {}, sourceRows = null) {
+    function resolveSbbPicProject5(row, mapping, pnProjectMap) {
+        const code = String(row['MTM/Part'] || '').trim().toUpperCase();
+        const raw = String(pnProjectMap.get(code) || row.Project || '').trim();
+        if (!raw) throw new Error('PN_Project_Map 查無 SBB 專案：' + code);
+        // Project 名稱可含斜線，保留完整名稱再查專案。
+        const projects = [...new Set(raw.split(/[,，;；\n\r]+/).map(p => p.trim()).filter(Boolean))];
+        const people = [];
+        for (const project of projects) {
+            const matches = mapping.filter(m => String(m.Project || '').trim().toUpperCase() === project.toUpperCase());
+            const values = [...new Set(matches.map(m => String(m.SE || '').trim()).filter(Boolean))];
+            if (!values.length) throw new Error('CustomDB 查無專案 SE：' + project + '（' + code + '）');
+            if (values.length > 1) throw new Error('CustomDB 專案 SE 對照衝突：' + project);
+            const names = englishPic56(values[0]).split(',').filter(Boolean);
+            if (!names.length) throw new Error('CustomDB 專案 SE 缺少英文名字：' + project);
+            for (const name of names) if (!people.some(p => p.toUpperCase() === name.toUpperCase())) people.push(name);
+        }
+        return [people.join(','), projects.join(',')];
+    }
+
+    function prependPicProject56(data, mapping, layout = {}, sourceRows = null, sbbProjectMap = null) {
         const headers = data[0];
         const rows = data.slice(1).map((cells, index) => {
             const row = sourceRows ? sourceRows[index] : Object.fromEntries(headers.map((h, i) => [h, cells[i]]));
-            return [...resolvePicProject56(row, mapping), ...cells];
+            const picProject = sbbProjectMap && /^SBB/i.test(String(row['MTM/Part'] || '').trim())
+                ? resolveSbbPicProject5(row, mapping, sbbProjectMap) : resolvePicProject56(row, mapping);
+            return [...picProject, ...cells];
         });
         return { data: [['PIC', 'Project', ...headers], ...rows], layout: {
             ...layout,
@@ -1378,7 +1400,9 @@
         const pnDb = await loadPnDatabaseNoBom8();
         const mapping = await loadPicProject56();
         const built = buildMergeReport5(r.headers, r.rows, mode, pnDb.map);
-        const { data: res, layout } = prependPicProject56(built.data, mapping, built.layout, built.sourceRows);
+        const sbbProjectMap5 = built.sourceRows.some(row => /^SBB/i.test(String(row['MTM/Part'] || '').trim()))
+            ? await loadPnProjectMap8(null) : null;
+        const { data: res, layout } = prependPicProject56(built.data, mapping, built.layout, built.sourceRows, sbbProjectMap5);
         const sty = built.styles;
         if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
         if (mode === 'chgdate' && res.length < 2) {
