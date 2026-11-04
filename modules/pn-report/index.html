@@ -287,6 +287,7 @@
             <div class="btn-group">
                 <button onclick="processMergeReport5()" class="btn-dark">🔨 處理預覽</button>
                 <button onclick="downloadMergedReport5()" id="btnDL5" style="display:none; background-color:#c0392b;">💾 下載</button>
+                <p id="report5Result" role="status" style="white-space:pre-line; margin:8px 0"></p>
             </div>
         </div>
         <div class="card card-blue" style="grid-column: 1 / -1;">
@@ -296,6 +297,7 @@
             <div class="btn-group">
                 <button onclick="processMergeReport6()" class="btn-blue">🔨 處理預覽</button>
                 <button onclick="downloadMergedReport6()" id="btnDL6" style="display:none; background-color:#16a085;">💾 下載</button>
+                <p id="report6Result" role="status" style="white-space:pre-line; margin:8px 0"></p>
             </div>
         </div>
 
@@ -1300,8 +1302,7 @@
         let anyMixed = false;
         rows.forEach(w => {
             const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
-            if(!ct || ct === "none") return;
-            if(isChgDate && !isChgDateType(ct)) return;
+            if (report5ExclusionReason(ct, mode)) return;
             if(isChgDate && isMixedChgDateType(ct)) anyMixed = true;
             if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
             const cells = map.map(i => i === -1 ? "" : (w[i]||"").trim());
@@ -1391,12 +1392,50 @@
         } };
     }
 
+    function report5ExclusionReason(change, mode) {
+        return !change ? 'Change Type 空白'
+                : change.toLowerCase() === 'none' ? 'Change Type 為 None'
+                : mode === 'chgdate' && !isChgDateType(change) ? '不含日期變更' : '';
+    }
+
+    function summarizeReport5(headers, rows, mode) {
+        const changeIndex = headers.indexOf('Change Type');
+        const ecIndex = headers.indexOf('Lenovo EC/Doc Number');
+        const excludedByEc = new Map();
+        let included = 0;
+        for (const row of rows) {
+            const change = String(row[changeIndex] || '').trim();
+            const reason = report5ExclusionReason(change, mode);
+            if (!reason) {
+                included++;
+                continue;
+            }
+            const ec = row[ecIndex] || 'EC No 空白';
+            const reasons = excludedByEc.get(ec) || new Map();
+            reasons.set(reason, (reasons.get(reason) || 0) + 1);
+            excludedByEc.set(ec, reasons);
+        }
+        const message = [included ? `共 ${rows.length} 筆，符合條件 ${included} 筆。`
+            : rows.length ? `共 ${rows.length} 筆，符合條件 0 筆，無可下載的報表。`
+            : 'CSV 只有表頭，沒有可產出的資料列。'];
+        for (const [ec, reasons] of excludedByEc) {
+            message.push(`${ec} 未納入：` + [...reasons].map(([reason, count]) => `${reason} ${count} 筆`).join('、'));
+        }
+        return { included, message: message.join('\n') };
+    }
+
     async function processMergeReport5() {
         cacheRep5 = []; cacheChgDateStaging5 = null;
         document.getElementById('btnDL5').style.display = 'none';
         try {
+        const result = document.getElementById('report5Result');
+        result.textContent = '';
         const r = await readAndMergeCSVs('csvFiles5'); if(!r) return;
+        document.getElementById('previewArea').style.display = 'none';
         const mode = document.getElementById('report5Mode').value;
+        const summary = summarizeReport5(r.headers, r.rows, mode);
+        result.textContent = summary.message;
+        if (!summary.included) return;
         const pnDb = await loadPnDatabaseNoBom8();
         const mapping = await loadPicProject56();
         const built = buildMergeReport5(r.headers, r.rows, mode, pnDb.map);
@@ -1405,10 +1444,6 @@
         const { data: res, layout } = prependPicProject56(built.data, mapping, built.layout, built.sourceRows, sbbProjectMap5);
         const sty = built.styles;
         if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
-        if (mode === 'chgdate' && res.length < 2) {
-            document.getElementById('btnDL5').style.display = 'none';
-            return alert('這批 Flatfile 沒有含日期變更的列（純 ChgDate 或 ChgBom/Date 這類含 Date 的混合型），沒有可產出的 ChgDate 報表。');
-        }
         cacheRep5 = res; cacheStyle5 = sty; cacheLayout5 = layout;
         cacheChgDateStaging5 = null; cacheChgDateStaging5Error = '';
         if (mode === 'chgdate') {
@@ -1428,10 +1463,10 @@
                 // （備註需人工填、標黃；非 EC 直接 close），不會被誤標成「change date,EC直接close」。
                 const flatObjRows = (await parseFlatfileObjRows8('csvFiles5'))
                     .filter(row => isChgDateType(row['Change Type']));
-                const { map: projectMap, conflicts: projectConflicts, seMap } = await retryRead5(() => loadProjectMap8());
+                const { map: projectMap, conflicts: projectConflicts, seMap, picMapping } = await retryRead5(() => loadProjectMap8());
                 const pnProjectMap = await retryRead5(() => loadPnProjectMap8(null));
                 const createrName = document.getElementById('creater8').value;
-                cacheChgDateStaging5 = buildStagingRows8(flatObjRows, new Map(), projectMap, projectConflicts, new Map(), createrName, seMap, pnProjectMap, pnDb);
+                cacheChgDateStaging5 = buildStagingRows8(flatObjRows, new Map(), projectMap, projectConflicts, new Map(), createrName, seMap, pnProjectMap, pnDb, picMapping);
                 if (!cacheChgDateStaging5.length) cacheChgDateStaging5Error = '待貼入(ChgDate) 產出 0 列，請確認 Flatfile 內容。';
             } catch (err) {
                 cacheChgDateStaging5 = null;
@@ -1505,9 +1540,17 @@
         cacheRep6 = [];
         document.getElementById('btnDL6').style.display = 'none';
         try {
+        const result = document.getElementById('report6Result');
+        result.textContent = '';
         const r = await readAndMergeCSVs('csvFiles6'); if(!r) return;
+        document.getElementById('previewArea').style.display = 'none';
         const ctIdx = r.headers.indexOf("Change Type"), cpIdx = r.headers.indexOf("Child Part");
         const mtmIdx = r.headers.indexOf("MTM/Part");
+        if (!r.rows.length) {
+            result.textContent = 'CSV 只有表頭，沒有可產出的資料列。';
+            return;
+        }
+        const blankChangeCount = r.rows.filter(row => !String(row[ctIdx] || '').trim()).length;
         const pnDb = await loadPnDatabaseNoBom8();
         const res = [r.headers.concat(SPB_PN_COL)], sty = {};
         r.rows.forEach(w => {
@@ -1518,6 +1561,8 @@
         });
         if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
         cacheRep6 = prependPicProject56(res, await loadPicProject56()).data; cacheStyle6 = sty; renderPreview(cacheRep6, sty);
+        result.textContent = `已保留全部 ${r.rows.length} 筆。` + (blankChangeCount
+            ? `其中 ${blankChangeCount} 筆 Change Type 空白，已標灰並保留。` : '');
         document.getElementById('btnDL6').style.display = 'inline-flex';
         } catch (err) { cacheRep6 = []; alert(err.message || String(err)); }
     }
@@ -1832,7 +1877,9 @@
             map.set(prefix, project);
             if (se && !seMap.has(project)) seMap.set(project, truncateNameAtDelimiter8(se));
         }
-        return { map, conflicts, seMap };
+        const picMapping = data.slice(1).filter(Array.isArray)
+            .map(row => Object.fromEntries(data[0].map((header, index) => [header, row[index]])));
+        return { map, conflicts, seMap, picMapping };
     }
 
     async function loadFactSheetMap8(files) {
@@ -1959,7 +2006,7 @@
         return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     }
 
-    function buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup) {
+    function buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup, picMapping) {
         const out = [];
         function includeStagingRow8(row) {
             const change=String(row['_ChangeType（僅供核對，貼主表前刪除）']||'').trim();
@@ -2118,7 +2165,9 @@
             if (isPorEc || isSameAsCreaterPrefix || isSpb30000Ec) {
                 confirmerName = createrName;
             } else if (isSeLookupPrefix) {
-                confirmerName = (seMap && seMap.get(mtmFamily)) || '';
+                confirmerName = /^SBB/i.test(mtmPart) && picMapping
+                    ? resolveSbbPicProject5(r, picMapping, pnProjectMap)[0]
+                    : (seMap && seMap.get(mtmFamily)) || '';
                 if (!confirmerName && mtmFamily) {
                     note = [note, `Project R&R簡表(CustomDB)查無「${mtmFamily}」對應的 SE，確認者留空`].filter(Boolean).join('；');
                 }
@@ -2190,7 +2239,7 @@
             // Ido 仍需收信知悉。
             const isChgBomSpb = changeType.split('/').some(type => type.trim() === 'ChgBom') && isSpb;
             const confirmerValue8 = isChgBomSpb ? 'Ido' : confirmerName;
-            const closeTimeOut8 = isChgBomSpb ? (closeTimeValue8 || 'confirming') : closeTimeValue8;
+            const closeTimeOut8 = closeTimeValue8 || 'confirming';
             if (isChgBomSpb) note = [note, closeTimeValue8
                 ? 'ChgBom 的 SPB MTM：確認者固定 Ido；此列已依主檔判定不需建BOM、維持今天 close，仍需發信告知 Ido'
                 : 'ChgBom 的 SPB MTM：確認者固定 Ido、Close 時間暫置「confirming」待 Ido 確認'].filter(Boolean).join('；');
@@ -2285,7 +2334,7 @@
             dbg('CountryDB 筆數: ' + ccMap.size);
 
             dbg('拉取雲端 CustomDB (Project R&R)...');
-            const { map: projectMap, conflicts: projectConflicts, seMap } = await loadProjectMap8();
+            const { map: projectMap, conflicts: projectConflicts, seMap, picMapping } = await loadProjectMap8();
             dbg('CustomDB 筆數: ' + projectMap.size + '，衝突: ' + projectConflicts.size);
 
             const factSheetMap = fsFiles.length ? await loadFactSheetMap8(fsFiles) : new Map();
@@ -2299,7 +2348,7 @@
             dbg(pnDbLookup.error ? 'PN Database 讀取失敗，相關列保留空白待確認：' + pnDbLookup.error : 'PN Database 客戶料號筆數: ' + pnDbLookup.map.size, !!pnDbLookup.error);
 
             const createrName = document.getElementById('creater8').value;
-            const rows = buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup);
+            const rows = buildStagingRows8(flatfileRows, ccMap, projectMap, projectConflicts, factSheetMap, createrName, seMap, pnProjectMap, pnDbLookup, picMapping);
             dbg('產出列數: ' + rows.length);
 
             if (!rows.length) {
