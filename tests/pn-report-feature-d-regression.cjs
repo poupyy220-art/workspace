@@ -111,4 +111,18 @@ check('date cell → not red (no confirming/pending styling)', () => {
   assert.ok(!s.font.color);
 });
 
+for (const [ecn, type, spb, highlight] of [
+  ['300000001', 'New', 'V', true], ['300000002', 'ChgBom', 'V', false],
+  ['600000001', 'New', 'V', false], ['300000003', 'New', '', false],
+  ['300000004', '', 'V', false],
+]) {
+  check(`NEW SPB fill boundaries: ${ecn}/${type}/${spb}`, () => {
+    const row = Object.fromEntries(Array.from({ length: 23 }, (_, i) => ['column' + i, '']));
+    Object.assign(row, { 'LNV ECN No': ecn, '_ChangeType（僅供核對，貼主表前刪除）': type, 'SPB MTM與否': spb });
+    const sheet = wbCtx.buildStagingWorksheet8([row]);
+    assert.equal(sheet.A2.s.fill?.fgColor.rgb === 'FFFFCC', highlight);
+    assert.equal(sheet.P2.s.fill?.fgColor.rgb === 'FFFFCC', highlight);
+    assert.equal(sheet.Q2.s.fill, undefined);
+  });
+}
 console.log(JSON.stringify({ passed: checks.length, failed: 0 }));

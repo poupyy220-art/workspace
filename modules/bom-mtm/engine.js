@@ -108,6 +108,7 @@ async function styles(book){
  const doc=await book.read('xl/styles.xml'),xfs=nodes(doc,'cellXfs')[0],fonts=nodes(doc,'fonts')[0];const cache=new Map();
  function get(base,kind){const key=base+':'+kind;if(cache.has(key))return cache.get(key);const original=Array.from(xfs.childNodes).filter(n=>n.nodeType===1)[Number(base)||0];const xf=original.cloneNode(true);
   if(kind==='date'){const nfs=nodes(doc,'numFmts')[0]||doc.documentElement.insertBefore(doc.createElementNS(NS,'numFmts'),doc.documentElement.firstChild);let id=164;const used=new Set(nodes(nfs,'numFmt').map(n=>Number(n.getAttribute('numFmtId'))));while(used.has(id))id++;const nf=doc.createElementNS(NS,'numFmt');nf.setAttribute('numFmtId',id);nf.setAttribute('formatCode','yyyy/mm/dd');nfs.appendChild(nf);nfs.setAttribute('count',nodes(nfs,'numFmt').length);xf.setAttribute('numFmtId',id);xf.setAttribute('applyNumberFormat','1')}
+  else if(kind==='newSpb'){const fills=nodes(doc,'fills')[0];let fill=nodes(fills,'fill').findIndex(f=>nodes(f,'patternFill')[0]?.getAttribute('patternType')==='solid'&&nodes(f,'fgColor')[0]?.getAttribute('rgb')==='FFFFFFCC');if(fill<0){fill=nodes(fills,'fill').length;const f=doc.createElementNS(NS,'fill'),pattern=doc.createElementNS(NS,'patternFill'),fg=doc.createElementNS(NS,'fgColor');pattern.setAttribute('patternType','solid');fg.setAttribute('rgb','FFFFFFCC');pattern.appendChild(fg);f.appendChild(pattern);fills.appendChild(f);fills.setAttribute('count',fill+1)}xf.setAttribute('fillId',fill);xf.setAttribute('applyFill','1')}
   else{if(kind==='pending'){const f=Array.from(fonts.childNodes).filter(n=>n.nodeType===1)[Number(xf.getAttribute('fontId'))||0].cloneNode(true);for(const c of nodes(f,'color'))c.parentNode.removeChild(c);const color=doc.createElementNS(NS,'color');color.setAttribute('rgb','FFFF0000');f.appendChild(color);xf.setAttribute('fontId',Array.from(fonts.childNodes).filter(n=>n.nodeType===1).length);fonts.appendChild(f);fonts.setAttribute('count',nodes(fonts,'font').length);xf.setAttribute('applyFont','1')}let align=nodes(xf,'alignment')[0];if(!align){align=doc.createElementNS(NS,'alignment');xf.appendChild(align)}if(kind==='pending')align.setAttribute('horizontal','center');else{align.setAttribute('wrapText','1');align.setAttribute('vertical','top')}xf.setAttribute('applyAlignment','1')}
   const idx=Array.from(xfs.childNodes).filter(n=>n.nodeType===1).length;xfs.appendChild(xf);xfs.setAttribute('count',idx+1);cache.set(key,String(idx));return String(idx)
  }
@@ -146,10 +147,24 @@ async function apply(bom,staging,p){
    setCell(sum,i,remark,[...new Set(notes.filter(Boolean))].join('\n'),st.get(baseStyle(sum,i,remark),'note'));
   }
   for(let i=1;i<s.data.length;i++)if(p.trackingRoots.has(val(s.data[i][mtm]))&&changeType(s.data[i],s.data[0])==='ChgBom')setCell(s,i,close,'confirming',st.get(baseStyle(s,i,close),'pending'));
+  // Apply formatting after status updates, including pre-existing pending cells.
+  const ecColumn=s.data[0].findIndex(h=>val(h)==='LNV ECN No'),spbColumn=s.data[0].findIndex(h=>val(h)==='SPB MTM與否');
+  for(let i=1;i<s.rows.length;i++){
+   const newSpb=ecColumn>=0&&spbColumn>=0&&/^3000/.test(val(s.data[i]?.[ecColumn]))&&val(s.data[i]?.[s.data[0].findIndex(h=>val(h).startsWith('_ChangeType'))]).toLowerCase()==='new'&&val(s.data[i]?.[spbColumn]).toUpperCase()==='V';
+   for(const cell of nodes(s.rows[i],'c')){
+    const column=cell.getAttribute('r').replace(/\d/g,'');let style=cell.getAttribute('s')||'0';
+    if(newSpb&&/^[A-P]$/.test(column))style=st.get(style,'newSpb');
+    if(column===col(close+1)){
+     const status=cell.getAttribute('t')==='inlineStr'?nodes(cell,'t').map(t=>t.textContent).join(''):cell.getAttribute('t')==='s'?val(s.data[i]?.[close]):nodes(cell,'v')[0]?.textContent||'';
+     if(/^(confirming|pending)$/i.test(status.trim()))style=st.get(style,'pending');
+    }
+    if(style!==(cell.getAttribute('s')||'0')){cell.setAttribute('s',style);s.dirty=true}
+   }
+  }
   if(p.omitted.length){if(nodes(s.doc,'f').length||nodes(s.doc,'tablePart').length||nodes(s.doc,'mergeCell').length)fail('待貼入含公式／表格／合併，無法安全略過單件列');const removed=new Set(p.omitted.map(x=>x.row-1));let shift=0;for(let i=1;i<s.rows.length;i++){const row=s.rows[i];if(removed.has(i)){if(row.parentNode)row.parentNode.removeChild(row);shift++}else{const n=Number(row.getAttribute('r'))-shift;row.setAttribute('r',n);for(const c of nodes(row,'c'))c.setAttribute('r',c.getAttribute('r').replace(/\d+$/,n))}}for(const n of [...nodes(s.doc,'dimension'),...nodes(s.doc,'autoFilter')])n.setAttribute('ref',n.getAttribute('ref').replace(/(\d+)$/,x=>String(Number(x)-removed.size)));s.dirty=true}
   const dim=nodes(sum.doc,'dimension')[0];if(dim)dim.setAttribute('ref','A1:'+col(pending+1)+sum.rows.length);st.save();
  }
  return {bom:bom?await bom.write():null,staging:staging?await staging.write():null};
 }
-root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,version:'0.2.1'};
+root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,version:'0.2.2'};
 })(typeof window==='undefined'?globalThis:window);
