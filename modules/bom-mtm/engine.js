@@ -28,11 +28,11 @@ function indexBom(sheet){
  sheet.data.forEach((r,i)=>{if(!i)return;if(r.every(v=>val(v)===''))fail('BOM 資料區有空白列，請先確認');const m=val(r[mtm]),l=val(r[level]);if(!m)fail('BOM 的 MTM/Part 不可空白');if(l==='0'){if(groups.has(m))fail('MTM 主階重複：'+m);if(val(r[part])!==m)fail('主階料號與 MTM 不一致：'+m);current=m;groups.set(m,[])}else if(!/^\d+$/.test(l)||Number(l)<1||m!==current)fail('BOM 階層與 MTM 不一致：'+m);groups.get(m).push(i)});
  return groups;
 }
-function ignoreNote(mtm,raw){
+function ignoreNote(mtm,raw,summary=false){
  let text=String(raw||'').replace(/\[根據排除清單設定\]/g,'');
  text=text.replace(/料號\s*[:：]\s*([A-Za-z0-9_-]+)\s*系統自動判定為忽略\s*[（(]Ignore[）)]\s*[，,]?\s*請確認\s*[;；]?/g,(whole,id)=>id===mtm?'':whole);
  text=text.replace(/請通知聯想端確認/g,'').replace(/\s+/g,' ').replace(/^[\s,，;；]+|[\s,，;；]+$/g,'');
- return text?(text.includes('其他工廠使用')?mtm+'底下'+text:'料號:'+mtm+' '+text):'';
+ return text?(summary||text.includes('其他工廠使用')?mtm+'底下'+text:'料號:'+mtm+' '+text):'';
 }
 function errorRows(book){
  const sheet=book.sheets.find(s=>s.data[1]?.some(v=>val(v)==='StatusCode'));if(!sheet)fail('Export 缺少 StatusCode 標題列');
@@ -135,7 +135,15 @@ async function apply(bom,staging,p){
    const mtms=g.mtms,excluded=mtms.filter(m=>p.trackingIssues.get(m)?.kind==='ignore'),wait=mtms.filter(m=>g.type==='ChgBom'||['pending','existing'].includes(p.trackingIssues.get(m)?.kind));
    if(excluded.some(m=>wait.includes(m)))fail('變更 BOM 與不需建立狀態衝突，請人工確認');
    setCell(sum,i,qty,mtms.length);setCell(sum,i,imp,mtms.length-excluded.length-wait.length);setCell(sum,i,exc,excluded.length);setCell(sum,i,list,mtms.join(', '));setCell(sum,i,pending,wait.length,baseStyle(sum,i,exc));
-   const old=val(sum.data[i]?.[remark]),detail=mtms.filter(m=>p.trackingIssues.has(m)).map(m=>m+'：'+p.trackingIssues.get(m).reasons.join('\n')).join('\n');setCell(sum,i,remark,[old,g.type==='ChgBom'?'Change BOM 保留變更追蹤，待 RD／EIP 確認。':'EIP導入數為本批候選數，非成功證明；待確認數另列。',detail].filter(Boolean).join('\n'),st.get(baseStyle(sum,i,remark),'note'));
+   const old=val(sum.data[i]?.[remark]);
+   const details=mtms.flatMap(m=>{
+    const issue=p.trackingIssues.get(m);
+    if(!issue||issue.kind==='missing')return [];
+    if(issue.kind==='ignore')return issue.reasons.map(reason=>ignoreNote(m,reason,true)).filter(Boolean);
+    return [m+'：'+issue.reasons.join('\n')];
+   });
+   const notes=[old,g.type==='ChgBom'?'Change BOM 保留變更追蹤，待 RD／EIP 確認。':'',...details];
+   setCell(sum,i,remark,[...new Set(notes.filter(Boolean))].join('\n'),st.get(baseStyle(sum,i,remark),'note'));
   }
   for(let i=1;i<s.data.length;i++)if(p.trackingRoots.has(val(s.data[i][mtm]))&&changeType(s.data[i],s.data[0])==='ChgBom')setCell(s,i,close,'confirming',st.get(baseStyle(s,i,close),'pending'));
   if(p.omitted.length){if(nodes(s.doc,'f').length||nodes(s.doc,'tablePart').length||nodes(s.doc,'mergeCell').length)fail('待貼入含公式／表格／合併，無法安全略過單件列');const removed=new Set(p.omitted.map(x=>x.row-1));let shift=0;for(let i=1;i<s.rows.length;i++){const row=s.rows[i];if(removed.has(i)){if(row.parentNode)row.parentNode.removeChild(row);shift++}else{const n=Number(row.getAttribute('r'))-shift;row.setAttribute('r',n);for(const c of nodes(row,'c'))c.setAttribute('r',c.getAttribute('r').replace(/\d+$/,n))}}for(const n of [...nodes(s.doc,'dimension'),...nodes(s.doc,'autoFilter')])n.setAttribute('ref',n.getAttribute('ref').replace(/(\d+)$/,x=>String(Number(x)-removed.size)));s.dirty=true}
@@ -143,5 +151,5 @@ async function apply(bom,staging,p){
  }
  return {bom:bom?await bom.write():null,staging:staging?await staging.write():null};
 }
-root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,version:'0.2.0'};
+root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,version:'0.2.1'};
 })(typeof window==='undefined'?globalThis:window);
