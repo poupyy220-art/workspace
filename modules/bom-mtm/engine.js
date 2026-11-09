@@ -34,6 +34,24 @@ function ignoreNote(mtm,raw,summary=false){
  text=text.replace(/請通知聯想端確認/g,'').replace(/\s+/g,' ').replace(/^[\s,，;；]+|[\s,，;；]+$/g,'');
  return text?(summary||text.includes('其他工廠使用')?mtm+'底下'+text:'料號:'+mtm+' '+text):'';
 }
+function tcxException(project,action,reason,rules){
+ if(!rules||!Array.isArray(rules.projects)||!Array.isArray(rules.parts)||!rules.projects.some(p=>val(p).toUpperCase()===val(project).toUpperCase())||action!=='Ignore')return false;
+ const text=String(reason||'').replace(/\s+/g,'');
+ const ids=text.match(/SBB[A-Z0-9]+/gi)||[];
+ return ids.length>0&&ids.every(id=>rules.parts.some(p=>val(p).toUpperCase()===id.toUpperCase()))&&text.includes('其他工廠使用')&&text.includes('MTM不建立');
+}
+function mergeExports(items){
+ const data=[],sources=[];let header=null;
+ for(const {book,name} of items){
+  const sheets=book.sheets.filter(s=>s.data[1]?.some(v=>val(v)==='MTM Action'));
+  if(sheets.length!==1)fail('Export 工作表不唯一：'+name);
+  const s=sheets[0];if(header&&JSON.stringify(header)!==JSON.stringify(s.data[1]))fail('Export 欄位不一致，請確認同一格式：'+name);
+  if(!header){header=s.data[1];data.push(s.data[0],header)}
+  s.data.slice(2).forEach((r,i)=>{data.push(r);sources.push({name,row:i+3})});
+ }
+ if(!header)fail('請選擇 Export_LBS');
+ const book={sheets:[{data}],sources};exportRoots(book);return book;
+}
 function errorRows(book){
  const sheet=book.sheets.find(s=>s.data[1]?.some(v=>val(v)==='StatusCode'));if(!sheet)fail('Export 缺少 StatusCode 標題列');
  const [parent,part,action,status,desc]=headers(sheet.data[1],['Parent<br>Part Number','Part Number','MTM Action','StatusCode','Description']);
@@ -42,7 +60,7 @@ function errorRows(book){
  return sheet.data.slice(2).flatMap((r,index)=>{if(val(r[status]).toUpperCase()!=='ERROR')return [];
   let mtm=val(r[parent]),pointer=r;const seen=new Set();while(!mtm&&pg>=0&&val(pointer[pg])&&!seen.has(val(pointer[pg]))){const id=val(pointer[pg]);seen.add(id);pointer=byGuid.get(id);if(!pointer)break;mtm=val(pointer[parent])}
   const reason=String(r[desc]??''),a=val(r[action]),kind=a==='Ignore'?'ignore':reason.includes('在PIM尚未建立')?'missing':'other';
-  return [{row:index+3,mtm,part:val(r[part]),action:a,status:val(r[status]),reason,kind,note:kind==='ignore'?ignoreNote(mtm,reason):''}];
+  return [{row:book.sources?book.sources[index].name+'：'+book.sources[index].row:index+3,mtm,part:val(r[part]),action:a,status:val(r[status]),reason,kind,note:kind==='ignore'?ignoreNote(mtm,reason):''}];
  });
 }
 function exportIssues(book){
@@ -82,12 +100,13 @@ function plan(bom,exp,staging,manual,date,options={}){
   const seen=new Set();for(let i=1;i<ss.data.length;i++){const r=ss.data[i],m=val(r[si[0]]);if(!m||seen.has(m))fail('待貼入 MTM／PN 空白或重複：'+m);seen.add(m);
    if(!roots.has(m)&&!options.preserveUnmatched){const ct=ss.data[0].findIndex(v=>val(v).startsWith('_ChangeType')),ec=val(r[0]).toUpperCase();if(ct>=0&&!val(r[ct])&&!val(r[si[1]])&&!/^CTO|^600|^\d+POR(?:_|$)/.test(ec)){omitted.push({mtm:m,row:i+1});continue}}
    if(!roots.has(m)){extras.push({mtm:m,row:i+1,reason:'未對應 Export 主階，原列完整保留，另待人工確認／申請'});continue}
-   const issue=trackingIssues.get(m);if(issue&&val(r[si[3]])&&String(r[si[3]])!==issue.reasons.join('\n'))fail('待貼入已有不同備註，請人工確認：'+m);if(issue&&val(r[si[4]]))fail('異常 MTM 已有 Upload 標記，請人工確認：'+m);
-   const type=changeType(r,ss.data[0]),project=val(r[si[1]]);if(!project)fail('MTM 缺少專案：'+m);const key=JSON.stringify([project,type]);if(!summaryGroups.has(key))summaryGroups.set(key,{project,type,mtms:[]});summaryGroups.get(key).mtms.push(m);
+   const issue=trackingIssues.get(m);if(issue&&val(r[si[3]])&&String(r[si[3]])!==issue.reasons.join('\n')&&!(issue.kind==='ignore'&&String(r[si[3]])===ignoreNote(m,issue.reasons.join('\n'))))fail('待貼入已有不同備註，請人工確認：'+m);if(issue&&val(r[si[4]]))fail('異常 MTM 已有 Upload 標記，請人工確認：'+m);
+   const type=changeType(r,ss.data[0]),project=val(r[si[1]]);if(issue&&tcxException(project,issue.kind==='ignore'?'Ignore':'',issue.reasons.join('\n'),options.exceptionRules)){issue.tcxException=true;issues.get(m).tcxException=true;warnings.push(m+'：核定特例，Ignore 保留；待貼入結案，需納入 ODM Upload Data，可上傳 CloudDB；未自動標記 Upload。')}if(!project)fail('MTM 缺少專案：'+m);const key=JSON.stringify([project,type]);if(!summaryGroups.has(key))summaryGroups.set(key,{project,type,mtms:[]});summaryGroups.get(key).mtms.push(m);
   }
   if(![...roots.keys()].some(m=>seen.has(m)))fail('Export 與待貼入沒有可對應的 MTM／PN');
   if([...roots.keys()].some(m=>!seen.has(m)))warnings.push('Export 有未出現在待貼入的主階；只更新待貼入原有列，不新增或刪除追蹤資料。');
   if(extras.length)warnings.push('另有 '+extras.length+' 筆未對應 Export 主階的 PN／資料：'+extras.map(x=>x.mtm).join('、')+'；不計入 MTM，需勾選保留後才能產檔。');
+  const missingExports=extras.filter(x=>val(ss.data[x.row-1][si[1]]));if(missingExports.length)fail('尚缺 '+missingExports.length+' 筆 MTM 的 Export，請加入本批其他 Export_LBS 再預覽：'+missingExports.map(x=>x.mtm).join('、'));
   summary=findSheet(staging,['Project Name','EIP導入數','EIP排除數','MTM清單']);
   const q=headers(summary.data[0],['數量'])[0],old=summary.data.slice(1).filter(r=>val(r[0])&&val(r[0])!=='郵件主旨').reduce((n,r)=>n+(Number(r[q])||0),0);
   const newCount=[...summaryGroups.values()].filter(g=>g.type==='New').reduce((n,g)=>n+g.mtms.length,0);
@@ -166,5 +185,5 @@ async function apply(bom,staging,p){
  }
  return {bom:bom?await bom.write():null,staging:staging?await staging.write():null};
 }
-root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,version:'0.2.2'};
+root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,mergeExports,tcxException,version:'0.2.3'};
 })(typeof window==='undefined'?globalThis:window);
