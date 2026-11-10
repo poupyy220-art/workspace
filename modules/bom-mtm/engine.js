@@ -186,5 +186,5 @@ async function apply(bom,staging,p){
  }
  return {bom:bom?await bom.write():null,staging:staging?await staging.write():null};
 }
-root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,mergeExports,tcxException,version:'0.2.4'};
+root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,mergeExports,tcxException,version:'0.2.5'};
 })(typeof window==='undefined'?globalThis:window);
