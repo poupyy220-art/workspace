@@ -26,6 +26,9 @@ jobs:
           mkdir -p preview-dist/modules/bom-validator/vendor/opencc-js
           mkdir -p preview-dist/modules/attendance-tool
           cp index.html preview-dist/index.html
+          cp -R modules/bom-mtm preview-dist/modules/bom-mtm
+          mkdir -p preview-dist/vendor
+          cp vendor/jszip-3.10.1.min.js preview-dist/vendor/
           cp modules/attendance-tool/index.html preview-dist/modules/attendance-tool/index.html
           mkdir -p preview-dist/modules/attendance-tool/vendor
           cp modules/attendance-tool/vendor/jszip.min.js preview-dist/modules/attendance-tool/vendor/jszip.min.js

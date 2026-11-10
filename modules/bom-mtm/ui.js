@@ -9,7 +9,38 @@ async function read(id){const files=selected[id];if(!files.length)return null;if
 function renderFiles(id){const list=$(id+'-files');list.replaceChildren();selected[id].forEach((f,i)=>{const item=document.createElement('div'),name=document.createElement('span'),button=document.createElement('button');name.textContent=f.name;button.textContent='移除';button.type='button';button.className='remove-file';button.disabled=busy;button.setAttribute('aria-label','移除 '+f.name);button.onclick=()=>{if(busy)return;selected[id].splice(i,1);$(id).value='';renderFiles(id);reset()};item.append(name,button);list.append(item)})}
 for(const id of ['bom','export','staging','rules'])$(id).addEventListener('change',()=>{if(id==='export'){for(const f of $(id).files)if(!selected[id].some(x=>x.name===f.name&&x.size===f.size&&x.lastModified===f.lastModified))selected[id].push(f)}else selected[id]=Array.from($(id).files);$(id).value='';renderFiles(id);reset()});
 async function prepare(){const [b,e,s,rules]=await Promise.all([read('bom'),read('export'),read('staging'),read('rules')]);const p=BomMtm.plan(b,e,s,$('manual').value,$('date').value,{preserveUnmatched:$('preserve-unmatched').checked,exceptionRules:rules});return {b,e,s,p}}
-function row(values){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td)}$('rows').append(tr)}
+function row(values,target='rows'){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td)}$(target).append(tr)}
+function modelCode(mtm, rows){
+ const key=mtm.trim().toUpperCase();
+ if(!key)return '查無資料';
+ const matching=(field,length)=>rows.filter(r=>{
+  const prefix=String(r[field]??'').trim().toUpperCase();
+  return prefix.length===length&&key.startsWith(prefix);
+ });
+ const specific=matching('SPB MTM前5碼',5);
+ const matches=specific.length?specific:matching('MTM前4碼',4);
+ if(matches.length>1)return '多筆符合';
+ return String(matches[0]?.['機種別代號']??'').trim()||'查無資料';
+}
+async function renderMissing(exp){
+ const details=exp?BomMtm.errorRows(exp).filter(r=>r.kind==='missing'):[];
+ const unique=new Map();
+ for(const item of details){
+  const key=JSON.stringify([item.mtm,item.part,item.description,item.basicName]);
+  unique.set(key,item);
+ }
+ $('missing-rows').replaceChildren();
+ $('missing-panel').hidden=!unique.size;
+ if(!unique.size)return;
+ let projects;
+ try{
+  ({rows:projects}=await WorkspaceECSources.read('CustomDB'));
+  if(!Object.hasOwn(projects[0]||{},'機種別代號'))throw Error('CustomDB 欄位缺漏');
+ }catch{projects=null}
+ for(const item of unique.values()){
+  row([item.mtm||'未對應 MTM',projects?modelCode(item.mtm,projects):'查詢失敗',item.part,item.description||'—',item.basicName||'—'],'missing-rows');
+ }
+}
 function renderErrors(){
  const kind=$('error-kind').value,q=$('error-search').value.trim().toLowerCase(),shown=errorList.filter(r=>(kind==='all'||r.kind===kind)&&[r.mtm,r.part,r.reason,r.note].join(' ').toLowerCase().includes(q));
  $('error-rows').replaceChildren();for(const r of shown){const tr=document.createElement('tr');tr.className='error-'+r.kind;for(const value of [r.row,r.mtm||'未對應 MTM',r.part,{missing:'補建料號後重試，BOM 保留',ignore:'不需建立此 MTM',other:'其他錯誤，待確認'}[r.kind],r.action||'—',r.reason,r.note||'—']){const td=document.createElement('td');td.textContent=value;tr.append(td)}$('error-rows').append(tr)}
@@ -20,7 +51,7 @@ $('error-preview').onclick=previewErrors;$('error-kind').onchange=renderErrors;$
 $('export').addEventListener('change',()=>{$('error-panel').hidden=true;errorList=[];if(selected.export[0])previewErrors()});
 $('preview').onclick=async()=>{
  reset();lock(true);$('status').textContent='正在本機核對檔案…';try{
- state=await prepare();const {b,s,p}=state;$('totals').replaceChildren();
+ state=await prepare();const {b,e,s,p}=state;$('totals').replaceChildren();
  const totals=b?['BOM 原 MTM '+p.mtmCount+' 個','排除 '+p.entries.filter(i=>i.excludeBom).length+' 個／'+p.removedRows+' 列','保留 BOM '+(p.originalRows-p.removedRows)+' 列']:['只更新待貼入','依據 Export_LBS','不需要 BOM_TREE'];
  if(s)totals.push('待貼入保留 '+(p.ss.data.length-1-p.omitted.length)+' 筆','Export 異常 '+p.trackingIssues.size+' 個');
  if(p.omitted.length)totals.push('略過無異動單件列 '+p.omitted.length+' 筆');
@@ -28,6 +59,7 @@ $('preview').onclick=async()=>{
  $('warnings').replaceChildren();for(const w of p.warnings){const el=document.createElement('p');el.className='warning';el.textContent=w;$('warnings').append(el)}
  $('rows').replaceChildren();for(const i of p.entries){const tracking=p.trackingIssues.get(i.mtm);const update=!s?'未提供待貼入':!tracking?'沿用原值（Export 無異常）':tracking.kind==='missing'?'只在畫面提醒；日期與備註不變':tracking.kind==='ignore'?p.date+'＋Export 原因':'confirming＋Export 原因';row([i.mtm,labels[i.kind]+(b?(i.excludeBom?'／排除 BOM':'／保留 BOM'):''),i.rows??'—',update,i.reason+(i.tcxException?'；核定特例：需 ODM Upload Data，可上傳 CloudDB（尚未上傳）':'')])}
  for(const x of p.extras)row([x.mtm,'未對應 Export 主階的 PN／資料','—','保留原列，不計 MTM',x.reason]);
+ await renderMissing(e);
  $('result').hidden=false;$('status').textContent='預覽完成，請核對後產生檔案。';
  }catch(e){state=null;$('status').textContent='未產檔：'+e.message}finally{lock(false)}
 };
