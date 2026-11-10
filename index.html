@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.17.34</title>
+<title>料號管理中心 v2.17.35</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -138,7 +138,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.17.34 · 整合工具平台</div>
+    <div class="logo-sub">v2.17.35 · 整合工具平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -166,11 +166,11 @@ body{display:flex;background:#f0f4f8;}
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.34</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.35</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.17.34 · 2026-11-09<br>
+    v2.17.35 · 2026-11-10<br>
     🕒 出勤表填寫<br>
     維護：料號管理員
   </div>
@@ -183,7 +183,7 @@ body{display:flex;background:#f0f4f8;}
   <div id="topbar">
     <button id="hamburgerBtn" type="button" aria-label="開啟導航選單" onclick="toggleMobileSidebar()">☰</button>
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.17.34</div>
+    <div class="topbar-right">料號管理中心 v2.17.35</div>
   </div>
   <div id="content">
 
@@ -194,14 +194,15 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.17.34</span>
-          <span class="announce-date">2026-11-09</span>
+          <span class="announce-ver">v2.17.35</span>
+          <span class="announce-date">2026-11-10</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
-        <ul class="announce-list"><li><span class="announce-new">FIX</span> BOM 待貼入支援多份 Export、逐檔移除及本機核定特例；缺少 Export 提前提示，原檔與 Upload 標記保留。</li></ul>
+        <ul class="announce-list"><li><span class="announce-new">NEW</span> BOM 核對畫面依 MTM 分列 PIM 缺料，並顯示 CustomDB 機種別代號。</li></ul>
         <details class="announce-history">
           <summary>查看歷史更新（保留完整紀錄）</summary>
         <!-- 歷史版本 -->
+<div><span class="announce-ver">v2.17.34</span><span class="announce-date">2026-11-09</span><ul class="announce-list"><li><span class="announce-new">FIX</span> BOM 待貼入支援多份 Export、逐檔移除及本機核定特例；缺少 Export 提前提示，原檔與 Upload 標記保留。</li></ul></div>
 <div><span class="announce-ver">v2.17.33</span><span class="announce-date">2026-11-04</span><ul class="announce-list"><li><span class="announce-new">FIX</span> 報表5補齊 SBB 的 PIC／Project：完整料號對照專案，再取得各專案 SE；多人英文名字去重顯示。</li></ul></div>
 <div><span class="announce-ver">v2.17.31</span><span class="announce-date">2026-11-04</span><ul class="announce-list"><li><span class="announce-new">GUIDE</span> SOP 知識庫可搜尋並開啟「BOM 排除與待貼入更新 SOP」。</li></ul></div>
 <div><span class="announce-ver">v2.17.30</span><span class="announce-date">2026-11-04</span><ul class="announce-list"><li><span class="announce-new">GUIDE</span> BOM 排除與待貼入更新工具新增操作 SOP，可在新分頁查看步驟、備註範例及排查方式。</li></ul></div>
@@ -1504,7 +1505,7 @@ function getDefaultPartNo() {
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals"></iframe>
     </div>
 
-    <div id="page-bommtm" class="page"><p><a href="modules/bom-mtm/sop.html" target="_blank" rel="noopener noreferrer">操作 SOP ↗</a></p><iframe class="tool-iframe" title="BOM 排除與待貼入更新" src="modules/bom-mtm/index.html?v=20261109-files-tcx" sandbox="allow-scripts allow-same-origin allow-downloads"></iframe></div>
+    <div id="page-bommtm" class="page"><p><a href="modules/bom-mtm/sop.html" target="_blank" rel="noopener noreferrer">操作 SOP ↗</a></p><iframe class="tool-iframe" title="BOM 排除與待貼入更新" src="modules/bom-mtm/index.html?v=20261110-pim" sandbox="allow-scripts allow-same-origin allow-downloads"></iframe></div>
     <div id="page-attendance" class="page">
       <iframe class="tool-iframe" src="modules/attendance-tool/index.html?v=10.4"
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals"></iframe>
@@ -1563,6 +1564,7 @@ function getDefaultPartNo() {
 
     <!-- 測試清單 -->
     <div id="page-testplan" class="page">
+<p>v2.17.35｜BOM 核對畫面依 MTM 分列 PIM 缺料，並顯示 CustomDB 機種別代號。</p>
 <p>v2.17.34｜BOM 待貼入支援多份 Export、逐檔移除及本機核定特例；缺少 Export 提前提示，原檔與 Upload 標記保留。</p>
 <p>v2.17.31｜SOP 知識庫可搜尋並開啟「BOM 排除與待貼入更新 SOP」。</p>
 <p>v2.17.30｜BOM 排除與待貼入更新工具新增操作 SOP，可在新分頁查看步驟、備註範例及排查方式。</p>
@@ -1604,7 +1606,7 @@ var TITLES = {
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.2', spb:'🔀 SPB vs L10 v3.0',
   bommtm:'🧩 BOM 排除與待貼入更新', pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', pnimport:'📝 PN 申請匯入草稿', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.17.34',
+  testplan:'📋 測試清單 v2.17.35',
   docs:'📄 說明文件 v2.6'
 };
 

@@ -55,12 +55,13 @@ function mergeExports(items){
 function errorRows(book){
  const sheet=book.sheets.find(s=>s.data[1]?.some(v=>val(v)==='StatusCode'));if(!sheet)fail('Export 缺少 StatusCode 標題列');
  const [parent,part,action,status,desc]=headers(sheet.data[1],['Parent<br>Part Number','Part Number','MTM Action','StatusCode','Description']);
+ const name=sheet.data[1].findIndex(v=>val(v)==='Part Name'),basic=sheet.data[1].findIndex(v=>val(v)==='Basic Name');
  const guid=sheet.data[1].findIndex(v=>val(v)==='Guid'),pg=sheet.data[1].findIndex(v=>val(v)==='ParentGuid'),byGuid=new Map();
  if(guid>=0)for(const r of sheet.data.slice(2))if(val(r[guid]))byGuid.set(val(r[guid]),r);
  return sheet.data.slice(2).flatMap((r,index)=>{if(val(r[status]).toUpperCase()!=='ERROR')return [];
   let mtm=val(r[parent]),pointer=r;const seen=new Set();while(!mtm&&pg>=0&&val(pointer[pg])&&!seen.has(val(pointer[pg]))){const id=val(pointer[pg]);seen.add(id);pointer=byGuid.get(id);if(!pointer)break;mtm=val(pointer[parent])}
   const reason=String(r[desc]??''),a=val(r[action]),kind=a==='Ignore'?'ignore':reason.includes('在PIM尚未建立')?'missing':'other';
-  return [{row:book.sources?book.sources[index].name+'：'+book.sources[index].row:index+3,mtm,part:val(r[part]),action:a,status:val(r[status]),reason,kind,note:kind==='ignore'?ignoreNote(mtm,reason):''}];
+  return [{row:book.sources?book.sources[index].name+'：'+book.sources[index].row:index+3,mtm,part:val(r[part]),description:val(r[name]),basicName:val(r[basic]),action:a,status:val(r[status]),reason,kind,note:kind==='ignore'?ignoreNote(mtm,reason):''}];
  });
 }
 function exportIssues(book){
@@ -185,5 +186,5 @@ async function apply(bom,staging,p){
  }
  return {bom:bom?await bom.write():null,staging:staging?await staging.write():null};
 }
-root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,mergeExports,tcxException,version:'0.2.3'};
+root.BomMtm={load,plan,apply,dateSerial,errorRows,ignoreNote,mergeExports,tcxException,version:'0.2.4'};
 })(typeof window==='undefined'?globalThis:window);
