@@ -4,7 +4,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
-const html = fs.readFileSync(path.join(root, 'modules/pn-report/index.html'), 'utf8');
+const html = fs.readFileSync(process.env.PN_REPORT_HTML || path.join(root, 'modules/pn-report/index.html'), 'utf8');
 function extractFn(src, name) {
   const start = src.indexOf('function ' + name);
   assert.ok(start >= 0, 'found function ' + name);
@@ -47,10 +47,10 @@ check('例外：ChgBom + SPB 且主檔判不需建BOM → 維持今天 close、�
   assert.equal(r['確認者'], 'Ido');
   assert.ok(String(r['_自動判斷備註']).includes('仍需發信告知 Ido'));
 });
-check('ChgBom 非 SPB → 不套用（確認者非 Ido、Close 非 confirming）', () => {
+check('ChgBom 非 SPB → 確認者非 Ido，依11/04一般待確認規則填 confirming', () => {
   const r = build('12LN0001WW', 'ChgBom'); // 第5碼 0 = 非 SPB
   assert.notEqual(r['確認者'], 'Ido');
-  assert.notEqual(r['(GETC/ECR Close 時間)'], 'confirming');
+  assert.equal(r['(GETC/ECR Close 時間)'], 'confirming');
 });
 check('非 ChgBom（ChgDate）+ SPB → 不套用', () => {
   const r = build('12LMS0001W', 'ChgDate');

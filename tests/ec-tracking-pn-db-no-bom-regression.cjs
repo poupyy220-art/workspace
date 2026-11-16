@@ -73,12 +73,12 @@ async function run() {
   check(isToday(dup[COL]) && dup['備註'] === '不需建BOM', 'same reason not duplicated: ' + dup['備註']);
   check(!isToday(one('TESTAA1')[COL]), 'no partial match');
 
-  // 待確認情境：K 維持空白、備註不改、提示原因
+  // 待確認情境：依11/04核定 K 填 confirming、備註不改、提示原因
   const pending = [['TESTAA05WW', '歷史'], ['TESTAA06WW', '歷史'], ['TESTAA07WW', '空白'], ['TESTAA08WW', '暫停'], ['TESTAA09WW', '暫停'],
     ['TESTAA10WW', '衝突'], ['TESTAA12WW', '衝突'], ['TESTAA13WW', '矛盾'], ['TESTAA15WW', '未明確'], ['NOTINDB01WW', '查無']];
   for (const [mtm, word] of pending) {
     const r = one(mtm);
-    check(r[COL] === '' && r['備註'] === '', mtm + ' stays blank');
+    check(r[COL] === 'confirming' && r['備註'] === (mtm === 'NOTINDB01WW' ? '查不到專案，待人工確認' : ''), mtm + ' remains confirming, no invented close date');
     check(r[NOTE].includes('PN Database') && r[NOTE].includes(word) && r[NOTE].includes('待確認'), mtm + ' hint: ' + r[NOTE]);
   }
 
@@ -90,7 +90,7 @@ async function run() {
 
   // 既有備註保留、追加在後（備註欄不受功能D影響）
   const spb = build([{ ...row('12LMS0TEST'), 'Change Type': 'ChgBom', disposition: '99' }], { map: new Map([['12LMS0TEST', [{ internalPN: 'X', remark: '不需建BOM' }]]]) })[0];
-  check(spb['備註'] === '第5碼S尾碼數字無需修改BOM；不需建BOM', 'keeps existing remark: ' + spb['備註']);
+  check(spb['備註'] === '第5碼S尾碼數字無需修改BOM；不需建BOM；查不到專案，待人工確認', 'keeps existing remark: ' + spb['備註']);
   // 2026-11-02 功能D 例外（主人確認(B)）：此列為 ChgBom＋SPB，但已被 PN Database 判定「不需建BOM→
   // 今天 close」→ 尊重主檔維持今天 close（不改 confirming）；確認者仍固定 Ido（Ido 仍需收信知悉）。
   check(spb[COL] instanceof Date && isToday(spb[COL]) && spb['確認者'] === 'Ido', 'ChgBom+SPB+不需建BOM → 今天 close / Ido (feature D exception)');
@@ -100,7 +100,7 @@ async function run() {
   const fl = await failed.loadPnDatabaseNoBom8();
   check(fl.error && fl.error.includes('connection failed'), 'load failure reported, not thrown');
   const fr = one('TESTAA01WW', fl);
-  check(fr[COL] === '' && fr['備註'] === '' && fr[NOTE].includes('讀取失敗'), 'load failure hint');
+  check(fr[COL] === 'confirming' && fr['備註'] === '' && fr[NOTE].includes('讀取失敗'), 'load failure hint');
   for (const bad of [[], {}, [['料號', '建立時間']]]) {
     const b = context(async () => bad);
     check((await b.loadPnDatabaseNoBom8()).error, 'bad format → error');
@@ -108,7 +108,7 @@ async function run() {
   // 未傳入（舊呼叫方式）維持原行為
   const legacy = ctx.buildStagingRows8([row('TESTAA01WW')], new Map(), new Map([['TEST', 'Test Project']]), new Map(),
     new Map(), 'TEST', new Map(), new Map())[0];
-  check(legacy[COL] === '' && !legacy[NOTE].includes('PN Database'), 'legacy call unchanged');
+  check(legacy[COL] === 'confirming' && !legacy[NOTE].includes('PN Database'), 'legacy call unchanged');
 
   console.log(`PASS ${checks}; FAIL 0; unreadable 0`);
 }
