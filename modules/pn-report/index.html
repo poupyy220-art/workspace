@@ -279,7 +279,7 @@
             <div style="margin-bottom:10px; font-size:0.85em; color:#555;">
                 報表格式：
                 <select id="report5Mode" onchange="document.getElementById('btnDL5').style.display='none'">
-                    <option value="all">一般（全部 Change Type）</option>
+                    <option value="all">一般（含空白 Change Type，保留待確認）</option>
                     <option value="chgdate">📅 ChgDate 日期變更報表</option>
                 </select>
                 <small style="color:#888; display:block; margin-top:4px;">ChgDate：留下含日期變更的列——純 ChgDate 以及 ChgBom/Date、Date/Usage 這類「含 Date」的混合型（純 BOM／純 Usage 不收）。整批都是純 ChgDate 時隱藏 Child Part／Qty／Substitute Relationship；有混合列則顯示這三欄（保留 BOM／Usage 資訊）。另加 LastModified、EOW Date、GA Date、AnnoucementDate、Withdrawal Date、Qualification Date 並標紅字（固定下載 xlsx）。</small>
@@ -363,7 +363,7 @@
                 </div>
             </div>
             <div style="font-size:0.78em; color:#888; margin-bottom:10px;">
-                一般單件列若 Change Type 與專案皆空白，會略過；CTO／POR／600 特殊 EC 沿用原規則。Summary 依實際輸出明細統計。<br>
+                上階資料即使 Change Type 空白仍保留並寫入備註；查不到專案標示待人工確認；CTO／POR／600 特殊 EC 沿用原規則。Summary 依實際輸出明細統計。<br>
                 MTM Family 跟國別對照會自動從雲端 CustomDB／CountryDB／PN_Project_Map 讀取，不用另外上傳主表。前4碼查不到時，以完整料號查 PN_Project_Map。
                 <b>本版本已修正「FactSheet 只限 Change Type=New 才查」的規則</b>（Node 版 build-staging-report.js 目前還是舊規則，尚未決定要不要一起改）。
                 確認者欄：POR/600/0000開頭/30000開頭SPB → 跟 Creater 一樣；2000/0012/4000/0013開頭、CTO_開頭 → 查 Project 對應的 SE；其餘留空（後4條是用9萬2千多列歷史資料反推的統計規律，非100%解出來的公式）。
@@ -1155,6 +1155,14 @@
                 const wch = Math.min(50, Math.max(8, len + 2));
                 return hiddenCols.has(C) ? { hidden: true, wch } : { wch };
             });
+            if (layout.report5Review) {
+                ws['!cols'] = data[0].map((h, i) => ({ ...(ws['!cols']?.[i] || {}), wch: h === '處理備註' ? 60 : h === 'Project' ? 22 : 18 }));
+                const noteCol = data[0].indexOf('處理備註');
+                for (let r = 1; r < data.length; r++) {
+                    const cell = ws[XLSX.utils.encode_cell({r, c:noteCol})];
+                    if (cell) cell.s = { ...cell.s, alignment: { wrapText:true, vertical:'top' } };
+                }
+            }
             XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
             XLSX.writeFile(wb, makeFilename(baseName, 'xlsx'));
         } else {
@@ -1294,7 +1302,7 @@
     function buildMergeReport5(headers, rows, mode, pnDbMap) {
         const isChgDate = mode === 'chgdate';
         const baseHead = isChgDate ? REPORT5_HEAD.concat(REPORT5_CHGDATE_EXTRA) : REPORT5_HEAD;
-        const head = baseHead.concat(SPB_PN_COL);
+        const head = baseHead.concat(SPB_PN_COL, '處理備註');
         const map = baseHead.map(t => headers.indexOf(t));
         const mtmIdx = headers.indexOf("MTM/Part");
         const ctIdx = headers.indexOf("Change Type"), cpIdx = headers.indexOf("Child Part");
@@ -1305,8 +1313,10 @@
             if (report5ExclusionReason(ct, mode)) return;
             if(isChgDate && isMixedChgDateType(ct)) anyMixed = true;
             if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
-            const cells = map.map(i => i === -1 ? "" : (w[i]||"").trim());
+            const cells = map.map(i => i === -1 ? "" : (typeof w[i] === "string" ? w[i].trim() : (w[i] ?? "")));
             cells.push(spbLatestPNCell(pnDbMap, mtmIdx === -1 ? "" : w[mtmIdx]));
+            cells.push(!ct ? 'Change Type 空白，待人工確認 EC 內容；未判定是否需建立 BOM' : '');
+            if (!ct) sty[res.length] = 'gray';
             res.push(cells);
             sourceRows.push(Object.fromEntries(headers.map((h, i) => [h, w[i]])));
         });
@@ -1318,6 +1328,7 @@
             redCols: REPORT5_CHGDATE_EXTRA.map(t => head.indexOf(t)),
             missing: REPORT5_CHGDATE_EXTRA.filter(t => headers.indexOf(t) === -1)
         } : {};
+        layout.report5Review = true;
         return { data: res, styles: sty, layout, sourceRows };
     }
 
@@ -1381,9 +1392,26 @@
         const headers = data[0];
         const rows = data.slice(1).map((cells, index) => {
             const row = sourceRows ? sourceRows[index] : Object.fromEntries(headers.map((h, i) => [h, cells[i]]));
-            const picProject = sbbProjectMap && /^SBB/i.test(String(row['MTM/Part'] || '').trim())
-                ? resolveSbbPicProject5(row, mapping, sbbProjectMap) : resolvePicProject56(row, mapping);
-            return [...picProject, ...cells];
+            let picProject;
+            let review = '';
+            try {
+                picProject = sbbProjectMap && /^SBB/i.test(String(row['MTM/Part'] || '').trim())
+                    ? resolveSbbPicProject5(row, mapping, sbbProjectMap) : resolvePicProject56(row, mapping);
+            } catch (err) {
+                if (!layout.report5Review || !String(err.message).includes('查無 SBB 專案')) throw err;
+                picProject = ['', '待人工確認'];
+                review = '查不到專案，待人工確認';
+            }
+            const outputCells = [...cells];
+            if (layout.report5Review && (!picProject[1] || picProject[1] === '需自行確認' || picProject[1] === '待人工確認')) {
+                picProject = [picProject[0], '待人工確認'];
+                review = '查不到專案，待人工確認';
+            }
+            if (review) {
+                const index = headers.indexOf('處理備註');
+                outputCells[index] = [outputCells[index], review].filter(Boolean).join('；');
+            }
+            return [...picProject, ...outputCells];
         });
         return { data: [['PIC', 'Project', ...headers], ...rows], layout: {
             ...layout,
@@ -1393,7 +1421,7 @@
     }
 
     function report5ExclusionReason(change, mode) {
-        return !change ? 'Change Type 空白'
+        return !change ? (mode === 'chgdate' ? 'Change Type 空白，請用一般模式保留並確認' : '')
                 : change.toLowerCase() === 'none' ? 'Change Type 為 None'
                 : mode === 'chgdate' && !isChgDateType(change) ? '不含日期變更' : '';
     }
@@ -1483,7 +1511,7 @@
     function downloadMergedReport5() {
         if (cacheRep5.length < 2) return alert('請先處理預覽');
         if (cacheLayout5 && cacheLayout5.redCols) downloadChgDateWorkbook5();
-        else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, PERSONAL_REPORT);
+        else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, { ...PERSONAL_REPORT, ...cacheLayout5 });
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
     }
     // 2026-11-02 功能C：ChgDate 模式下載改成 2 分頁 Excel——Sheet1「合併報表_ChgDate」維持原樣式
@@ -2011,8 +2039,8 @@
         function includeStagingRow8(row) {
             const change=String(row['_ChangeType（僅供核對，貼主表前刪除）']||'').trim();
             const project=String(row['MTM Family']||'').trim(),ec=String(row['LNV ECN No']||'').toUpperCase();
-            // 一般 EC 無 ChangeType、無 MTM Family 的單件 PN 不列入待貼入；特殊 EC 原規則保留。
-            return !!change || !!project || /^CTO|^600|^\d+POR(?:_|$)/.test(ec);
+            // 保留已通過頂層 EC 條件的列；資料不完整改以備註提醒，不再整列排除。
+            return true;
         }
 
         const runDateValue = todayDateValue8();
@@ -2244,11 +2272,20 @@
                 ? 'ChgBom 的 SPB MTM：確認者固定 Ido；此列已依主檔判定不需建BOM、維持今天 close，仍需發信告知 Ido'
                 : 'ChgBom 的 SPB MTM：確認者固定 Ido、Close 時間暫置「confirming」待 Ido 確認'].filter(Boolean).join('；');
 
+            const reviewMessages8 = [];
+            if (!changeType && !isCtoNoBomChange && !isPorNoBomChange)
+                reviewMessages8.push('Change Type 空白，待人工確認 EC 內容');
+            if (!mtmFamily) reviewMessages8.push('查不到專案，待人工確認');
+            if (reviewMessages8.length) {
+                const reviewText8 = reviewMessages8.join('；');
+                remark8 = [remark8, reviewText8].filter(Boolean).join('；');
+                note = [note, reviewText8].filter(Boolean).join('；');
+            }
             out.push({
                 'LNV ECN No': lnvEcnNo,
                 'Title': r['Lenovo EC/Doc Name'] || '',
                 'MTM/PART': mtmPart,
-                'MTM Family': mtmFamily,
+                'MTM Family': mtmFamily || '待人工確認',
                 'Disposition code': dispositionDisplay,
                 'LNV GETC Open Date': openDateParsed || runDateValue,
                 'LNV GETC Close Date': runDateValue,
@@ -2366,7 +2403,7 @@
             summary.innerHTML = `共 ${rows.length} 列（New ${newCount} 筆）。` +
                 (pnDbLookup.error ? '<br><b style="color:var(--danger-color);">⚠ PN Database 讀取失敗，未自動判斷不需建BOM，Close 時間空白的列請人工確認。</b>'
                     : (pnDbClosedCount ? `<br>依 PN Database 備註判定不需建立：${pnDbClosedCount} 列（已帶入備註並填今天）。` : '')) +
-                (needNoteCount ? `<br><b style="color:var(--danger-color);">⚠ ${needNoteCount} 列有備註需要人工確認（缺 FactSheet／Project 對不到／Disposition 異常等），下載後看「_自動判斷備註」欄。</b>` : '<br><span style="color:var(--success-color);">✅ 沒有列需要額外人工確認。</span>');
+                (needNoteCount ? `<br><b style="color:var(--danger-color);">⚠ ${needNoteCount} 列有備註需要人工確認（缺 FactSheet／Project 對不到／Disposition 異常等），下載後核對「備註」與「_自動判斷備註」欄。</b>` : '<br><span style="color:var(--success-color);">✅ 沒有列需要額外人工確認。</span>');
             btnDL8.style.display = 'inline-flex';
             dbg('✅ 處理完成');
         } catch (err) {

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 // PN 報表工具自 v2.17.15 起為獨立檔（原 index.html 內嵌 base64）。
-const pn = fs.readFileSync(path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
+const pn = fs.readFileSync(process.env.PN_REPORT_HTML || path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
 function extract(name) {
   const start = pn.search(new RegExp('    (?:async )?function ' + name + '\\('));
   const end = pn.indexOf('\n    }', start) + 6;
@@ -47,7 +47,7 @@ async function run() {
  const build=(r,prefixMap,pnMap)=>ctx.buildStagingRows8(r,new Map(),prefixMap,new Map(),new Map(),'TEST',new Map(),pnMap);
  check(build([row],new Map(),map)[0]['MTM Family']==='Project A');
  check(build([row],new Map([['SBB-','Existing']]),map)[0]['MTM Family']==='Existing');
- check(build([{...row,'MTM/Part':'UNKNOWN'}],new Map(),map)[0]['MTM Family']==='');
+ check(build([{...row,'MTM/Part':'UNKNOWN'}],new Map(),map)[0]['MTM Family']==='待人工確認');
  check(build([row,{...row,'Child Part':'CHILD'}],new Map(),map).length===1);
  check(build([row],new Map(),map)[0]['LNV GETC Open Date'] instanceof Date);
  console.log(`PASS ${checks}; FAIL 0; unreadable 0`);

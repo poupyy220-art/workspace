@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const pn = fs.readFileSync(path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
+const pn = fs.readFileSync(process.env.PN_REPORT_HTML || path.join(__dirname, '../modules/pn-report/index.html'), 'utf8').replace(/\r\n/g, '\n');
 function extract(name) {
   const start = pn.search(new RegExp('    function ' + name + '\\('));
   const end = pn.indexOf('\n    }', start) + 6;
@@ -53,7 +53,7 @@ function run() {
   const ctx = { Set, Array, Object, String, Number };
   vm.createContext(ctx);
   ['REPORT5_HEAD', 'REPORT5_CHGDATE_EXTRA', 'REPORT5_CHGDATE_HIDDEN', 'SPB_PN_COL', 'DATE_TOKENS'].forEach((n) => vm.runInContext(extractConst(n), ctx));
-  ['chgDateTokens', 'isChgDateType', 'isMixedChgDateType', 'spbLatestPNCell', 'buildMergeReport5'].forEach((n) => vm.runInContext(extract(n), ctx));
+  ['chgDateTokens', 'isChgDateType', 'isMixedChgDateType', 'spbLatestPNCell', 'report5ExclusionReason', 'buildMergeReport5'].forEach((n) => vm.runInContext(extract(n), ctx));
 
   // --- 單元：token 判定規則 ---
   check(ctx.isChgDateType('ChgDate'), 'pure ChgDate is date');
@@ -87,7 +87,7 @@ function run() {
   // 有混合列 → 不隱藏 D/E/G（保留 BOM/Usage 欄）；紅字欄不變；SPB 欄既不隱藏也不紅
   check(JSON.stringify(Array.from(cd.layout.hiddenCols)) === '[]', 'chgdate(mixed present): D/E/G NOT hidden');
   check(JSON.stringify(Array.from(cd.layout.redCols)) === JSON.stringify([11, 12, 13, 14, 15, 16]), 'chgdate: red date columns unchanged');
-  check(head.length === 18 && head[17] === ctx.SPB_PN_COL, 'chgdate: 11+6+SPB columns');
+  check(head.length === 19 && head[17] === ctx.SPB_PN_COL && head[18] === '處理備註', 'chgdate: 11+6+SPB+review columns');
   check(!cd.layout.hiddenCols.includes(17) && !cd.layout.redCols.includes(17), 'chgdate: SPB column neither hidden nor red');
   // 混合列保留 Child Part / Qty / Substitute Relationship 內容
   check(cd.data[2][head.indexOf('Child Part')] === 'C3' && cd.data[2][head.indexOf('Qty')] === '2' && cd.data[2][head.indexOf('Substitute Relationship')] === 'ALT', 'chgdate: mixed row keeps Child Part/Qty/Substitute');
@@ -101,7 +101,7 @@ function run() {
 
   // --- 一般報表不受影響：全部非空/非 none 列都進，Change Type 不篩 ---
   const all = ctx.buildMergeReport5(HEADERS, ROWS, 'all', pnMap);
-  check(all.data[0].length === 12, 'all: 11 + SPB only (no extra/hidden/red)');
+  check(all.data[0].length === 13, 'all: 11 + SPB + review (no date extra/hidden/red)');
   check(!all.layout.hiddenCols && !all.layout.redCols, 'all: no chgdate layout');
   // none 排除，其餘 10 列都在（含純 BOM/Usage/Update/Insert/Extract/New）
   check(all.data.length === 1 + 10, 'all: header + 10 rows (only none excluded)');
