@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 // 2026-11-02 功能C：驗證「5️⃣ ChgDate 模式」產出的第二分頁待貼入列，跟 8️⃣ 共用
 // buildStagingRows8／buildStagingWorksheet8，且只含 Change Type=ChgDate 的列、備註固定
 // 「change date,EC直接close」、MTM Family 有算（來自 CustomDB/PN_Project_Map）。

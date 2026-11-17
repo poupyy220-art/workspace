@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 // 2026-11-03 功能（主人指示）：ChgDate 日期變更報表除了純 ChgDate，也要納入「含日期變更的混合型」
 // （ChgBom/Date、Date/Usage…）。判定用「以 / 切 token、整段相等比對 chgdate/date」，而不是 includes('date')
 // 子字串，避免 Update(upDATE) 這類誤收；純 BOM／純 Usage 不收。輸出保留原 Change Type；一般報表不受影響。

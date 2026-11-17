@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 // 2026-11-02 功能D（8️⃣ 待貼入）：Change Type=ChgBom 且 SPB MTM 的列 → 確認者固定「Ido」、
 // (GETC/ECR Close 時間) 放「confirming」且下載時紅字＋水平置中。只套用 ChgBom＋SPB；
 // 其餘 Change Type、或 ChgBom 非 SPB，維持原規則不變。

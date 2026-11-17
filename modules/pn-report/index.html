@@ -279,7 +279,7 @@
             <div style="margin-bottom:10px; font-size:0.85em; color:#555;">
                 報表格式：
                 <select id="report5Mode" onchange="document.getElementById('btnDL5').style.display='none'">
-                    <option value="all">一般（含空白 Change Type，保留待確認）</option>
+                    <option value="all">一般（空白 Change Type 僅保留最上階）</option>
                     <option value="chgdate">📅 ChgDate 日期變更報表</option>
                 </select>
                 <small style="color:#888; display:block; margin-top:4px;">ChgDate：留下含日期變更的列——純 ChgDate 以及 ChgBom/Date、Date/Usage 這類「含 Date」的混合型（純 BOM／純 Usage 不收）。整批都是純 ChgDate 時隱藏 Child Part／Qty／Substitute Relationship；有混合列則顯示這三欄（保留 BOM／Usage 資訊）。另加 LastModified、EOW Date、GA Date、AnnoucementDate、Withdrawal Date、Qualification Date 並標紅字（固定下載 xlsx）。</small>
@@ -363,7 +363,7 @@
                 </div>
             </div>
             <div style="font-size:0.78em; color:#888; margin-bottom:10px;">
-                上階資料即使 Change Type 空白仍保留並寫入備註；查不到專案標示待人工確認；CTO／POR／600 特殊 EC 沿用原規則。Summary 依實際輸出明細統計。<br>
+                僅保留同一 EC 的真正最上階；Change Type 空白仍保留並寫入備註；查不到專案標示待人工確認；CTO／POR／600 特殊 EC 沿用原規則。Summary 依實際輸出明細統計。<br>
                 MTM Family 跟國別對照會自動從雲端 CustomDB／CountryDB／PN_Project_Map 讀取，不用另外上傳主表。前4碼查不到時，以完整料號查 PN_Project_Map。
                 <b>本版本已修正「FactSheet 只限 Change Type=New 才查」的規則</b>（Node 版 build-staging-report.js 目前還是舊規則，尚未決定要不要一起改）。
                 確認者欄：POR/600/0000開頭/30000開頭SPB → 跟 Creater 一樣；2000/0012/4000/0013開頭、CTO_開頭 → 查 Project 對應的 SE；其餘留空（後4條是用9萬2千多列歷史資料反推的統計規律，非100%解出來的公式）。
@@ -1299,6 +1299,35 @@
         const toks = chgDateTokens(ct);
         return toks.some(t => DATE_TOKENS.has(t)) && toks.some(t => !DATE_TOKENS.has(t));
     }
+    function reportScopeKey58(row) {
+        const raw = String(row['Lenovo EC/Doc Number'] || '').trim();
+        const ec = /^\d+POR$/i.test(raw) && row.__sourcePorEcNo ? row.__sourcePorEcNo
+            : /^(0012|0013)/.test(raw) && row.__sourceSeriesEcNo ? row.__sourceSeriesEcNo : raw;
+        return String(ec).trim().toUpperCase();
+    }
+
+    function childKeys58(rows) {
+        const keys = new Set();
+        rows.forEach(row => {
+            const ec = reportScopeKey58(row), child = String(row['Child Part'] || '').trim().toUpperCase();
+            if (ec && child) keys.add(JSON.stringify([ec, child]));
+        });
+        return keys;
+    }
+
+    function isTopRow58(row, children) {
+        const ec = reportScopeKey58(row), part = String(row['MTM/Part'] || '').trim().toUpperCase();
+        return !!ec && !!part && !String(row['Child Part'] || '').trim()
+            && !children.has(JSON.stringify([ec, part]));
+    }
+
+    function report5RowExclusion58(row, mode, children) {
+        const change = String(row['Change Type'] || '').trim();
+        const reason = report5ExclusionReason(change, mode);
+        if (reason) return reason;
+        return !change && !isTopRow58(row, children) ? 'Change Type 空白且非最上階（原始 CSV 保留）' : '';
+    }
+
     function buildMergeReport5(headers, rows, mode, pnDbMap) {
         const isChgDate = mode === 'chgdate';
         const baseHead = isChgDate ? REPORT5_HEAD.concat(REPORT5_CHGDATE_EXTRA) : REPORT5_HEAD;
@@ -1308,9 +1337,11 @@
         const ctIdx = headers.indexOf("Change Type"), cpIdx = headers.indexOf("Child Part");
         const res = [head], sty = {}, sourceRows = [];
         let anyMixed = false;
-        rows.forEach(w => {
+        const scopeRows58 = rows.map(w => Object.fromEntries(headers.map((h, i) => [h, w[i]])));
+        const children58 = childKeys58(scopeRows58);
+        rows.forEach((w, rowIndex58) => {
             const ct = (w[ctIdx]||"").trim().toLowerCase(), cp = (w[cpIdx]||"").trim();
-            if (report5ExclusionReason(ct, mode)) return;
+            if (report5RowExclusion58(scopeRows58[rowIndex58], mode, children58)) return;
             if(isChgDate && isMixedChgDateType(ct)) anyMixed = true;
             if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
             const cells = map.map(i => i === -1 ? "" : (typeof w[i] === "string" ? w[i].trim() : (w[i] ?? "")));
@@ -1429,11 +1460,14 @@
     function summarizeReport5(headers, rows, mode) {
         const changeIndex = headers.indexOf('Change Type');
         const ecIndex = headers.indexOf('Lenovo EC/Doc Number');
+        const scopeRows58 = rows.map(w => Object.fromEntries(headers.map((h, i) => [h, w[i]])));
+        const children58 = childKeys58(scopeRows58);
         const excludedByEc = new Map();
         let included = 0;
         for (const row of rows) {
             const change = String(row[changeIndex] || '').trim();
-            const reason = report5ExclusionReason(change, mode);
+            const scopeRow58 = Object.fromEntries(headers.map((h, i) => [h, row[i]]));
+            const reason = report5RowExclusion58(scopeRow58, mode, children58);
             if (!reason) {
                 included++;
                 continue;
@@ -2043,6 +2077,7 @@
             return true;
         }
 
+        const children58 = childKeys58(flatfileRows);
         const runDateValue = todayDateValue8();
         // 2026-09-23 May 確認：CTO_ 開頭EC 的 Flatfile 若整份（同一個 EC No 的所有列，含
         // Child Part 列）Change Type 全部空白，代表沒有 BOM 變更，備註寫
@@ -2077,6 +2112,8 @@
                 lnvEcnNo = String(r.__sourceSeriesEcNo).trim();
             }
 
+            // 2026-11-17：同一 EC 中也出現在 Child Part 的組件不是最上階。
+            if (!isTopRow58(r, children58)) continue;
             if (!mtmPart) continue;
             if (childPart) continue;
             if (!changeType && !lnvEcnNo) continue;
