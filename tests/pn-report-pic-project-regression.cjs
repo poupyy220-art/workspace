@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 // Synthetic fixtures only. Lock PIC/Project to the EC classifier and test name formatting independently.
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert/strict');
 const root=path.resolve(__dirname,'..');

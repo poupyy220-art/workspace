@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');

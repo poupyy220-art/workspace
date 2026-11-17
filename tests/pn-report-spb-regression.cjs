@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 // 2026-11-02：PN 報表 5️⃣／6️⃣／8️⃣ 新增「SPB AVC PN最新版本」欄，演算法移植自 EC 受限制物料分析器。
 // 本測試鎖住移植進來的 spbLatestPNCell helper 與原 EC 分析器 latestPN 的 6 組經典案例邏輯等價，
 // 並驗證單欄呈現（有結果→PN；查無／不同系列／最高版並列→原因字串同格）、大小寫/空白正規化、

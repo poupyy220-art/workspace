@@ -1,3 +1,4 @@
+require('./report58-scope-harness.cjs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { extract } = require('./ec-tracking-pn-map-regression.cjs');
