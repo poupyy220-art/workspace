@@ -581,14 +581,35 @@
         return count;
     }
 
+    // 非阻塞提示：取代會擋住整個分頁的 alert()，數秒後自動消失（錯誤訊息停留較久，點一下可關閉）。
+    function pageToast(message, isError) {
+        let box = document.getElementById('pageToastBox');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'pageToastBox';
+            box.setAttribute('role', 'status');
+            box.setAttribute('aria-live', 'polite');
+            box.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99998;display:flex;flex-direction:column;gap:8px;max-width:min(420px,calc(100% - 24px));pointer-events:none;';
+            document.body.append(box);
+        }
+        const t = document.createElement('div');
+        t.className = 'page-toast';
+        t.textContent = message;
+        t.style.cssText = 'pointer-events:auto;cursor:pointer;white-space:pre-wrap;padding:10px 14px;border-radius:6px;font-size:14px;line-height:1.5;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.25);background:' + (isError ? '#c0392b' : '#27ae60') + ';';
+        const close = () => { if (t.parentNode) t.remove(); };
+        t.onclick = close;
+        box.append(t);
+        setTimeout(close, isError ? 10000 : 4000);
+    }
+
     async function syncFromCloud() {
-        if (!document.getElementById('gasUrl').value.trim()) return alert('請輸入 URL');
+        if (!document.getElementById('gasUrl').value.trim()) return pageToast('請輸入 URL', true);
         showLoading(true, '雲端同步中...');
         try {
             const count = await pullPnCloudData();
-            alert('✅ 下載並驗證成功，共 ' + count + ' 筆');
+            pageToast('✅ 下載並驗證成功，共 ' + count + ' 筆');
         } catch (error) {
-            alert('❌ 下載失敗：' + error.message);
+            pageToast('❌ 下載失敗：' + error.message, true);
         } finally {
             showLoading(false);
         }
