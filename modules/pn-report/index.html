@@ -1526,13 +1526,13 @@
             ? await loadPnProjectMap8(null) : null;
         const { data: res, layout } = prependPicProject56(built.data, mapping, built.layout, built.sourceRows, sbbProjectMap5);
         const sty = built.styles;
-        if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
+        if (pnDb.error) pageToast('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error, true);
         cacheRep5 = res; cacheStyle5 = sty; cacheLayout5 = layout;
         cacheChgDateStaging5 = null; cacheChgDateStaging5Error = '';
         if (mode === 'chgdate') {
             const hidden = new Set(layout.hiddenCols);
             renderPreview(res.map(row => row.filter((_, c) => !hidden.has(c))), sty);
-            if (layout.missing.length) alert('提醒：Flatfile 找不到這些欄位，報表中會是空白：' + layout.missing.join('、'));
+            if (layout.missing.length) pageToast('提醒：Flatfile 找不到這些欄位，報表中會是空白：' + layout.missing.join('、'), true);
             // 2026-11-02 功能C：同時算好「待貼入(ChgDate)」列，跟 8️⃣ 共用 buildStagingRows8（只取
             // Change Type=ChgDate 的列），下載時會寫進同一個 Excel 的第二分頁。雲端讀取失敗不擋主報表，
             // 下載時第二分頁改顯示錯誤提示列。
@@ -1561,7 +1561,7 @@
             renderPreview(res, sty);
         }
         document.getElementById('btnDL5').style.display = 'inline-flex';
-        } catch (err) { cacheRep5 = []; alert(err.message || String(err)); }
+        } catch (err) { cacheRep5 = []; pageToast(err.message || String(err), true); }
     }
     function downloadMergedReport5() {
         if (cacheRep5.length < 2) return alert('請先處理預覽');
@@ -1642,12 +1642,12 @@
             else if((ct === "chgbom" || ct === "new") && cp === "") sty[res.length] = 'yellow';
             res.push([...w.map(c => (c||"").trim()), spbLatestPNCell(pnDb.map, mtmIdx === -1 ? "" : w[mtmIdx])]);
         });
-        if (pnDb.error) alert('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error);
+        if (pnDb.error) pageToast('提醒：PN Database 讀取失敗，「' + SPB_PN_COL + '」欄會留白待確認。\n' + pnDb.error, true);
         cacheRep6 = prependPicProject56(res, await loadPicProject56()).data; cacheStyle6 = sty; renderPreview(cacheRep6, sty);
         result.textContent = `已保留全部 ${r.rows.length} 筆。` + (blankChangeCount
             ? `其中 ${blankChangeCount} 筆 Change Type 空白，已標灰並保留。` : '');
         document.getElementById('btnDL6').style.display = 'inline-flex';
-        } catch (err) { cacheRep6 = []; alert(err.message || String(err)); }
+        } catch (err) { cacheRep6 = []; pageToast(err.message || String(err), true); }
     }
     function downloadMergedReport6() {
         if (cacheRep6.length < 2) return alert('請先處理預覽');
