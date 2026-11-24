@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>料號管理中心 v2.17.42</title>
+<title>料號管理中心 v2.17.43</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -138,7 +138,7 @@ body{display:flex;background:#f0f4f8;}
 <div id="sidebar">
   <div class="logo">
     <div class="logo-title">🔧 料號管理中心</div>
-    <div class="logo-sub">v2.17.42 · 整合工具平台</div>
+    <div class="logo-sub">v2.17.43 · 整合工具平台</div>
   </div>
 
   <div class="nav-section">總覽</div>
@@ -168,11 +168,11 @@ body{display:flex;background:#f0f4f8;}
 
   <div class="nav-section">知識庫</div>
   <div class="nav-item" data-p="sop"><span class="nav-icon">📖</span>SOP 知識庫</div>
-  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.42</div>
+  <div class="nav-item" data-p="testplan"><span class="nav-icon">📋</span>測試清單 v2.17.43</div>
   <div class="nav-item" data-p="docs"><span class="nav-icon">📄</span>說明文件</div>
 
   <div class="sidebar-foot">
-    v2.17.42 · 2026-11-23<br>
+    v2.17.43 · 2026-11-24<br>
     🕒 出勤表填寫<br>
     維護：料號管理員
   </div>
@@ -185,7 +185,7 @@ body{display:flex;background:#f0f4f8;}
   <div id="topbar">
     <button id="hamburgerBtn" type="button" aria-label="開啟導航選單" onclick="toggleMobileSidebar()">☰</button>
     <div id="page-title">🏠 首頁總覽</div>
-    <div class="topbar-right">料號管理中心 v2.17.42</div>
+    <div class="topbar-right">料號管理中心 v2.17.43</div>
   </div>
   <div id="content">
 
@@ -196,14 +196,15 @@ body{display:flex;background:#f0f4f8;}
 <!-- 版本公告 — 每次更新只需修改這裡 -->
       <div class="announce-box" id="version-announce">
         <div>
-          <span class="announce-ver">v2.17.42</span>
-          <span class="announce-date">2026-11-23</span>
+          <span class="announce-ver">v2.17.43</span>
+          <span class="announce-date">2026-11-24</span>
         </div>
         <div class="announce-title">📢 最新更新</div>
-        <ul class="announce-list"><li><span class="announce-fix">UX</span> PN 報表 5／6 的「提醒」與錯誤訊息（PN Database 讀取失敗、Flatfile 缺欄位等）改為頁面內提示，不再跳出需手動按確定的視窗；報表內容與功能不變。</li></ul>
+        <ul class="announce-list"><li><span class="announce-fix">UX</span> PN 報表 5／6 下載檔名調整：單筆 EC 時檔名最前面加 EC 號碼（多筆不加），結尾改為「日期_時分」（例：0013318025_A_合併報表 (篩選 + 隱藏)_20261124_1633.xlsx），方便辨識與排序；報表內容不變。</li></ul>
         <details class="announce-history">
           <summary>查看歷史更新（保留完整紀錄）</summary>
         <!-- 歷史版本 -->
+<div><span class="announce-ver">v2.17.42</span><span class="announce-date">2026-11-23</span><ul class="announce-list"><li><span class="announce-fix">UX</span> PN 報表 5／6 的「提醒」與錯誤訊息（PN Database 讀取失敗、Flatfile 缺欄位等）改為頁面內提示，不再跳出需手動按確定的視窗；報表內容與功能不變。</li></ul></div>
 <div><span class="announce-ver">v2.17.41</span><span class="announce-date">2026-11-23</span><ul class="announce-list"><li><span class="announce-fix">UX</span> PN 報表頁載入雲端資料後，「下載並驗證成功」改為頁面內提示、數秒自動消失，不再跳出需手動按確定的視窗；資料與功能不變。</li></ul></div>
 <div><span class="announce-ver">v2.17.40</span><span class="announce-date">2026-11-17</span><ul class="announce-list"><li><span class="announce-new">FIX</span> 報表5保留原有變更明細，空白 Change Type 僅保留真正最上階並註記；報表8依同一EC最上階篩選。保留既有備註與專案對照方式，原始資料不修改。</li></ul></div>
 <div><span class="announce-ver">v2.17.39</span><span class="announce-date">2026-11-17</span><ul class="announce-list"><li><span class="announce-new">NEW</span> 左側「EC / BOM 工具」新增「歷年 EC 查詢」入口（另開分頁）；需以已授權的 Google 帳號登入，資料每天 18:00 同步最新 EC Tracking。</li></ul></div>
@@ -625,7 +626,7 @@ body{display:flex;background:#f0f4f8;}
         <span>已完成缺少資料補回、錯誤資料修正及完全重複資料清理；欄位差異資料暫視為通過。</span>
         <a class="audit-link" href="https://docs.google.com/spreadsheets/d/10swnGtBmwiTrl5APxI2hXqV7RaQM5aiNBRCcA48etjQ/edit" target="_blank" rel="noopener noreferrer">查看稽核報表 ↗</a>
       </div>
-      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261123-warntoast"
+      <iframe class="tool-iframe" src="modules/pn-report/index.html?v=20261124-ecfilename"
         sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups"></iframe>
     </div>
 
@@ -1573,6 +1574,7 @@ function getDefaultPartNo() {
 
     <!-- 測試清單 -->
     <div id="page-testplan" class="page">
+<p>v2.17.43｜PN 報表 5／6 下載檔名：單筆 EC 加 EC 號碼前綴、結尾為日期_時分；多筆不加前綴。</p>
 <p>v2.17.42｜左側新增「歷年 EC 查詢」入口，另開分頁，需已授權 Google 帳號登入。</p>
 <p>v2.17.38｜報表5與8保留空白 Change Type 並寫入備註；查不到專案標示待人工確認。報表8維持上階資料規則，原始資料不修改。</p>
 <p>v2.17.36｜BOM 核定特例欄位新增空白範本與留空提醒，SOP 補上選檔情境和畫面。</p>
@@ -1618,7 +1620,7 @@ var TITLES = {
   customdb:'🔎 萬用專案查詢  ☁️ Google Sheet → CustomDB',
   ec:'🚀 EC 受限制物料 v2.2', spb:'🔀 SPB vs L10 v3.0',
   bommtm:'🧩 BOM 排除與待貼入更新', pim:'🗂️ PIM 合併 v4.9', bomcheck:'🧪 BOM 轉檔與安檢', pnimport:'📝 PN 申請匯入草稿', ctoedi:'📦 CTO EDI 新專案維護', attendance:'🕒 出勤表自動填寫', sop:'📖 SOP 知識庫',
-  testplan:'📋 測試清單 v2.17.42',
+  testplan:'📋 測試清單 v2.17.43',
   docs:'📄 說明文件 v2.6'
 };
 

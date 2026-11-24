@@ -441,6 +441,22 @@
     const getDateStr = () => { const t = new Date(); return t.getFullYear() + String(t.getMonth()+1).padStart(2,'0') + String(t.getDate()).padStart(2,'0'); };
     const getSeq = () => document.getElementById('globalSeq').value;
     const makeFilename = (base, ext) => `${base}_${getDateStr()}_${getSeq()}.${ext}`;
+    // 2026-11-24（主人指定）：5️⃣ 合併報表／6️⃣ EC 檔案合併 檔名＝[EC號_]名稱_YYYYMMDD_HHMM。
+    // 只有「單筆 EC」才在最前面加 EC 號（多筆怕太長不加）；後面一律日期＋時間點，取代流水號。
+    const makeEcReportFilename = (base, ext, rows) => {
+        const t = new Date(), p = n => String(n).padStart(2, '0');
+        const stamp = `${getDateStr()}_${p(t.getHours())}${p(t.getMinutes())}`;
+        let prefix = '';
+        try {
+            const head = (rows && rows[0]) || [];
+            const i = head.findIndex(h => String(h).trim() === 'Lenovo EC/Doc Number');
+            if (i >= 0) {
+                const ecs = new Set(rows.slice(1).map(r => String(r[i] == null ? '' : r[i]).trim()).filter(Boolean));
+                if (ecs.size === 1) prefix = [...ecs][0].replace(/[\\/:*?"<>|\s]+/g, '') + '_';
+            }
+        } catch (e) { prefix = ''; }
+        return `${prefix}${base}_${stamp}.${ext}`;
+    };
     const getPNList = () => document.getElementById('pnInput').value.split('\n').map(x=>x.trim()).filter(x=>x!=='');
     const clearInput = () => { document.getElementById('pnInput').value = ""; if (typeof renderBomCustomTable4 === 'function') renderBomCustomTable4(); };
     (function bindPnInputSync4() {
@@ -1185,7 +1201,7 @@
                 }
             }
             XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-            XLSX.writeFile(wb, makeFilename(baseName, 'xlsx'));
+            XLSX.writeFile(wb, layout.ecFilename ? makeEcReportFilename(baseName, 'xlsx', data) : makeFilename(baseName, 'xlsx'));
         } else {
             const csv = data.map(r => r.map(v => {
                 const text = String(v == null ? '' : v);
@@ -1193,7 +1209,7 @@
             }).join(',')).join("\n") + "\n";
             const b = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
-            link.href = URL.createObjectURL(b); link.download = makeFilename(baseName, 'csv'); link.click();
+            link.href = URL.createObjectURL(b); link.download = layout.ecFilename ? makeEcReportFilename(baseName, 'csv', data) : makeFilename(baseName, 'csv'); link.click();
         }
     }
 
@@ -1566,7 +1582,7 @@
     function downloadMergedReport5() {
         if (cacheRep5.length < 2) return alert('請先處理預覽');
         if (cacheLayout5 && cacheLayout5.redCols) downloadChgDateWorkbook5();
-        else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, { ...PERSONAL_REPORT, ...cacheLayout5 });
+        else exportExcelWithStyles(cacheRep5, "合併報表 (篩選 + 隱藏)", cacheStyle5, null, { ...PERSONAL_REPORT, ...cacheLayout5, ecFilename: true });
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
     }
     // 2026-11-02 功能C：ChgDate 模式下載改成 2 分頁 Excel——Sheet1「合併報表_ChgDate」維持原樣式
@@ -1616,7 +1632,7 @@
             ws2['!cols'] = [{ wch: 80 }];
         }
         XLSX.utils.book_append_sheet(wb, ws2, "待貼入(ChgDate)");
-        XLSX.writeFile(wb, makeFilename("合併報表_ChgDate", 'xlsx'));
+        XLSX.writeFile(wb, makeEcReportFilename("合併報表_ChgDate", 'xlsx', cacheRep5));
     }
 
     async function processMergeReport6() {
@@ -1651,7 +1667,7 @@
     }
     function downloadMergedReport6() {
         if (cacheRep6.length < 2) return alert('請先處理預覽');
-        exportExcelWithStyles(cacheRep6, "EC 檔案合併 (丟入 PIM_MTM)", cacheStyle6, null, PERSONAL_REPORT);
+        exportExcelWithStyles(cacheRep6, "EC 檔案合併 (丟入 PIM_MTM)", cacheStyle6, null, { ...PERSONAL_REPORT, ecFilename: true });
         if(document.getElementById('autoIncSeq').checked) incrementGlobalSeq();
     }
 
